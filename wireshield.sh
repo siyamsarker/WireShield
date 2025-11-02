@@ -521,8 +521,20 @@ function revokeClient() {
 	rm -f "${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
 	rm -f "${HOME_DIR}/${CLIENT_NAME}.conf"
 
+	# also remove any matching client .conf files from common locations (/root and /home/*)
+	# This ensures the user's configs are fully removed so the name can be reused safely
+	SEARCH_DIRS=(/root /home)
+	for base in "${SEARCH_DIRS[@]}"; do
+		# remove both canonical and simplified filenames if they exist within depth 2
+		find "$base" -maxdepth 2 -type f \
+			\( -name "${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf" -o -name "${CLIENT_NAME}.conf" \) \
+			-print -delete 2>/dev/null || true
+	done
+
 	# restart wireguard to apply changes
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+
+	echo -e "${GREEN}Client '${CLIENT_NAME}' has been fully revoked and related .conf files removed.${NC}"
 }
 
 function uninstallWg() {
