@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# Secure WireGuard server installer
-# https://github.com/angristan/wireguard-install
+# WireShield - Secure WireGuard VPN installer and manager
+# https://github.com/siyamsarker/WireShield
+# Supports WireGuard on Linux kernel 5.6+ (built-in) and older kernels (with module)
+# Version: 2.0.0
 
 RED='\033[0;31m'
 ORANGE='\033[0;33m'
@@ -67,9 +69,10 @@ function checkOS() {
 		fi
 	elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
 		if [[ ${VERSION_ID} == 7* ]]; then
-			echo "Your version of CentOS (${VERSION_ID}) is not supported. Please use CentOS 8 or later"
+			echo "Your version of CentOS/AlmaLinux/Rocky (${VERSION_ID}) is not supported. Please use version 8 or later"
 			exit 1
 		fi
+		# CentOS Stream, AlmaLinux, and Rocky Linux 8+ are supported
 	elif [[ -e /etc/oracle-release ]]; then
 		source /etc/os-release
 		OS=oracle
@@ -81,7 +84,8 @@ function checkOS() {
 			apk update && apk add virt-what
 		fi
 	else
-		echo "Looks like you aren't running this installer on a Debian, Ubuntu, Fedora, CentOS, AlmaLinux, Oracle or Arch Linux system"
+		echo "Looks like you aren't running this installer on a supported Linux distribution."
+		echo "Supported: Debian 10+, Ubuntu 18.04+, Fedora 32+, CentOS Stream 8+, AlmaLinux 8+, Rocky Linux 8+, Oracle Linux, Arch Linux, Alpine Linux"
 		exit 1
 	fi
 }
@@ -120,9 +124,23 @@ function initialCheck() {
 	checkVirt
 }
 
+function checkWireGuardSupport() {
+	# Check if WireGuard kernel module is available or if wireguard-go is needed
+	# WireGuard is included in Linux kernel 5.6+
+	KERNEL_VERSION=$(uname -r | cut -d'.' -f1-2)
+	KERNEL_MAJOR=$(echo "$KERNEL_VERSION" | cut -d'.' -f1)
+	KERNEL_MINOR=$(echo "$KERNEL_VERSION" | cut -d'.' -f2)
+	
+	if [[ ${KERNEL_MAJOR} -gt 5 ]] || [[ ${KERNEL_MAJOR} -eq 5 && ${KERNEL_MINOR} -ge 6 ]]; then
+		echo -e "${GREEN}Kernel ${KERNEL_VERSION} detected - WireGuard is built into your kernel!${NC}"
+	else
+		echo -e "${ORANGE}Kernel ${KERNEL_VERSION} detected - WireGuard kernel module will be installed separately.${NC}"
+	fi
+}
+
 function installQuestions() {
-	echo "Welcome to the WireGuard installer!"
-	echo "The git repository is available at: https://github.com/angristan/wireguard-install"
+	echo "Welcome to the WireShield installer!"
+	echo "The git repository is available at: https://github.com/siyamsarker/WireShield"
 	echo ""
 	echo "I need to ask you a few questions before starting the setup."
 	echo "You can keep the default options and just press enter if you are ok with them."
@@ -189,19 +207,26 @@ function installWireGuard() {
 	# Run setup questions first
 	installQuestions
 
+	# Check WireGuard kernel support
+	checkWireGuardSupport
+
 	# Install WireGuard tools and module
+	echo "Installing WireGuard..."
 	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' && ${VERSION_ID} -gt 10 ]]; then
 		apt-get update
+		# Install wireguard package which includes kernel module and tools
 		apt-get install -y wireguard iptables resolvconf qrencode
 	elif [[ ${OS} == 'debian' ]]; then
+		# For Debian 10 Buster, use backports repository
 		if ! grep -rqs "^deb .* buster-backports" /etc/apt/; then
 			echo "deb http://deb.debian.org/debian buster-backports main" >/etc/apt/sources.list.d/backports.list
 			apt-get update
 		fi
-		apt update
+		apt-get update
 		apt-get install -y iptables resolvconf qrencode
 		apt-get install -y -t buster-backports wireguard
 	elif [[ ${OS} == 'fedora' ]]; then
+		# Fedora 32+ has WireGuard in the default repositories
 		if [[ ${VERSION_ID} -lt 32 ]]; then
 			dnf install -y dnf-plugins-core
 			dnf copr enable -y jdoss/wireguard
@@ -209,6 +234,7 @@ function installWireGuard() {
 		fi
 		dnf install -y wireguard-tools iptables qrencode
 	elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
+		# For RHEL-based systems
 		if [[ ${VERSION_ID} == 8* ]]; then
 			yum install -y epel-release elrepo-release
 			yum install -y kmod-wireguard
@@ -222,11 +248,23 @@ function installWireGuard() {
 		dnf config-manager --save -y --setopt=ol8_developer_UEKR6.includepkgs='wireguard-tools*'
 		dnf install -y wireguard-tools qrencode iptables
 	elif [[ ${OS} == 'arch' ]]; then
-		pacman -S --needed --noconfirm wireguard-tools qrencode
+		# Arch Linux has latest WireGuard in official repositories
+		pacman -Sy --needed --noconfirm wireguard-tools qrencode
 	elif [[ ${OS} == 'alpine' ]]; then
+		# Alpine Linux supports WireGuard natively
 		apk update
 		apk add wireguard-tools iptables libqrencode-tools
 	fi
+
+	# Check if WireGuard was installed successfully
+	if ! command -v wg &>/dev/null; then
+		echo -e "${RED}Error: WireGuard installation failed. The 'wg' command is not available.${NC}"
+		exit 1
+	fi
+
+	# Display installed WireGuard version
+	echo -e "${GREEN}WireGuard tools installed successfully!${NC}"
+	wg --version 2>/dev/null || echo "WireGuard tools version: $(wg version 2>/dev/null || echo 'installed')"
 
 	# Make sure the directory exists (this does not seem the be the case on fedora)
 	mkdir /etc/wireguard >/dev/null 2>&1
@@ -313,12 +351,15 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 		fi
 		echo -e "${ORANGE}If you get something like \"Cannot find device ${SERVER_WG_NIC}\", please reboot!${NC}"
 	else # WireGuard is running
-		echo -e "\n${GREEN}WireGuard is running.${NC}"
+		echo -e "\n${GREEN}WireGuard is running successfully!${NC}"
+		echo -e "${GREEN}Server public key: ${SERVER_PUB_KEY}${NC}"
+		echo -e "${GREEN}Server listening on port: ${SERVER_PORT}/udp${NC}"
 		if [[ ${OS} == 'alpine' ]]; then
-			echo -e "${GREEN}You can check the status of WireGuard with: rc-service wg-quick.${SERVER_WG_NIC} status\n\n${NC}"
+			echo -e "${GREEN}You can check the status of WireGuard with: rc-service wg-quick.${SERVER_WG_NIC} status${NC}"
 		else
-			echo -e "${GREEN}You can check the status of WireGuard with: systemctl status wg-quick@${SERVER_WG_NIC}\n\n${NC}"
+			echo -e "${GREEN}You can check the status of WireGuard with: systemctl status wg-quick@${SERVER_WG_NIC}${NC}"
 		fi
+		echo -e "${GREEN}View connected peers with: wg show${NC}"
 		echo -e "${ORANGE}If you don't have internet connectivity from your client, try to reboot the server.${NC}"
 	fi
 }
@@ -409,7 +450,10 @@ DNS = ${CLIENT_DNS_1},${CLIENT_DNS_2}
 PublicKey = ${SERVER_PUB_KEY}
 PresharedKey = ${CLIENT_PRE_SHARED_KEY}
 Endpoint = ${ENDPOINT}
-AllowedIPs = ${ALLOWED_IPS}" >"${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
+AllowedIPs = ${ALLOWED_IPS}
+# PersistentKeepalive helps with NAT traversal and keeps connection alive
+# Uncomment the next line if you're behind NAT or firewall
+# PersistentKeepalive = 25" >"${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
 
 	# Add the client as a peer to the server
 	echo -e "\n### Client ${CLIENT_NAME}
@@ -546,8 +590,8 @@ function uninstallWg() {
 }
 
 function manageMenu() {
-	echo "Welcome to WireGuard-install!"
-	echo "The git repository is available at: https://github.com/angristan/wireguard-install"
+	echo "Welcome to WireShield!"
+	echo "The git repository is available at: https://github.com/siyamsarker/WireShield"
 	echo ""
 	echo "It looks like WireGuard is already installed."
 	echo ""
