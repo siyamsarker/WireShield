@@ -133,10 +133,6 @@ I recommend these cheap cloud providers for your VPN server:
 - [Hetzner](https://hetzner.cloud/?ref=ywtlvZsjgeDq): Germany, Finland and USA. IPv6, 20 TB of traffic, starting at 4.5€/month
 - [Digital Ocean](https://m.do.co/c/ed0ba143fe53): Worldwide locations, IPv6 support, starting at \$4/month
 
-## Discuss changes
-
-Please open an issue before submitting a PR if you want to discuss a change, especially if it's a big one.
-
 ### Code formatting
 
 This repository does not use CI or enforce lint/tests. If you want to check script quality locally, you can optionally use:
