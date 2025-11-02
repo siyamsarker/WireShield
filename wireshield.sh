@@ -540,9 +540,8 @@ function uninstallWg() {
 			done < <(grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | awk '{print $3}')
 		fi
 
-		# Ask whether to also remove user client config copies
-		read -rp "Also remove all client .conf files under /root and /home? [Y/n]: " -e DELETE_CLIENT_FILES
-		DELETE_CLIENT_FILES=${DELETE_CLIENT_FILES:-Y}
+		# Silent mode: automatically remove client .conf files as part of uninstall
+		DELETE_CLIENT_FILES=Y
 
 		checkOS
 
@@ -585,22 +584,20 @@ function uninstallWg() {
 		rm -rf /etc/wireguard
 		rm -f /etc/sysctl.d/wg.conf
 
-		# Optionally remove client config files from user home directories
-		if [[ ${DELETE_CLIENT_FILES,,} == 'y' ]]; then
-			SEARCH_DIRS=(/root /home)
-			for cname in "${CLIENT_NAMES[@]}"; do
-				for base in "${SEARCH_DIRS[@]}"; do
-					# remove both canonical and simplified filenames if they exist within depth 2
-					find "$base" -maxdepth 2 -type f \
-						\( -name "${SERVER_WG_NIC}-client-${cname}.conf" -o -name "${cname}.conf" \) \
-						-print -delete 2>/dev/null
-				done
-			done
-			# Best effort: remove any leftover canonical client files for this interface
+		# Remove client config files from user home directories (canonical and simplified names)
+		SEARCH_DIRS=(/root /home)
+		for cname in "${CLIENT_NAMES[@]}"; do
 			for base in "${SEARCH_DIRS[@]}"; do
-				find "$base" -maxdepth 2 -type f -name "${SERVER_WG_NIC}-client-*.conf" -print -delete 2>/dev/null
+				# remove both canonical and simplified filenames if they exist within depth 2
+				find "$base" -maxdepth 2 -type f \
+					\( -name "${SERVER_WG_NIC}-client-${cname}.conf" -o -name "${cname}.conf" \) \
+					-print -delete 2>/dev/null
 			done
-		fi
+		done
+		# Best effort: remove any leftover canonical client files for this interface
+		for base in "${SEARCH_DIRS[@]}"; do
+			find "$base" -maxdepth 2 -type f -name "${SERVER_WG_NIC}-client-*.conf" -print -delete 2>/dev/null
+		done
 
 		if [[ ${OS} == 'alpine' ]]; then
 			rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status &>/dev/null
@@ -618,11 +615,7 @@ function uninstallWg() {
 			exit 1
 		else
 			echo "WireGuard uninstalled successfully."
-			if [[ ${DELETE_CLIENT_FILES,,} == 'y' ]]; then
-				echo "All detected client .conf files have been removed from /root and /home."
-			else
-				echo "Client .conf files in user home directories were preserved."
-			fi
+			echo "All detected client .conf files have been removed from /root and /home."
 			exit 0
 		fi
 	else
