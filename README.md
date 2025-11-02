@@ -7,8 +7,6 @@ The server will apply NAT to the client's traffic so it will appear as if the cl
 
 The script supports both IPv4 and IPv6. It automatically detects your kernel version and installs the appropriate WireGuard packages. For Linux kernel 5.6+, WireGuard is built-in. For older kernels, the necessary modules are installed.
 
-Please check the [issues](https://github.com/siyamsarker/WireShield/issues) for ongoing development, bugs and planned features! You might also want to check the [discussions](https://github.com/siyamsarker/WireShield/discussions) for help.
-
 ## Features
 
 - **Latest WireGuard Support**: Automatically detects kernel version and installs appropriate WireGuard packages
