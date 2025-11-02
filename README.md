@@ -125,14 +125,6 @@ If something doesn’t work as expected, try these quick checks.
 - QR code not shown
   - Make sure `qrencode` is installed (the installer attempts to install it where available).
 
-## Providers
-
-I recommend these cheap cloud providers for your VPN server:
-
-- [Vultr](https://www.vultr.com/?ref=8948982-8H): Worldwide locations, IPv6 support, starting at \$5/month
-- [Hetzner](https://hetzner.cloud/?ref=ywtlvZsjgeDq): Germany, Finland and USA. IPv6, 20 TB of traffic, starting at 4.5€/month
-- [Digital Ocean](https://m.do.co/c/ed0ba143fe53): Worldwide locations, IPv6 support, starting at \$4/month
-
 ## Credits & Licence
 
 This project is under the [MIT Licence](https://raw.githubusercontent.com/siyamsarker/WireShield/master/LICENSE)
