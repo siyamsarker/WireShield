@@ -596,38 +596,145 @@ function uninstallWg() {
 	fi
 }
 
-function manageMenu() {
-	echo "Welcome to WireShield!"
-	echo "The git repository is available at: https://github.com/siyamsarker/WireShield"
+function _ws_header() {
+	echo -e "${GREEN}Welcome to WireShield ✨${NC}"
+	echo "Repository: https://github.com/siyamsarker/WireShield"
 	echo ""
-	echo "It looks like WireGuard is already installed."
+}
+
+function _ws_summary() {
+	local peers
+	peers=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || echo 0)
+	echo "Interface : ${SERVER_WG_NIC}"
+	echo "Endpoint  : ${SERVER_PUB_IP}:${SERVER_PORT}"
+	echo "Clients   : ${peers}"
+	if [[ ${OS} == 'alpine' ]]; then
+		rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status && echo "Status    : running" || echo "Status    : not running"
+	else
+		systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" && echo "Status    : running" || echo "Status    : not running"
+	fi
 	echo ""
-	echo "What do you want to do?"
-	echo "   1) Add a new user"
-	echo "   2) List all users"
-	echo "   3) Revoke existing user"
-	echo "   4) Uninstall WireGuard"
-	echo "   5) Exit"
-	until [[ ${MENU_OPTION} =~ ^[1-5]$ ]]; do
-		read -rp "Select an option [1-5]: " MENU_OPTION
+}
+
+function _ws_choose_client() {
+	local number_of_clients
+	number_of_clients=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+	if [[ ${number_of_clients} -eq 0 ]]; then
+		echo "No clients found." >&2
+		return 1
+	fi
+	echo "Select a client:"
+	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | nl -s ') '
+	local choice
+	until [[ ${choice} -ge 1 && ${choice} -le ${number_of_clients} ]]; do
+		read -rp "Client [1-${number_of_clients}]: " choice
 	done
-	case "${MENU_OPTION}" in
-	1)
-		newClient
-		;;
-	2)
-		listClients
-		;;
-	3)
-		revokeClient
-		;;
-	4)
-		uninstallWg
-		;;
-	5)
-		exit 0
-		;;
-	esac
+	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | sed -n "${choice}p"
+}
+
+function showClientQR() {
+	if ! command -v qrencode &>/dev/null; then
+		echo -e "${ORANGE}qrencode is not installed; cannot render QR in terminal.${NC}"
+		echo "You can still use the .conf file on your device."
+		return 0
+	fi
+	local name home_dir cfg
+	name=$(_ws_choose_client) || return 1
+	home_dir=$(getHomeDirForClient "${name}")
+	cfg="${home_dir}/${SERVER_WG_NIC}-client-${name}.conf"
+	if [[ ! -f "${cfg}" ]]; then
+		# fallback to simplified filename if main one missing
+		cfg="${home_dir}/${name}.conf"
+	fi
+	if [[ ! -f "${cfg}" ]]; then
+		echo -e "${RED}Config file for client '${name}' was not found.${NC}"
+		return 1
+	fi
+	echo -e "${GREEN}\nQR Code for ${name}:${NC}\n"
+	qrencode -t ansiutf8 -l L <"${cfg}"
+	echo ""
+}
+
+function showStatus() {
+	echo -e "${GREEN}WireGuard status:${NC}"
+	wg show || true
+}
+
+function restartWireGuard() {
+	echo "Restarting WireGuard (${SERVER_WG_NIC})..."
+	if [[ ${OS} == 'alpine' ]]; then
+		rc-service "wg-quick.${SERVER_WG_NIC}" restart
+	else
+		systemctl restart "wg-quick@${SERVER_WG_NIC}"
+	fi
+	echo "Done."
+}
+
+function backupConfigs() {
+	local ts out
+	ts=$(date +%Y%m%d-%H%M%S)
+	out="/root/wireshield-backup-${ts}.tar.gz"
+	tar czf "${out}" /etc/wireguard 2>/dev/null && echo -e "${GREEN}Backup saved to ${out}${NC}" || echo -e "${RED}Backup failed.${NC}"
+}
+
+function manageMenu() {
+	while true; do
+		clear
+		_ws_header
+		_ws_summary
+
+		local MENU_OPTION
+		if command -v whiptail &>/dev/null; then
+			MENU_OPTION=$(whiptail --title "WireShield" --menu "Choose an action" 20 72 10 \
+				1 "Add a new client" \
+				2 "List clients" \
+				3 "Show QR for a client" \
+				4 "Revoke a client" \
+				5 "Show server status" \
+				6 "Restart WireGuard" \
+				7 "Backup configuration" \
+				8 "Uninstall WireGuard" \
+				9 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=9
+		else
+			echo "What do you want to do?"
+			echo "   1) Add a new client"
+			echo "   2) List clients"
+			echo "   3) Show QR for a client"
+			echo "   4) Revoke existing client"
+			echo "   5) Show server status"
+			echo "   6) Restart WireGuard"
+			echo "   7) Backup configuration"
+			echo "   8) Uninstall WireGuard"
+			echo "   9) Exit"
+			until [[ ${MENU_OPTION} =~ ^[1-9]$ ]]; do
+				read -rp "Select an option [1-9]: " MENU_OPTION
+			done
+		fi
+
+		case "${MENU_OPTION}" in
+		1)
+			newClient ;;
+		2)
+			listClients ;;
+		3)
+			showClientQR ;;
+		4)
+			revokeClient ;;
+		5)
+			showStatus ;;
+		6)
+			restartWireGuard ;;
+		7)
+			backupConfigs ;;
+		8)
+			uninstallWg ;;
+		9)
+			exit 0 ;;
+		esac
+
+		echo ""
+		read -rp "Press Enter to continue..." _
+	done
 }
 
 # Check for root, virt, OS...
