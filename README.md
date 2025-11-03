@@ -22,7 +22,9 @@ Highlights:
 - Kernel-aware: built-in WireGuard on Linux 5.6+, module install on older kernels
 - Dual-stack networking (IPv4 and IPv6)
 - Hardened defaults and tight file permissions
-- Interactive client management (add/list/revoke), status, restart, backup
+- Interactive client management (add/list/revoke/expire), status, restart, backup
+- **Client expiration**: Set optional expiration dates for temporary access
+- Automatic removal of expired clients
 - Optional QR codes for mobile onboarding; optional TUI (whiptail) when installed
 
 
@@ -32,6 +34,7 @@ Highlights:
 - [Supported platforms](#supported-platforms)
 - [Quick start](#quick-start)
 - [Usage](#usage)
+- [Client expiration](#client-expiration)
 - [Architecture](#architecture)
 - [Configuration details](#configuration-details)
 - [Security considerations](#security-considerations)
@@ -72,22 +75,69 @@ You’ll be asked a few questions (address/hostname, public NIC, wg interface, I
 After installation, rerun the script anytime to open the interactive menu:
 
 ```
-1) Add a new client
-2) List clients
-3) Show QR for a client
-4) Revoke existing client
-5) Show server status
-6) Restart WireGuard
-7) Backup configuration
-8) Uninstall WireGuard
-9) Exit
+ 1) Add a new client
+ 2) List clients
+ 3) Show QR for a client
+ 4) Revoke existing client
+ 5) Check expired clients
+ 6) Show server status
+ 7) Restart WireGuard
+ 8) Backup configuration
+ 9) Uninstall WireGuard
+10) Exit
 ```
 
 Notes:
 
 - If `whiptail` is present, you'll get a dialog-based UI; otherwise, a clean CLI menu.
-- Client files are written in two forms for convenience: `wg0-client-<name>.conf` and `<name>.conf`.
+- Client files are saved as `<name>.conf` in the user's home directory.
+- **Client Expiration**: You can optionally set an expiration date (in days) when creating a client. Expired clients are automatically checked and removed when you open the menu.
+- The "List clients" option displays expiration dates for clients that have them.
 - Uninstall performs a single confirmation and removes server config and detected client `.conf` files under `/root` and `/home`.
+
+## Client expiration
+
+WireShield supports automatic client expiration for temporary access scenarios (contractors, guests, trial periods, etc.).
+
+### How it works
+
+When creating a new client, you'll be prompted:
+
+```
+Client expiration (optional)
+Leave empty for no expiration, or enter number of days until expiration
+Expires in (days): 30
+```
+
+- Enter a number (e.g., `7`, `30`, `90`) for the client to expire after that many days
+- Leave empty or press Enter to create a client with no expiration
+- The expiration date is automatically calculated and stored in the server configuration
+
+### Automatic cleanup
+
+- **On menu load**: WireShield automatically checks for expired clients when you open the management menu
+- **Manual check**: Use menu option 5 ("Check expired clients") to manually scan and remove expired clients
+- When expired clients are found, they are automatically removed from the server and all configuration files are deleted
+
+### Viewing expiration dates
+
+Use menu option 2 ("List clients") to see all clients with their expiration dates:
+
+```
+Current clients:
+   1) alice
+   2) bob (expires: 2025-12-01)
+   3) contractor-temp (expires: 2025-11-10)
+```
+
+Clients without expiration dates are shown without any additional information.
+
+### Technical details
+
+- Expiration dates are stored in the server config as: `### Client name | Expires: YYYY-MM-DD`
+- Cross-platform compatible (supports both Linux GNU date and macOS BSD date)
+- Expired clients are removed completely: peer entry, configuration files, and all references
+- Works seamlessly with existing clients (backward compatible)
 
 ## Architecture
 
@@ -187,6 +237,11 @@ sequenceDiagram
 - QR code not shown
   - Ensure `qrencode` is installed (the installer attempts this automatically when available).
 
+- Client expiration not working
+  - Expiration checks run automatically when the menu loads. Expired clients are removed immediately.
+  - You can also manually check using menu option 5 ("Check expired clients").
+  - Ensure your system date/time is correct (`date`).
+
 <details>
 <summary>More tips</summary>
 
@@ -209,6 +264,12 @@ From the menu, choose "Uninstall WireGuard". The script will stop the service, r
 
 - Can I reuse a client name after revoking?
   - Yes. Revoking removes the peer and its `.conf` files, allowing name reuse.
+
+- Can I change the expiration date for an existing client?
+  - Currently, you need to revoke the client and recreate it with a new expiration date. Direct expiration modification may be added in a future update.
+
+- What happens to expired clients?
+  - They are automatically removed (peer configuration and all files) when the menu loads or when you manually run the expiration check.
 
 - Where are client configs saved?
   - In the invoking user's home (root or sudo user), typically `/root` or `/home/<user>`.
