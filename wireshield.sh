@@ -254,11 +254,13 @@ function installQuestions() {
 		Client DNS 1   : ${CLIENT_DNS_1}
 		Client DNS 2   : ${CLIENT_DNS_2}
 		Allowed IPs    : ${ALLOWED_IPS}
+
+		Made with ❤️  by Siyam Sarker
 		EOT
 		)
 
 		if command -v whiptail &>/dev/null; then
-			whiptail --title "Confirm settings" --yesno "Please review your WireShield settings:\n\n${SUMMARY}\nProceed with installation?" 20 78
+			whiptail --title "Confirm settings" --yesno "Please review your WireShield settings:\n\n${SUMMARY}\n\nProceed with installation?" 22 78
 			if [[ $? -eq 0 ]]; then
 				break
 			else
