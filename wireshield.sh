@@ -543,6 +543,27 @@ function newClient() {
 	CLIENT_PUB_KEY=$(echo "${CLIENT_PRIV_KEY}" | wg pubkey)
 	CLIENT_PRE_SHARED_KEY=$(wg genpsk)
 
+	# Ask for expiration date (optional)
+	echo ""
+	echo "Client expiration (optional)"
+	echo "Leave empty for no expiration, or enter number of days until expiration"
+	read -rp "Expires in (days): " -e EXPIRY_DAYS
+	
+	EXPIRY_DATE=""
+	if [[ -n "${EXPIRY_DAYS}" ]] && [[ "${EXPIRY_DAYS}" =~ ^[0-9]+$ ]] && [[ ${EXPIRY_DAYS} -gt 0 ]]; then
+		# Calculate expiration date (works on Linux and macOS)
+		if date --version >/dev/null 2>&1; then
+			# GNU date (Linux)
+			EXPIRY_DATE=$(date -d "+${EXPIRY_DAYS} days" '+%Y-%m-%d')
+		else
+			# BSD date (macOS)
+			EXPIRY_DATE=$(date -v+${EXPIRY_DAYS}d '+%Y-%m-%d')
+		fi
+		echo -e "${GREEN}Client will expire on: ${EXPIRY_DATE}${NC}"
+	else
+		echo -e "${GREEN}Client will not expire${NC}"
+	fi
+
 	HOME_DIR=$(getHomeDirForClient "${CLIENT_NAME}")
 
 	# Create client file with simple name
@@ -568,11 +589,19 @@ AllowedIPs = ${ALLOWED_IPS}
 # PersistentKeepalive = 25" >"${CLIENT_CONFIG}"
 
 	# Add the client as a peer to the server configuration
-	echo -e "\n### Client ${CLIENT_NAME}
+	if [[ -n "${EXPIRY_DATE}" ]]; then
+		echo -e "\n### Client ${CLIENT_NAME} | Expires: ${EXPIRY_DATE}
 [Peer]
 PublicKey = ${CLIENT_PUB_KEY}
 PresharedKey = ${CLIENT_PRE_SHARED_KEY}
 AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
+	else
+		echo -e "\n### Client ${CLIENT_NAME}
+[Peer]
+PublicKey = ${CLIENT_PUB_KEY}
+PresharedKey = ${CLIENT_PRE_SHARED_KEY}
+AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
+	fi
 
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
 
@@ -596,7 +625,26 @@ function listClients() {
 		exit 1
 	fi
 
-	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | nl -s ') '
+	echo ""
+	echo -e "${GREEN}Current clients:${NC}"
+	echo ""
+	
+	local count=0
+	while IFS= read -r line; do
+		if [[ $line =~ ^###\ Client\ (.+) ]]; then
+			count=$((count + 1))
+			local client_info="${BASH_REMATCH[1]}"
+			
+			# Check if there's an expiration date
+			if [[ $client_info =~ ^([^\ ]+)\ \|\ Expires:\ ([0-9]{4}-[0-9]{2}-[0-9]{2})$ ]]; then
+				local client_name="${BASH_REMATCH[1]}"
+				local expiry_date="${BASH_REMATCH[2]}"
+				echo -e "   ${count}) ${client_name} ${ORANGE}(expires: ${expiry_date})${NC}"
+			else
+				echo -e "   ${count}) ${client_info}"
+			fi
+		fi
+	done < "/etc/wireguard/${SERVER_WG_NIC}.conf"
 }
 
 function revokeClient() {
@@ -643,6 +691,75 @@ function revokeClient() {
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
 
 	echo -e "${GREEN}Client '${CLIENT_NAME}' has been fully revoked and related .conf files removed.${NC}"
+}
+
+function checkExpiredClients() {
+	# Check for expired clients and remove them automatically
+	echo -e "${GREEN}Checking for expired clients...${NC}\n"
+	
+	# Get current date in YYYY-MM-DD format
+	if date --version >/dev/null 2>&1; then
+		# GNU date (Linux)
+		CURRENT_DATE=$(date '+%Y-%m-%d')
+	else
+		# BSD date (macOS)
+		CURRENT_DATE=$(date '+%Y-%m-%d')
+	fi
+	
+	local expired_count=0
+	local checked_count=0
+	
+	# Read all client entries with expiration dates
+	while IFS= read -r line; do
+		if [[ $line =~ ###\ Client\ ([^\ ]+)\ \|\ Expires:\ ([0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+			CLIENT_NAME="${BASH_REMATCH[1]}"
+			EXPIRY_DATE="${BASH_REMATCH[2]}"
+			checked_count=$((checked_count + 1))
+			
+			# Convert dates to seconds for comparison
+			if date --version >/dev/null 2>&1; then
+				# GNU date (Linux)
+				CURRENT_SECONDS=$(date -d "${CURRENT_DATE}" '+%s')
+				EXPIRY_SECONDS=$(date -d "${EXPIRY_DATE}" '+%s')
+			else
+				# BSD date (macOS)
+				CURRENT_SECONDS=$(date -j -f "%Y-%m-%d" "${CURRENT_DATE}" '+%s')
+				EXPIRY_SECONDS=$(date -j -f "%Y-%m-%d" "${EXPIRY_DATE}" '+%s')
+			fi
+			
+			if [[ ${CURRENT_SECONDS} -gt ${EXPIRY_SECONDS} ]]; then
+				echo -e "${ORANGE}Removing expired client: ${CLIENT_NAME} (expired on ${EXPIRY_DATE})${NC}"
+				
+				# Remove the [Peer] block
+				sed -i "/^### Client ${CLIENT_NAME} | Expires: ${EXPIRY_DATE}\$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf"
+				
+				# Remove client config file
+				HOME_DIR=$(getHomeDirForClient "${CLIENT_NAME}")
+				rm -f "${HOME_DIR}/${CLIENT_NAME}.conf"
+				
+				# Remove from common locations
+				SEARCH_DIRS=(/root /home)
+				for base in "${SEARCH_DIRS[@]}"; do
+					find "$base" -maxdepth 2 -type f -name "${CLIENT_NAME}.conf" \
+						-print -delete 2>/dev/null || true
+				done
+				
+				expired_count=$((expired_count + 1))
+			fi
+		fi
+	done < "/etc/wireguard/${SERVER_WG_NIC}.conf"
+	
+	if [[ ${expired_count} -gt 0 ]]; then
+		# Apply changes to the live interface
+		wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+		echo -e "\n${GREEN}✓ Removed ${expired_count} expired client(s)${NC}"
+	else
+		if [[ ${checked_count} -gt 0 ]]; then
+			echo -e "${GREEN}✓ No expired clients found (checked ${checked_count} client(s) with expiration dates)${NC}"
+		else
+			echo -e "${GREEN}✓ No clients with expiration dates found${NC}"
+		fi
+	fi
 }
 
 function uninstallWg() {
@@ -845,36 +962,53 @@ function backupConfigs() {
 
 function manageMenu() {
     # Main interactive loop used after installation to manage clients and server.
+	# Check for expired clients on first load (silent check)
+	local first_run=true
+	
 	while true; do
 		clear
 		_ws_header
 		_ws_summary
 
+		# Auto-check expired clients on first menu load
+		if [[ "${first_run}" == true ]]; then
+			first_run=false
+			# Silent check - only show if expired clients are found
+			if grep -q "Expires:" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null; then
+				echo ""
+				checkExpiredClients
+				echo ""
+				read -n 1 -s -r -p "Press any key to continue..."
+			fi
+		fi
+
 		local MENU_OPTION
 		if command -v whiptail &>/dev/null; then
-			MENU_OPTION=$(whiptail --title "WireShield" --menu "Choose an action" 20 72 10 \
+			MENU_OPTION=$(whiptail --title "WireShield" --menu "Choose an action" 20 72 11 \
 				1 "Add a new client" \
 				2 "List clients" \
 				3 "Show QR for a client" \
 				4 "Revoke a client" \
-				5 "Show server status" \
-				6 "Restart WireGuard" \
-				7 "Backup configuration" \
-				8 "Uninstall WireGuard" \
-				9 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=9
+				5 "Check expired clients" \
+				6 "Show server status" \
+				7 "Restart WireGuard" \
+				8 "Backup configuration" \
+				9 "Uninstall WireGuard" \
+				10 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=10
 		else
 			echo "What do you want to do?"
 			echo "   1) Add a new client"
 			echo "   2) List clients"
 			echo "   3) Show QR for a client"
 			echo "   4) Revoke existing client"
-			echo "   5) Show server status"
-			echo "   6) Restart WireGuard"
-			echo "   7) Backup configuration"
-			echo "   8) Uninstall WireGuard"
-			echo "   9) Exit"
-			until [[ ${MENU_OPTION} =~ ^[1-9]$ ]]; do
-				read -rp "Select an option [1-9]: " MENU_OPTION
+			echo "   5) Check expired clients"
+			echo "   6) Show server status"
+			echo "   7) Restart WireGuard"
+			echo "   8) Backup configuration"
+			echo "   9) Uninstall WireGuard"
+			echo "  10) Exit"
+			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$ ]]; do
+				read -rp "Select an option [1-10]: " MENU_OPTION
 			done
 		fi
 
@@ -888,14 +1022,16 @@ function manageMenu() {
 		4)
 			revokeClient ;;
 		5)
-			showStatus ;;
+			checkExpiredClients ;;
 		6)
-			restartWireGuard ;;
+			showStatus ;;
 		7)
-			backupConfigs ;;
+			restartWireGuard ;;
 		8)
-			uninstallWg ;;
+			backupConfigs ;;
 		9)
+			uninstallWg ;;
+		10)
 			exit 0 ;;
 		esac
 
