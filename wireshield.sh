@@ -739,20 +739,25 @@ function checkExpiredClients() {
 			if [[ ${CURRENT_SECONDS} -gt ${EXPIRY_SECONDS} ]]; then
 				echo -e "${ORANGE}Removing expired client: ${CLIENT_NAME} (expired on ${EXPIRY_DATE})${NC}"
 				
-				# Remove the [Peer] block
+				# Remove the [Peer] block matching the client with expiration date
+				# Using a more reliable pattern that escapes the pipe character
 				sed -i "/^### Client ${CLIENT_NAME} | Expires: ${EXPIRY_DATE}\$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf"
 				
-				# Remove client config file
+				# Also try to remove without expiration date format in case of pattern issues
+				sed -i "/^### Client ${CLIENT_NAME}\$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || true
+				
+				# Remove client config file from primary location
 				HOME_DIR=$(getHomeDirForClient "${CLIENT_NAME}")
 				rm -f "${HOME_DIR}/${CLIENT_NAME}.conf"
 				
-				# Remove from common locations
-				SEARCH_DIRS=(/root /home)
+				# Remove from all common locations
+				SEARCH_DIRS=(/root /home /etc/wireguard)
 				for base in "${SEARCH_DIRS[@]}"; do
 					find "$base" -maxdepth 2 -type f -name "${CLIENT_NAME}.conf" \
 						-print -delete 2>/dev/null || true
 				done
 				
+				echo -e "${GREEN}  ✓ Client '${CLIENT_NAME}' completely removed${NC}"
 				expired_count=$((expired_count + 1))
 			fi
 		fi
@@ -769,6 +774,86 @@ function checkExpiredClients() {
 			echo -e "${GREEN}✓ No clients with expiration dates found${NC}"
 		fi
 	fi
+}
+
+function setupAutomaticExpiration() {
+	# Set up automatic daily check for expired clients via cron
+	echo -e "${GREEN}Setting up automatic expiration checks...${NC}\n"
+	
+	local script_path
+	script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+	
+	# Create a cron-compatible script
+	cat > /usr/local/bin/wireshield-check-expired <<'EOF'
+#!/bin/bash
+# WireShield automatic expiration checker
+
+# Source the WireGuard params
+if [[ -e /etc/wireguard/params ]]; then
+	source /etc/wireguard/params
+else
+	exit 1
+fi
+
+# Get current date
+if date --version >/dev/null 2>&1; then
+	CURRENT_DATE=$(date '+%Y-%m-%d')
+	CURRENT_SECONDS=$(date -d "${CURRENT_DATE}" '+%s')
+else
+	CURRENT_DATE=$(date '+%Y-%m-%d')
+	CURRENT_SECONDS=$(date -j -f "%Y-%m-%d" "${CURRENT_DATE}" '+%s')
+fi
+
+expired_count=0
+
+# Check and remove expired clients
+while IFS= read -r line; do
+	if [[ $line =~ ^###[[:space:]]Client[[:space:]]([^[:space:]]+)[[:space:]]\|[[:space:]]Expires:[[:space:]]([0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+		CLIENT_NAME="${BASH_REMATCH[1]}"
+		EXPIRY_DATE="${BASH_REMATCH[2]}"
+		
+		if date --version >/dev/null 2>&1; then
+			EXPIRY_SECONDS=$(date -d "${EXPIRY_DATE}" '+%s')
+		else
+			EXPIRY_SECONDS=$(date -j -f "%Y-%m-%d" "${EXPIRY_DATE}" '+%s')
+		fi
+		
+		if [[ ${CURRENT_SECONDS} -gt ${EXPIRY_SECONDS} ]]; then
+			# Remove peer from config
+			sed -i "/^### Client ${CLIENT_NAME} | Expires: ${EXPIRY_DATE}\$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf"
+			sed -i "/^### Client ${CLIENT_NAME}\$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || true
+			
+			# Remove config files
+			find /root /home /etc/wireguard -maxdepth 2 -type f -name "${CLIENT_NAME}.conf" -delete 2>/dev/null || true
+			
+			logger -t wireshield "Removed expired client: ${CLIENT_NAME} (expired on ${EXPIRY_DATE})"
+			expired_count=$((expired_count + 1))
+		fi
+	fi
+done < "/etc/wireguard/${SERVER_WG_NIC}.conf"
+
+# Apply changes if any clients were removed
+if [[ ${expired_count} -gt 0 ]]; then
+	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+	logger -t wireshield "Automatically removed ${expired_count} expired client(s)"
+fi
+EOF
+
+	chmod +x /usr/local/bin/wireshield-check-expired
+	
+	# Add to crontab (runs daily at 2 AM)
+	local cron_entry="0 2 * * * /usr/local/bin/wireshield-check-expired >/dev/null 2>&1"
+	
+	# Check if entry already exists
+	if crontab -l 2>/dev/null | grep -q "wireshield-check-expired"; then
+		echo -e "${ORANGE}Automatic expiration check is already configured in crontab${NC}"
+	else
+		(crontab -l 2>/dev/null; echo "$cron_entry") | crontab -
+		echo -e "${GREEN}✓ Automatic expiration check configured${NC}"
+		echo -e "${GREEN}  Expired clients will be checked and removed daily at 2:00 AM${NC}"
+		echo -e "${GREEN}  Check logs with: grep wireshield /var/log/syslog${NC}"
+	fi
+	echo ""
 }
 
 function uninstallWg() {
@@ -978,17 +1063,18 @@ function manageMenu() {
 
 		local MENU_OPTION
 		if command -v whiptail &>/dev/null; then
-			MENU_OPTION=$(whiptail --title "WireShield" --menu "Choose an action" 20 72 11 \
+			MENU_OPTION=$(whiptail --title "WireShield" --menu "Choose an action" 20 72 12 \
 				1 "Add a new client" \
 				2 "List clients" \
 				3 "Show QR for a client" \
 				4 "Revoke a client" \
 				5 "Check expired clients" \
-				6 "Show server status" \
-				7 "Restart WireGuard" \
-				8 "Backup configuration" \
-				9 "Uninstall WireGuard" \
-				10 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=10
+				6 "Setup automatic expiration" \
+				7 "Show server status" \
+				8 "Restart WireGuard" \
+				9 "Backup configuration" \
+				10 "Uninstall WireGuard" \
+				11 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=11
 		else
 			echo "What do you want to do?"
 			echo "   1) Add a new client"
@@ -996,13 +1082,14 @@ function manageMenu() {
 			echo "   3) Show QR for a client"
 			echo "   4) Revoke existing client"
 			echo "   5) Check expired clients"
-			echo "   6) Show server status"
-			echo "   7) Restart WireGuard"
-			echo "   8) Backup configuration"
-			echo "   9) Uninstall WireGuard"
-			echo "  10) Exit"
-			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$ ]]; do
-				read -rp "Select an option [1-10]: " MENU_OPTION
+			echo "   6) Setup automatic expiration"
+			echo "   7) Show server status"
+			echo "   8) Restart WireGuard"
+			echo "   9) Backup configuration"
+			echo "  10) Uninstall WireGuard"
+			echo "  11) Exit"
+			until [[ ${MENU_OPTION} =~ ^[1-9]$|^1[01]$ ]]; do
+				read -rp "Select an option [1-11]: " MENU_OPTION
 			done
 		fi
 
@@ -1018,14 +1105,16 @@ function manageMenu() {
 		5)
 			checkExpiredClients ;;
 		6)
-			showStatus ;;
+			setupAutomaticExpiration ;;
 		7)
-			restartWireGuard ;;
+			showStatus ;;
 		8)
-			backupConfigs ;;
+			restartWireGuard ;;
 		9)
-			uninstallWg ;;
+			backupConfigs ;;
 		10)
+			uninstallWg ;;
+		11)
 			exit 0 ;;
 		esac
 
