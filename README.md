@@ -14,27 +14,27 @@ WireShield is a single-file bash tool that installs and manages a [WireGuard](ht
 
 Highlights:
 
-- One-command install with interactive prompts and a final confirmation summary
-- Kernel-aware: built-in WireGuard on Linux 5.6+, module install on older kernels
-- Dual-stack networking (IPv4 and IPv6)
-- Hardened defaults and tight file permissions
-- Interactive client management (add/list/revoke), status, restart, backup
-- Optional QR codes for mobile onboarding; optional TUI (whiptail) when installed
 
+## Table of contents
+
+- [Overview](#overview)
+- [Supported platforms](#supported-platforms)
+- [Quick start](#quick-start)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Configuration details](#configuration-details)
+- [Security considerations](#security-considerations)
+- [Troubleshooting](#troubleshooting)
+- [Uninstall](#uninstall)
+- [FAQ](#faq)
+- [Contributors](#contributors)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
 ## Supported platforms
 
 WireShield supports these Linux distributions out of the box:
 
 - AlmaLinux ≥ 8
-- Alpine Linux
-- Arch Linux
-- CentOS Stream ≥ 8
-- Debian ≥ 10
-- Fedora ≥ 32
-- Oracle Linux
-- Rocky Linux ≥ 8
-- Ubuntu ≥ 18.04
-
 ## Quick start
 
 Download and run the script as root (or with sudo):
@@ -66,43 +66,58 @@ After installation, rerun the script anytime to open the interactive menu:
 Notes:
 
 - If `whiptail` is present, you’ll get a dialog-based UI; otherwise, a clean CLI menu.
-- Client files are written in two forms for convenience: `wg0-client-<name>.conf` and `<name>.conf`.
-- Uninstall performs a single confirmation and removes server config and detected client `.conf` files under `/root` and `/home`.
-
 ## Configuration details
 
+
+```mermaid
+flowchart LR
+  C[WireGuard Client(s)] -- Encrypted UDP --> S[WireShield Server]
+  S --> I[(Internet)]
+  subgraph Server
+    S -- wg-quick@<iface> --> WG[(wg/wg-quick)]
+    S -- iptables/firewalld --> FW[(Firewall & NAT)]
+    S -- /etc/wireguard --> CFG[(Configs)]
+  end
+```
+
+Install flow (high level):
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant WS as WireShield Script
+  participant PM as Package Manager
+  participant WG as wg-quick
+
+  U->>WS: Run wireshield.sh
+  WS->>WS: Ask questions + validate + confirm
+  WS->>PM: Install wireguard tools and deps
+  WS->>WS: Write /etc/wireguard configs
+  WS->>WG: Start wg-quick@<iface>
+  WS->>U: Show success, create first client
+```
 - Files and paths
   - Server config: `/etc/wireguard/<interface>.conf` (0600)
   - Global params: `/etc/wireguard/params`
-  - Client configs: user home (e.g., `/root`, `/home/<user>`)
   - Sysctl settings: `/etc/sysctl.d/wg.conf`
 
 - Firewall rules
   - firewalld: zones and rich rules for NAT/masquerade are applied automatically
   - iptables: INPUT/FORWARD/POSTROUTING rules for the selected UDP port and interface
-
 - Client routing (AllowedIPs)
   - Default is `0.0.0.0/0,::/0` (full tunnel). Set a narrower range for split tunnel.
 
-- DNS
   - Specify preferred DNS resolvers during install; clients inherit these.
 
-- MTU
   - You can set a custom MTU in client configs if needed (comment provided in file).
 
-## Security considerations
 
 - Runs with root privileges by design (network stack, firewall, sysctl, and `/etc/wireguard`).
 - Generates fresh key pairs and pre-shared keys per client.
 - Restricts config permissions to 0600.
-- Minimizes system changes to the necessary interface, port, and forwarding settings.
-
-## Troubleshooting
-
 - Port and connectivity
   - Ensure the chosen UDP port is open in provider firewalls/security groups and any local firewall.
   - UFW example:
-    ```bash
     sudo ufw allow <your_port>/udp
     sudo ufw reload
     ```
@@ -110,7 +125,6 @@ Notes:
 - Service status and peers
   - Check service status:
     ```bash
-    sudo systemctl status wg-quick@wg0
     ```
   - Show live peers/handshakes:
     ```bash
@@ -120,7 +134,6 @@ Notes:
 - Kernel and module
   - WireGuard is built into Linux 5.6+. On older kernels the module is installed.
   - Verify:
-    ```bash
     uname -r
     wg --version
     ```
@@ -129,7 +142,6 @@ Notes:
 - No internet on client
   - Reboot the server after kernel or package updates.
   - Confirm forwarding:
-    ```bash
     sysctl net.ipv4.ip_forward net.ipv6.conf.all.forwarding
     ```
   - Try setting a lower MTU (e.g., 1420) in the client config if you suspect fragmentation.
@@ -137,9 +149,21 @@ Notes:
 - QR code not shown
   - Ensure `qrencode` is installed (the installer attempts this automatically when available).
 
-## Uninstall
 
 From the menu, choose “Uninstall WireGuard”. The script will stop the service, remove packages and `/etc/wireguard`, reload sysctl, and remove detected client `.conf` files from `/root` and `/home`.
+<details>
+<summary>More tips</summary>
+
+- Endpoint hostname vs IP
+  - You can use a hostname for the public address; ensure DNS resolves correctly from clients.
+
+- Double NAT scenarios
+  - If your server sits behind NAT, ensure UDP port forwarding is configured on the upstream router.
+
+- Split tunnel examples
+  - For office subnets only, set AllowedIPs to e.g. `10.0.0.0/8,192.168.0.0/16` instead of default `0.0.0.0/0,::/0`.
+
+</details>
 
 ## FAQ
 
@@ -147,15 +171,17 @@ From the menu, choose “Uninstall WireGuard”. The script will stop the servic
   - Yes. Revoking removes the peer and its `.conf` files, allowing name reuse.
 
 - Where are client configs saved?
-  - In the invoking user’s home (root or sudo user), typically `/root` or `/home/<user>`.
 
 - Do I need IPv6?
-  - No. Dual-stack is supported. You can use IPv4 only if you prefer.
 
 ## License
-
 Licensed under the [MIT License](LICENSE).
 
+## Contributors
+
+Thanks goes to everyone who has contributed. Want to be part of it? Star the repo, open issues, and send PRs!
+
+[![Contributors](https://contrib.rocks/image?repo=siyamsarker/WireShield)](https://github.com/siyamsarker/WireShield/graphs/contributors)
 ## Acknowledgements
 
 WireShield was inspired by the simplicity-first approach of WireGuard tooling and community best practices for secure VPN setups.
