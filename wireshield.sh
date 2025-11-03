@@ -437,6 +437,9 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 		systemctl enable "wg-quick@${SERVER_WG_NIC}"
 	fi
 
+	# Ensure automatic expiration cleanup at 12:00 AM daily
+	_ws_ensure_auto_expiration >/dev/null 2>&1 || true
+
 	# Create the first client now; you can add more later from the menu
 	newClient
 	echo -e "${GREEN}If you want to add more clients, you simply need to run this script another time!${NC}"
@@ -475,6 +478,15 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 function newClient() {
 	# Interactively create a new peer (client): allocate IPs, generate keys,
 	# update server config, write client configuration, and optionally show QR.
+	# IMPORTANT: Localize and reset variables to avoid cross-call leakage that
+	# can cause the function to skip prompts or behave unexpectedly.
+	local CLIENT_NAME="" CLIENT_EXISTS=1
+	local DOT_IP="" DOT_EXISTS=0
+	local IPV4_EXISTS=1 IPV6_EXISTS=1
+	local BASE_IP CLIENT_WG_IPV4 CLIENT_WG_IPV6
+	local CLIENT_PRIV_KEY CLIENT_PUB_KEY CLIENT_PRE_SHARED_KEY
+	local HOME_DIR CLIENT_CONFIG
+	local EXPIRY_DAYS="" EXPIRY_DATE=""
 	# If SERVER_PUB_IP is IPv6, add brackets if missing
 	if [[ ${SERVER_PUB_IP} =~ .*:.* ]]; then
 		if [[ ${SERVER_PUB_IP} != *"["* ]] || [[ ${SERVER_PUB_IP} != *"]"* ]]; then
@@ -681,6 +693,8 @@ function revokeClient() {
 	CLIENT_NAME=$(grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
 
 	# Remove the [Peer] block matching $CLIENT_NAME using the marker header
+	# Support both header formats: with or without expiration suffix
+	sed -i "/^### Client ${CLIENT_NAME} | Expires: .*$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || true
 	sed -i "/^### Client ${CLIENT_NAME}\$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf"
 
 	# remove generated client file
@@ -776,13 +790,10 @@ function checkExpiredClients() {
 	fi
 }
 
-function setupAutomaticExpiration() {
-	# Set up automatic daily check for expired clients via cron
-	echo -e "${GREEN}Setting up automatic expiration checks...${NC}\n"
-	
-	local script_path
-	script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-	
+function _ws_ensure_auto_expiration() {
+	# Silently ensure automatic daily check for expired clients via cron (12:00 AM)
+	# Idempotent: safe to call multiple times; no terminal output
+    
 	# Create a cron-compatible script
 	cat > /usr/local/bin/wireshield-check-expired <<'EOF'
 #!/bin/bash
@@ -840,20 +851,14 @@ fi
 EOF
 
 	chmod +x /usr/local/bin/wireshield-check-expired
-	
-	# Add to crontab (runs daily at 2 AM)
-	local cron_entry="0 2 * * * /usr/local/bin/wireshield-check-expired >/dev/null 2>&1"
-	
-	# Check if entry already exists
-	if crontab -l 2>/dev/null | grep -q "wireshield-check-expired"; then
-		echo -e "${ORANGE}Automatic expiration check is already configured in crontab${NC}"
-	else
+    
+	# Add to crontab (runs daily at 12:00 AM)
+	local cron_entry="0 0 * * * /usr/local/bin/wireshield-check-expired >/dev/null 2>&1"
+    
+	# Ensure entry exists
+	if ! crontab -l 2>/dev/null | grep -q "wireshield-check-expired"; then
 		(crontab -l 2>/dev/null; echo "$cron_entry") | crontab -
-		echo -e "${GREEN}✓ Automatic expiration check configured${NC}"
-		echo -e "${GREEN}  Expired clients will be checked and removed daily at 2:00 AM${NC}"
-		echo -e "${GREEN}  Check logs with: grep wireshield /var/log/syslog${NC}"
 	fi
-	echo ""
 }
 
 function uninstallWg() {
@@ -1063,18 +1068,17 @@ function manageMenu() {
 
 		local MENU_OPTION
 		if command -v whiptail &>/dev/null; then
-			MENU_OPTION=$(whiptail --title "WireShield" --menu "Choose an action" 20 72 12 \
+			MENU_OPTION=$(whiptail --title "WireShield" --menu "Choose an action" 20 72 10 \
 				1 "Add a new client" \
 				2 "List clients" \
 				3 "Show QR for a client" \
 				4 "Revoke a client" \
 				5 "Check expired clients" \
-				6 "Setup automatic expiration" \
-				7 "Show server status" \
-				8 "Restart WireGuard" \
-				9 "Backup configuration" \
-				10 "Uninstall WireGuard" \
-				11 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=11
+				6 "Show server status" \
+				7 "Restart WireGuard" \
+				8 "Backup configuration" \
+				9 "Uninstall WireGuard" \
+				10 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=10
 		else
 			echo "What do you want to do?"
 			echo "   1) Add a new client"
@@ -1082,14 +1086,13 @@ function manageMenu() {
 			echo "   3) Show QR for a client"
 			echo "   4) Revoke existing client"
 			echo "   5) Check expired clients"
-			echo "   6) Setup automatic expiration"
-			echo "   7) Show server status"
-			echo "   8) Restart WireGuard"
-			echo "   9) Backup configuration"
-			echo "  10) Uninstall WireGuard"
-			echo "  11) Exit"
-			until [[ ${MENU_OPTION} =~ ^[1-9]$|^1[01]$ ]]; do
-				read -rp "Select an option [1-11]: " MENU_OPTION
+			echo "   6) Show server status"
+			echo "   7) Restart WireGuard"
+			echo "   8) Backup configuration"
+			echo "   9) Uninstall WireGuard"
+			echo "  10) Exit"
+			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$ ]]; do
+				read -rp "Select an option [1-10]: " MENU_OPTION
 			done
 		fi
 
@@ -1105,16 +1108,14 @@ function manageMenu() {
 		5)
 			checkExpiredClients ;;
 		6)
-			setupAutomaticExpiration ;;
-		7)
 			showStatus ;;
-		8)
+		7)
 			restartWireGuard ;;
-		9)
+		8)
 			backupConfigs ;;
-		10)
+		9)
 			uninstallWg ;;
-		11)
+		10)
 			exit 0 ;;
 		esac
 
@@ -1129,6 +1130,8 @@ initialCheck
 # Check if WireGuard is already installed and load params
 if [[ -e /etc/wireguard/params ]]; then
 	source /etc/wireguard/params
+	# Ensure automatic expiration cron is configured for existing installs
+	_ws_ensure_auto_expiration >/dev/null 2>&1 || true
 	manageMenu
 else
 	installWireGuard
