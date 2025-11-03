@@ -631,12 +631,12 @@ function listClients() {
 	
 	local count=0
 	while IFS= read -r line; do
-		if [[ $line =~ ^###\ Client\ (.+) ]]; then
+		if [[ $line =~ ^###[[:space:]]Client[[:space:]](.+) ]]; then
 			count=$((count + 1))
 			local client_info="${BASH_REMATCH[1]}"
 			
 			# Check if there's an expiration date
-			if [[ $client_info =~ ^([^\ ]+)\ \|\ Expires:\ ([0-9]{4}-[0-9]{2}-[0-9]{2})$ ]]; then
+			if [[ $client_info =~ ^([^[:space:]]+)[[:space:]]\|[[:space:]]Expires:[[:space:]]([0-9]{4}-[0-9]{2}-[0-9]{2})$ ]]; then
 				local client_name="${BASH_REMATCH[1]}"
 				local expiry_date="${BASH_REMATCH[2]}"
 				echo -e "   ${count}) ${client_name} ${ORANGE}(expires: ${expiry_date})${NC}"
@@ -711,7 +711,7 @@ function checkExpiredClients() {
 	
 	# Read all client entries with expiration dates
 	while IFS= read -r line; do
-		if [[ $line =~ ###\ Client\ ([^\ ]+)\ \|\ Expires:\ ([0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+		if [[ $line =~ ^###[[:space:]]Client[[:space:]]([^[:space:]]+)[[:space:]]\|[[:space:]]Expires:[[:space:]]([0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
 			CLIENT_NAME="${BASH_REMATCH[1]}"
 			EXPIRY_DATE="${BASH_REMATCH[2]}"
 			checked_count=$((checked_count + 1))
