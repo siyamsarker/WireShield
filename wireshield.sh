@@ -587,7 +587,11 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 		echo ""
 	fi
 
-	echo -e "${GREEN}Your client config files are:${NC}\n- ${CONFIG_MAIN}\n- ${CONFIG_SIMPLE}"
+	echo -e "${GREEN}✓ Client configuration created successfully!${NC}\n"
+	echo -e "${GREEN}Two identical config files have been created for convenience:${NC}"
+	echo -e "  1. ${CONFIG_MAIN} ${ORANGE}(full name)${NC}"
+	echo -e "  2. ${CONFIG_SIMPLE} ${ORANGE}(short name)${NC}"
+	echo -e "\n${ORANGE}Both files contain the same configuration - use whichever you prefer!${NC}"
 }
 
 function listClients() {
@@ -777,16 +781,23 @@ function _ws_choose_client() {
     # Prompt the user to select one client from the existing list; prints the name.
 	local number_of_clients
 	number_of_clients=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+	
 	if [[ ${number_of_clients} -eq 0 ]]; then
-		echo "No clients found." >&2
+		echo -e "${RED}No clients found.${NC}" >&2
 		return 1
 	fi
+	
 	echo "Select a client:"
 	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | nl -s ') '
+	
 	local choice
-	until [[ ${choice} -ge 1 && ${choice} -le ${number_of_clients} ]]; do
+	until [[ ${choice} =~ ^[0-9]+$ ]] && [[ ${choice} -ge 1 ]] && [[ ${choice} -le ${number_of_clients} ]]; do
 		read -rp "Client [1-${number_of_clients}]: " choice
+		if [[ ! ${choice} =~ ^[0-9]+$ ]]; then
+			echo -e "${ORANGE}Please enter a valid number.${NC}"
+		fi
 	done
+	
 	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | sed -n "${choice}p"
 }
 
@@ -797,18 +808,32 @@ function showClientQR() {
 		echo "You can still use the .conf file on your device."
 		return 0
 	fi
+	
 	local name home_dir cfg
-	name=$(_ws_choose_client) || return 1
+	name=$(_ws_choose_client)
+	
+	# Check if client selection failed
+	if [[ -z "${name}" ]]; then
+		echo -e "${RED}No client selected.${NC}"
+		return 1
+	fi
+	
 	home_dir=$(getHomeDirForClient "${name}")
 	cfg="${home_dir}/${SERVER_WG_NIC}-client-${name}.conf"
+	
 	if [[ ! -f "${cfg}" ]]; then
 		# fallback to simplified filename if main one missing
 		cfg="${home_dir}/${name}.conf"
 	fi
+	
 	if [[ ! -f "${cfg}" ]]; then
-		echo -e "${RED}Config file for client '${name}' was not found.${NC}"
+		echo -e "${RED}Config file for client '${name}' was not found in ${home_dir}${NC}"
+		echo -e "${ORANGE}Expected files:${NC}"
+		echo -e "  - ${home_dir}/${SERVER_WG_NIC}-client-${name}.conf"
+		echo -e "  - ${home_dir}/${name}.conf"
 		return 1
 	fi
+	
 	echo -e "${GREEN}\nQR Code for ${name}:${NC}\n"
 	qrencode -t ansiutf8 -l L <"${cfg}"
 	echo ""
