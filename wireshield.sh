@@ -545,9 +545,8 @@ function newClient() {
 
 	HOME_DIR=$(getHomeDirForClient "${CLIENT_NAME}")
 
-	# Create client file and add the server as a peer
-	CONFIG_MAIN="${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
-	CONFIG_SIMPLE="${HOME_DIR}/${CLIENT_NAME}.conf"
+	# Create client file with simple name
+	CLIENT_CONFIG="${HOME_DIR}/${CLIENT_NAME}.conf"
 
 	echo "[Interface]
 PrivateKey = ${CLIENT_PRIV_KEY}
@@ -566,10 +565,7 @@ Endpoint = ${ENDPOINT}
 AllowedIPs = ${ALLOWED_IPS}
 # PersistentKeepalive helps with NAT traversal and keeps connection alive
 # Uncomment the next line if you're behind NAT or firewall
-# PersistentKeepalive = 25" >"${CONFIG_MAIN}"
-
-	# Also provide a simpler filename for convenience: <client>.conf
-	cp -f "${CONFIG_MAIN}" "${CONFIG_SIMPLE}"
+# PersistentKeepalive = 25" >"${CLIENT_CONFIG}"
 
 	# Add the client as a peer to the server configuration
 	echo -e "\n### Client ${CLIENT_NAME}
@@ -583,15 +579,12 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 	# Generate QR code if qrencode is installed (handy for mobile clients)
 	if command -v qrencode &>/dev/null; then
 		echo -e "${GREEN}\nHere is your client config file as a QR Code:\n${NC}"
-		qrencode -t ansiutf8 -l L <"${CONFIG_MAIN}"
+		qrencode -t ansiutf8 -l L <"${CLIENT_CONFIG}"
 		echo ""
 	fi
 
-	echo -e "${GREEN}✓ Client configuration created successfully!${NC}\n"
-	echo -e "${GREEN}Two identical config files have been created for convenience:${NC}"
-	echo -e "  1. ${CONFIG_MAIN} ${ORANGE}(full name)${NC}"
-	echo -e "  2. ${CONFIG_SIMPLE} ${ORANGE}(short name)${NC}"
-	echo -e "\n${ORANGE}Both files contain the same configuration - use whichever you prefer!${NC}"
+	echo -e "${GREEN}✓ Client configuration created successfully!${NC}"
+	echo -e "${GREEN}Config file: ${CLIENT_CONFIG}${NC}"
 }
 
 function listClients() {
@@ -635,16 +628,14 @@ function revokeClient() {
 
 	# remove generated client file
 	HOME_DIR=$(getHomeDirForClient "${CLIENT_NAME}")
-	rm -f "${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
 	rm -f "${HOME_DIR}/${CLIENT_NAME}.conf"
 
 	# also remove any matching client .conf files from common locations (/root and /home/*)
 	# This ensures the user's configs are fully removed so the name can be reused safely
 	SEARCH_DIRS=(/root /home)
 	for base in "${SEARCH_DIRS[@]}"; do
-		# remove both canonical and simplified filenames if they exist within depth 2
-		find "$base" -maxdepth 2 -type f \
-			\( -name "${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf" -o -name "${CLIENT_NAME}.conf" \) \
+		# remove client config files if they exist within depth 2
+		find "$base" -maxdepth 2 -type f -name "${CLIENT_NAME}.conf" \
 			-print -delete 2>/dev/null || true
 	done
 
@@ -719,15 +710,10 @@ function uninstallWg() {
 		SEARCH_DIRS=(/root /home)
 		for cname in "${CLIENT_NAMES[@]}"; do
 			for base in "${SEARCH_DIRS[@]}"; do
-				# remove both canonical and simplified filenames if they exist within depth 2
-				find "$base" -maxdepth 2 -type f \
-					\( -name "${SERVER_WG_NIC}-client-${cname}.conf" -o -name "${cname}.conf" \) \
+				# remove client config files if they exist within depth 2
+				find "$base" -maxdepth 2 -type f -name "${cname}.conf" \
 					-print -delete 2>/dev/null
 			done
-		done
-		# Best effort: remove any leftover canonical client files for this interface
-		for base in "${SEARCH_DIRS[@]}"; do
-			find "$base" -maxdepth 2 -type f -name "${SERVER_WG_NIC}-client-*.conf" -print -delete 2>/dev/null
 		done
 
 		if [[ ${OS} == 'alpine' ]]; then
@@ -819,18 +805,11 @@ function showClientQR() {
 	fi
 	
 	home_dir=$(getHomeDirForClient "${name}")
-	cfg="${home_dir}/${SERVER_WG_NIC}-client-${name}.conf"
+	cfg="${home_dir}/${name}.conf"
 	
 	if [[ ! -f "${cfg}" ]]; then
-		# fallback to simplified filename if main one missing
-		cfg="${home_dir}/${name}.conf"
-	fi
-	
-	if [[ ! -f "${cfg}" ]]; then
-		echo -e "${RED}Config file for client '${name}' was not found in ${home_dir}${NC}"
-		echo -e "${ORANGE}Expected files:${NC}"
-		echo -e "  - ${home_dir}/${SERVER_WG_NIC}-client-${name}.conf"
-		echo -e "  - ${home_dir}/${name}.conf"
+		echo -e "${RED}Config file for client '${name}' was not found:${NC}"
+		echo -e "  ${cfg}"
 		return 1
 	fi
 	
