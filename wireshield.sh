@@ -182,11 +182,25 @@ function installQuestions() {
 	}
 
 	while true; do
-		echo "Welcome to the WireShield installer!"
-		echo "The git repository is available at: https://github.com/siyamsarker/WireShield"
+		clear
+		echo -e "${GREEN}"
+		cat << "EOF"
+╦ ╦┬┬─┐┌─┐╔═╗┬ ┬┬┌─┐┬  ┌┐ 
+║║║│├┬┘├┤ ╚═╗├─┤│├┤ │  ││ 
+╚╩╝┴┴└─└─┘╚═╝┴ ┴┴└─┘┴─┘─┘┘
+EOF
+		echo -e "${NC}"
+		echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+		echo -e "  ${GREEN}Secure WireGuard VPN Installer & Manager${NC}"
+		echo -e "  Version 2.0.0 | Made with ❤️  by Siyam Sarker"
+		echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
 		echo ""
-		echo "I need to ask you a few questions before starting the setup."
-		echo "You can keep the default options and just press enter if you are ok with them."
+		echo -e "📦 Repository: ${GREEN}https://github.com/siyamsarker/WireShield${NC}"
+		echo ""
+		echo -e "${ORANGE}┌─────────────────────────────────────────────────────────────┐${NC}"
+		echo -e "${ORANGE}│${NC} I need to ask you a few questions before starting setup   ${ORANGE}│${NC}"
+		echo -e "${ORANGE}│${NC} You can keep defaults and press Enter if you are ok       ${ORANGE}│${NC}"
+		echo -e "${ORANGE}└─────────────────────────────────────────────────────────────┘${NC}"
 		echo ""
 
 		# Detect public IPv4 or IPv6 address and pre-fill for the user
