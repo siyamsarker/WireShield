@@ -962,16 +962,6 @@ function backupConfigs() {
 
 function manageMenu() {
     # Main interactive loop used after installation to manage clients and server.
-	
-	# Auto-check expired clients on first menu load only
-	if grep -q "Expires:" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null; then
-		echo ""
-		checkExpiredClients
-		echo ""
-		read -n 1 -s -r -p "Press any key to continue..."
-		echo ""
-	fi
-	
 	while true; do
 		clear
 		_ws_header
