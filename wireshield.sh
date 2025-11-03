@@ -1,9 +1,33 @@
 #!/bin/bash
 
-# WireShield - Secure WireGuard VPN installer and manager
-# https://github.com/siyamsarker/WireShield
-# Supports WireGuard on Linux kernel 5.6+ (built-in) and older kernels (with module)
+# ==============================================================================
+# WireShield – Secure WireGuard VPN installer and manager
+# ------------------------------------------------------------------------------
+# Purpose
+#   Automates installation, configuration, and lifecycle management of a
+#   WireGuard VPN server, plus interactive management of client peers.
+#
+# Highlights
+#   - Cross-distro support (Debian/Ubuntu/Fedora/CentOS/Alma/Rocky/Oracle/Arch/Alpine)
+#   - Kernel-awareness: WireGuard built-in on Linux >= 5.6; installs module/tools
+#   - Safe defaults, strong key generation, least-privilege file permissions
+#   - Interactive TUI (whiptail if available) or CLI fallback
+#   - Add/List/Revoke clients; show QR; backup configs; restart; uninstall
+#
+# Usage
+#   Make executable and run as root:
+#     chmod +x ./wireshield.sh && sudo ./wireshield.sh
+#
+# Security & Safety
+#   - Requires root (networking, firewall, sysctl, /etc/wireguard writes)
+#   - Writes configs to /etc/wireguard with 600 permissions
+#   - Only modifies iptables/firewalld rules for the selected interface/port
+#
+# Repository
+#   https://github.com/siyamsarker/WireShield
+#
 # Version: 2.0.0
+# ============================================================================
 
 RED='\033[0;31m'
 ORANGE='\033[0;33m'
@@ -18,6 +42,9 @@ function isRoot() {
 }
 
 function checkVirt() {
+    # Detect unsupported virtualization environments early.
+    # WireGuard requires kernel support on the host; some containers are not
+    # suitable without special host configuration and capabilities.
 	function openvzErr() {
 		echo "OpenVZ is not supported"
 		exit 1
@@ -48,6 +75,8 @@ function checkVirt() {
 }
 
 function checkOS() {
+    # Normalize the OS identifier and perform minimal supported-version checks.
+    # This script uses distro package managers to install WireGuard tooling.
 	source /etc/os-release
 	OS="${ID}"
 	if [[ ${OS} == "debian" || ${OS} == "raspbian" ]]; then
@@ -91,6 +120,11 @@ function checkOS() {
 }
 
 function getHomeDirForClient() {
+	# Return a writable directory path to place client configuration files.
+	# Priority:
+	#   1) /home/<client> if it exists
+	#   2) /home/${SUDO_USER} if non-root sudo was used
+	#   3) /root as a safe fallback
 	local CLIENT_NAME=$1
 
 	if [ -z "${CLIENT_NAME}" ]; then
@@ -139,6 +173,8 @@ function checkWireGuardSupport() {
 }
 
 function installQuestions() {
+    # Collect installation inputs with validation and a final confirmation step.
+    # Uses whiptail for a modern confirmation dialog when available.
 
 	# helper: check interface existence
 	interface_exists() {
@@ -247,13 +283,13 @@ function installQuestions() {
 }
 
 function installWireGuard() {
-	# Run setup questions first
+	# Run setup questions first (safe defaults, validated input, confirmation)
 	installQuestions
 
 	# Check WireGuard kernel support
 	checkWireGuardSupport
 
-	# Install WireGuard tools and module
+	# Install WireGuard tools and module using the detected package manager
 	echo "Installing WireGuard..."
 	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' && ${VERSION_ID} -gt 10 ]]; then
 		apt-get update
@@ -309,7 +345,7 @@ function installWireGuard() {
 	echo -e "${GREEN}WireGuard tools installed successfully!${NC}"
 	wg --version 2>/dev/null || echo "WireGuard tools version: $(wg version 2>/dev/null || echo 'installed')"
 
-	# Make sure the directory exists (this does not seem the be the case on fedora)
+	# Ensure configuration directory exists (not always present by default)
 	mkdir /etc/wireguard >/dev/null 2>&1
 
 	chmod 600 -R /etc/wireguard/
@@ -317,7 +353,7 @@ function installWireGuard() {
 	SERVER_PRIV_KEY=$(wg genkey)
 	SERVER_PUB_KEY=$(echo "${SERVER_PRIV_KEY}" | wg pubkey)
 
-	# Save WireGuard settings
+	# Persist installation parameters for later operations (add/revoke clients)
 	echo "SERVER_PUB_IP=${SERVER_PUB_IP}
 SERVER_PUB_NIC=${SERVER_PUB_NIC}
 SERVER_WG_NIC=${SERVER_WG_NIC}
@@ -330,7 +366,7 @@ CLIENT_DNS_1=${CLIENT_DNS_1}
 CLIENT_DNS_2=${CLIENT_DNS_2}
 ALLOWED_IPS=${ALLOWED_IPS}" >/etc/wireguard/params
 
-	# Add server interface
+	# Create the server interface configuration file
 	echo "[Interface]
 Address = ${SERVER_WG_IPV4}/24,${SERVER_WG_IPV6}/64
 ListenPort = ${SERVER_PORT}
@@ -356,7 +392,7 @@ PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	fi
 
-	# Enable routing on the server
+	# Enable IPv4/IPv6 forwarding on the server
 	echo "net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 
@@ -373,6 +409,7 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 		systemctl enable "wg-quick@${SERVER_WG_NIC}"
 	fi
 
+	# Create the first client now; you can add more later from the menu
 	newClient
 	echo -e "${GREEN}If you want to add more clients, you simply need to run this script another time!${NC}"
 
@@ -408,6 +445,8 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 }
 
 function newClient() {
+	# Interactively create a new peer (client): allocate IPs, generate keys,
+	# update server config, write client configuration, and optionally show QR.
 	# If SERVER_PUB_IP is IPv6, add brackets if missing
 	if [[ ${SERVER_PUB_IP} =~ .*:.* ]]; then
 		if [[ ${SERVER_PUB_IP} != *"["* ]] || [[ ${SERVER_PUB_IP} != *"]"* ]]; then
@@ -504,7 +543,7 @@ AllowedIPs = ${ALLOWED_IPS}
 	# Also provide a simpler filename for convenience: <client>.conf
 	cp -f "${CONFIG_MAIN}" "${CONFIG_SIMPLE}"
 
-	# Add the client as a peer to the server
+	# Add the client as a peer to the server configuration
 	echo -e "\n### Client ${CLIENT_NAME}
 [Peer]
 PublicKey = ${CLIENT_PUB_KEY}
@@ -513,7 +552,7 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
 
-	# Generate QR code if qrencode is installed
+	# Generate QR code if qrencode is installed (handy for mobile clients)
 	if command -v qrencode &>/dev/null; then
 		echo -e "${GREEN}\nHere is your client config file as a QR Code:\n${NC}"
 		qrencode -t ansiutf8 -l L <"${CONFIG_MAIN}"
@@ -524,6 +563,7 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 }
 
 function listClients() {
+    # Print numbered list of existing clients (peers) from the server config.
 	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 	if [[ ${NUMBER_OF_CLIENTS} -eq 0 ]]; then
 		echo ""
@@ -535,6 +575,8 @@ function listClients() {
 }
 
 function revokeClient() {
+	# Remove a client peer from the server config and delete related client
+	# configuration files so the name can be safely reused.
 	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 	if [[ ${NUMBER_OF_CLIENTS} == '0' ]]; then
 		echo ""
@@ -556,7 +598,7 @@ function revokeClient() {
 	# match the selected number to a client name
 	CLIENT_NAME=$(grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
 
-	# remove [Peer] block matching $CLIENT_NAME
+	# Remove the [Peer] block matching $CLIENT_NAME using the marker header
 	sed -i "/^### Client ${CLIENT_NAME}\$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf"
 
 	# remove generated client file
@@ -574,13 +616,15 @@ function revokeClient() {
 			-print -delete 2>/dev/null || true
 	done
 
-	# restart wireguard to apply changes
+	# Apply changes to the live interface without bringing it fully down
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
 
 	echo -e "${GREEN}Client '${CLIENT_NAME}' has been fully revoked and related .conf files removed.${NC}"
 }
 
 function uninstallWg() {
+	# Uninstall WireGuard and remove configuration. Single confirmation,
+	# then performs a best-effort cleanup of client config files under /root and /home.
 	echo ""
 	echo -e "\n${RED}WARNING: This will uninstall WireGuard and remove all the configuration files!${NC}"
 	echo -e "${ORANGE}Please backup the /etc/wireguard directory if you want to keep your configuration files.\n${NC}"
@@ -680,12 +724,14 @@ function uninstallWg() {
 }
 
 function _ws_header() {
+    # Draw a simple header for the interactive menu.
 	echo -e "${GREEN}Welcome to WireShield ✨${NC}"
 	echo "Repository: https://github.com/siyamsarker/WireShield"
 	echo ""
 }
 
 function _ws_summary() {
+    # Show a concise summary of interface, endpoint, peer count, and service status.
 	local peers
 	peers=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || echo 0)
 	echo "Interface : ${SERVER_WG_NIC}"
@@ -700,6 +746,7 @@ function _ws_summary() {
 }
 
 function _ws_choose_client() {
+    # Prompt the user to select one client from the existing list; prints the name.
 	local number_of_clients
 	number_of_clients=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 	if [[ ${number_of_clients} -eq 0 ]]; then
@@ -716,6 +763,7 @@ function _ws_choose_client() {
 }
 
 function showClientQR() {
+    # Render a QR code for a selected client's configuration (if available).
 	if ! command -v qrencode &>/dev/null; then
 		echo -e "${ORANGE}qrencode is not installed; cannot render QR in terminal.${NC}"
 		echo "You can still use the .conf file on your device."
@@ -739,11 +787,13 @@ function showClientQR() {
 }
 
 function showStatus() {
+    # Display WireGuard runtime status via `wg show`.
 	echo -e "${GREEN}WireGuard status:${NC}"
 	wg show || true
 }
 
 function restartWireGuard() {
+    # Restart the WireGuard interface service using the appropriate init system.
 	echo "Restarting WireGuard (${SERVER_WG_NIC})..."
 	if [[ ${OS} == 'alpine' ]]; then
 		rc-service "wg-quick.${SERVER_WG_NIC}" restart
@@ -754,6 +804,7 @@ function restartWireGuard() {
 }
 
 function backupConfigs() {
+    # Create a timestamped archive of /etc/wireguard for backup/portability.
 	local ts out
 	ts=$(date +%Y%m%d-%H%M%S)
 	out="/root/wireshield-backup-${ts}.tar.gz"
@@ -761,6 +812,7 @@ function backupConfigs() {
 }
 
 function manageMenu() {
+    # Main interactive loop used after installation to manage clients and server.
 	while true; do
 		clear
 		_ws_header

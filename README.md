@@ -1,132 +1,163 @@
+<div align="center">
+
 # WireShield
 
-**WireShield is a bash script that aims to setup a [WireGuard](https://www.wireguard.com/) VPN on a Linux server, as easily as possible!**
+Secure, modern, one-command WireGuard VPN installer and manager for Linux.
 
-WireGuard is a point-to-point VPN that can be used in different ways. Here, we mean a VPN as in: the client will forward all its traffic through an encrypted tunnel to the server.
-The server will apply NAT to the client's traffic so it will appear as if the client is browsing the web with the server's IP.
+<sub>Simple to use. Sensible defaults. Production-friendly.</sub>
 
-The script supports both IPv4 and IPv6. It automatically detects your kernel version and installs the appropriate WireGuard packages. For Linux kernel 5.6+, WireGuard is built-in. For older kernels, the necessary modules are installed.
+</div>
 
-## Features
+## Overview
 
-- **Latest WireGuard Support**: Automatically detects kernel version and installs appropriate WireGuard packages
-  - Linux kernel 5.6+ uses built-in WireGuard
-  - Older kernels get WireGuard kernel module installed
-- **Easy Installation**: Interactive setup with sensible defaults
-- **Dual Stack**: Full IPv4 and IPv6 support
-- **Security First**: 
-  - Pre-shared keys for additional quantum-resistant security
-  - Automatic firewall configuration (iptables/firewalld)
-  - Secure file permissions on all configuration files
-- **Client Management**: Easy add, list, and revoke client configurations
-- **QR Code Generation**: Instant QR codes for mobile device setup
-- **Multiple DNS Options**: Configure custom DNS resolvers for clients
-- **Flexible Routing**: Configurable AllowedIPs for full tunnel or split tunnel VPN
-- **NAT Traversal**: Built-in support with PersistentKeepalive option
-- **Clean Uninstall**: Complete removal option with all configurations
+WireShield is a single-file bash tool that installs and manages a [WireGuard](https://www.wireguard.com/) VPN server in minutes. It sets up a secure tunnel so clients can route traffic through your server (full-tunnel or split-tunnel), with automatic firewalling and IPv4/IPv6 support.
 
-## Requirements
+Highlights:
 
-Supported distributions:
+- One-command install with interactive prompts and a final confirmation summary
+- Kernel-aware: built-in WireGuard on Linux 5.6+, module install on older kernels
+- Dual-stack networking (IPv4 and IPv6)
+- Hardened defaults and tight file permissions
+- Interactive client management (add/list/revoke), status, restart, backup
+- Optional QR codes for mobile onboarding; optional TUI (whiptail) when installed
 
-- AlmaLinux >= 8
+## Supported platforms
+
+WireShield supports these Linux distributions out of the box:
+
+- AlmaLinux ≥ 8
 - Alpine Linux
 - Arch Linux
-- CentOS Stream >= 8
-- Debian >= 10
-- Fedora >= 32
+- CentOS Stream ≥ 8
+- Debian ≥ 10
+- Fedora ≥ 32
 - Oracle Linux
-- Rocky Linux >= 8
-- Ubuntu >= 18.04
+- Rocky Linux ≥ 8
+- Ubuntu ≥ 18.04
+
+## Quick start
+
+Download and run the script as root (or with sudo):
+
+```bash
+wget https://raw.githubusercontent.com/siyamsarker/WireShield/master/wireshield.sh -O wireshield.sh
+chmod +x wireshield.sh
+sudo ./wireshield.sh
+```
+
+You’ll be asked a few questions (address/hostname, public NIC, wg interface, IPs, port, DNS, AllowedIPs). A summary is shown at the end—confirm to proceed. WireShield will install WireGuard, configure the server, enable forwarding, set firewall rules, and create your first client.
 
 ## Usage
 
-Download and execute the script. Answer the questions asked by the script and it will take care of the rest.
+After installation, rerun the script anytime to open the interactive menu:
 
-```bash
-curl -O https://raw.githubusercontent.com/siyamsarker/WireShield/master/wireshield.sh
-chmod +x wireshield.sh
-./wireshield.sh
+```
+1) Add a new client
+2) List clients
+3) Show QR for a client
+4) Revoke existing client
+5) Show server status
+6) Restart WireGuard
+7) Backup configuration
+8) Uninstall WireGuard
+9) Exit
 ```
 
-It will install WireGuard (kernel module and tools) on the server, configure it, create a systemd service and a client configuration file.
+Notes:
 
-Run the script again to add or remove clients!
+- If `whiptail` is present, you’ll get a dialog-based UI; otherwise, a clean CLI menu.
+- Client files are written in two forms for convenience: `wg0-client-<name>.conf` and `<name>.conf`.
+- Uninstall performs a single confirmation and removes server config and detected client `.conf` files under `/root` and `/home`.
 
-### Quick Start
+## Configuration details
 
-First time installation:
-```bash
-wget https://raw.githubusercontent.com/siyamsarker/WireShield/master/wireshield.sh -O wireshield.sh && chmod +x wireshield.sh && sudo ./wireshield.sh
-```
+- Files and paths
+  - Server config: `/etc/wireguard/<interface>.conf` (0600)
+  - Global params: `/etc/wireguard/params`
+  - Client configs: user home (e.g., `/root`, `/home/<user>`)
+  - Sysctl settings: `/etc/sysctl.d/wg.conf`
 
-After installation, you can run the script again to:
-- Add new VPN clients
-- List existing clients
-- Revoke client access
-- Uninstall WireShield completely
- 
+- Firewall rules
+  - firewalld: zones and rich rules for NAT/masquerade are applied automatically
+  - iptables: INPUT/FORWARD/POSTROUTING rules for the selected UDP port and interface
+
+- Client routing (AllowedIPs)
+  - Default is `0.0.0.0/0,::/0` (full tunnel). Set a narrower range for split tunnel.
+
+- DNS
+  - Specify preferred DNS resolvers during install; clients inherit these.
+
+- MTU
+  - You can set a custom MTU in client configs if needed (comment provided in file).
+
+## Security considerations
+
+- Runs with root privileges by design (network stack, firewall, sysctl, and `/etc/wireguard`).
+- Generates fresh key pairs and pre-shared keys per client.
+- Restricts config permissions to 0600.
+- Minimizes system changes to the necessary interface, port, and forwarding settings.
+
 ## Troubleshooting
 
-If something doesn’t work as expected, try these quick checks.
-
 - Port and connectivity
-  - The installer picks a UDP port (random high port by default). Ensure it’s open on your provider’s firewall/security group and any OS firewall.
-  - Optional: If you’re using UFW, allow your chosen UDP port:
+  - Ensure the chosen UDP port is open in provider firewalls/security groups and any local firewall.
+  - UFW example:
     ```bash
     sudo ufw allow <your_port>/udp
     sudo ufw reload
     ```
 
 - Service status and peers
-  - Check WireGuard service:
+  - Check service status:
     ```bash
     sudo systemctl status wg-quick@wg0
     ```
-  - Show current peers and runtime info:
+  - Show live peers/handshakes:
     ```bash
     sudo wg show
     ```
 
-- Kernel and module support
-  - WireGuard is built into Linux kernel 5.6+. On older kernels a module is installed.
-  - Verify versions:
+- Kernel and module
+  - WireGuard is built into Linux 5.6+. On older kernels the module is installed.
+  - Verify:
     ```bash
     uname -r
     wg --version
     ```
-  - If you see “Cannot find device wg0” after install, reboot the server first. On older kernels you may need the module loaded:
-    ```bash
-    sudo modprobe wireguard  # if available on your distro
-    ```
+  - If you see “Cannot find device wg0”, reboot the server first.
 
-- Firewall specifics (iptables/firewalld)
-  - The script sets iptables or firewalld rules automatically. If you use a different firewall (e.g. UFW), ensure the UDP port is allowed.
-  - firewalld quick check:
-    ```bash
-    sudo firewall-cmd --list-ports
-    ```
-
-- No internet from the client
-  - Try rebooting the server (after kernel/package updates).
-  - Ensure IP forwarding is enabled (the installer writes /etc/sysctl.d/wg.conf):
+- No internet on client
+  - Reboot the server after kernel or package updates.
+  - Confirm forwarding:
     ```bash
     sysctl net.ipv4.ip_forward net.ipv6.conf.all.forwarding
     ```
-  - DNS issues? Set client DNS during install or edit the client config’s DNS line.
-
-- MTU problems (slow/unstable)
-  - Some networks need a lower MTU. In the client config, try uncommenting and setting `MTU = 1420`.
-  - See the linked MTU finder tool in the client config comments.
-
-- Mobile/NAT environments
-  - If the client sits behind NAT and drops after idle, enable PersistentKeepalive (e.g. `25`) in the client’s `[Peer]` section.
+  - Try setting a lower MTU (e.g., 1420) in the client config if you suspect fragmentation.
 
 - QR code not shown
-  - Make sure `qrencode` is installed (the installer attempts to install it where available).
+  - Ensure `qrencode` is installed (the installer attempts this automatically when available).
 
-## Credits & Licence
+## Uninstall
 
-This project is under the [MIT Licence](https://raw.githubusercontent.com/siyamsarker/WireShield/master/LICENSE)
+From the menu, choose “Uninstall WireGuard”. The script will stop the service, remove packages and `/etc/wireguard`, reload sysctl, and remove detected client `.conf` files from `/root` and `/home`.
 
- 
+## FAQ
+
+- Can I reuse a client name after revoking?
+  - Yes. Revoking removes the peer and its `.conf` files, allowing name reuse.
+
+- Where are client configs saved?
+  - In the invoking user’s home (root or sudo user), typically `/root` or `/home/<user>`.
+
+- Do I need IPv6?
+  - No. Dual-stack is supported. You can use IPv4 only if you prefer.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
+
+## Acknowledgements
+
+WireShield was inspired by the simplicity-first approach of WireGuard tooling and community best practices for secure VPN setups.
+
+
