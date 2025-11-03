@@ -91,7 +91,7 @@ Notes:
 
 - If `whiptail` is present, you'll get a dialog-based UI; otherwise, a clean CLI menu.
 - Client files are saved as `<name>.conf` in the user's home directory.
-- **Client Expiration**: You can optionally set an expiration date (in days) when creating a client. Expired clients are automatically checked and removed when you open the menu.
+- **Client Expiration**: You can optionally set an expiration date (in days) when creating a client. Expired clients are removed automatically every day at 00:00 (midnight) by a cron job installed by WireShield.
 - The "List clients" option displays expiration dates for clients that have them.
 - Uninstall performs a single confirmation and removes server config and detected client `.conf` files under `/root` and `/home`.
 
@@ -115,9 +115,9 @@ Expires in (days): 30
 
 ### Automatic cleanup
 
-- **On menu load**: WireShield automatically checks for expired clients when you open the management menu
-- **Manual check**: Use menu option 5 ("Check expired clients") to manually scan and remove expired clients
-- When expired clients are found, they are automatically removed from the server and all configuration files are deleted
+- **Daily at 00:00**: WireShield installs a cron job that checks and removes expired clients automatically at midnight
+- **Manual check**: Use menu option 5 ("Check expired clients") any time to scan and remove expired clients immediately
+- When expired clients are found, they are removed from the server and all configuration files are deleted; actions are logged to syslog
 
 ### Viewing expiration dates
 
@@ -238,7 +238,14 @@ sequenceDiagram
   - Ensure `qrencode` is installed (the installer attempts this automatically when available).
 
 - Client expiration not working
-  - Expiration checks run automatically when the menu loads. Expired clients are removed immediately.
+  - A cron job runs daily at 00:00 to remove expired clients. Verify it's installed:
+    ```bash
+    crontab -l | grep wireshield-check-expired || echo "no cron entry"
+    ```
+  - Check logs to see removals:
+    ```bash
+    sudo grep wireshield /var/log/syslog || journalctl -t wireshield
+    ```
   - You can also manually check using menu option 5 ("Check expired clients").
   - Ensure your system date/time is correct (`date`).
 
@@ -258,7 +265,7 @@ sequenceDiagram
 
 ## Uninstall
 
-From the menu, choose "Uninstall WireGuard". The script will stop the service, remove packages and `/etc/wireguard`, reload sysctl, and remove detected client `.conf` files from `/root` and `/home`.
+From the menu, choose "Uninstall WireGuard". The script will stop the service, remove packages and `/etc/wireguard`, reload sysctl, remove detected client `.conf` files from `/root` and `/home`, and clean up the automatic expiration cron job and helper script.
 
 ## FAQ
 
@@ -269,7 +276,7 @@ From the menu, choose "Uninstall WireGuard". The script will stop the service, r
   - Currently, you need to revoke the client and recreate it with a new expiration date. Direct expiration modification may be added in a future update.
 
 - What happens to expired clients?
-  - They are automatically removed (peer configuration and all files) when the menu loads or when you manually run the expiration check.
+  - They are automatically removed (peer configuration and all files) by a daily cron job at 00:00, or immediately when you run the manual expiration check (menu option 5).
 
 - Where are client configs saved?
   - In the invoking user's home (root or sudo user), typically `/root` or `/home/<user>`.

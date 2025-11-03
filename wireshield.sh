@@ -922,6 +922,14 @@ function uninstallWg() {
 		rm -rf /etc/wireguard
 		rm -f /etc/sysctl.d/wg.conf
 
+		# Remove automatic expiration cron job and helper script
+		# Delete helper if present
+		rm -f /usr/local/bin/wireshield-check-expired
+		# Remove crontab entry if present (ignore errors when crontab unset)
+		if crontab -l 2>/dev/null | grep -q "wireshield-check-expired"; then
+			crontab -l 2>/dev/null | sed '/wireshield-check-expired/d' | crontab - 2>/dev/null || true
+		fi
+
 		# Remove client config files from user home directories (canonical and simplified names)
 		SEARCH_DIRS=(/root /home)
 		for cname in "${CLIENT_NAMES[@]}"; do
@@ -949,6 +957,7 @@ function uninstallWg() {
 		else
 			echo "WireGuard uninstalled successfully."
 			echo "All detected client .conf files have been removed from /root and /home."
+			echo "Removed WireShield cron job and helper script for auto-expiration."
 			exit 0
 		fi
 	else
