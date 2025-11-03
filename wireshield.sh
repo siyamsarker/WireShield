@@ -773,14 +773,14 @@ function _ws_choose_client() {
 		return 1
 	fi
 	
-	echo "Select a client:"
-	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | nl -s ') '
+	echo "Select a client:" >&2
+	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | nl -s ') ' >&2
 	
 	local choice
 	until [[ ${choice} =~ ^[0-9]+$ ]] && [[ ${choice} -ge 1 ]] && [[ ${choice} -le ${number_of_clients} ]]; do
 		read -rp "Client [1-${number_of_clients}]: " choice
 		if [[ ! ${choice} =~ ^[0-9]+$ ]]; then
-			echo -e "${ORANGE}Please enter a valid number.${NC}"
+			echo -e "${ORANGE}Please enter a valid number.${NC}" >&2
 		fi
 	done
 	
