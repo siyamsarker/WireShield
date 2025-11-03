@@ -612,8 +612,17 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 		echo ""
 	fi
 
+	echo ""
+	echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 	echo -e "${GREEN}✓ Client configuration created successfully!${NC}"
+	echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+	echo -e "${GREEN}Client name: ${CLIENT_NAME}${NC}"
 	echo -e "${GREEN}Config file: ${CLIENT_CONFIG}${NC}"
+	if [[ -n "${EXPIRY_DATE}" ]]; then
+		echo -e "${ORANGE}Expires on: ${EXPIRY_DATE}${NC}"
+	fi
+	echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+	echo ""
 }
 
 function listClients() {
