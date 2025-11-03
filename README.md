@@ -91,15 +91,14 @@ Notes:
 
 ## Architecture
 
-
 ```mermaid
 flowchart LR
-  C[WireGuard Client(s)] -- Encrypted UDP --> S[WireShield Server]
+  C[WireGuard Clients] -->|Encrypted UDP| S[WireShield Server]
   S --> I[(Internet)]
   subgraph Server
-    S -- wg-quick@<iface> --> WG[(wg/wg-quick)]
-    S -- iptables/firewalld --> FW[(Firewall & NAT)]
-    S -- /etc/wireguard --> CFG[(Configs)]
+    S -->|wg-quick service| WG[(wg/wg-quick)]
+    S -->|iptables/firewalld| FW[(Firewall & NAT)]
+    S -->|/etc/wireguard| CFG[(Configs)]
   end
 ```
 
