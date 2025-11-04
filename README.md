@@ -302,10 +302,13 @@ During install, if the Go toolchain is detected, you’ll be prompted to install
 sudo ./scripts/install-dashboard.sh
 ```
 
-The installer will:
+The installer will (no-Go required):
 - Build and install `/usr/local/bin/wireshield-dashboard`
 - Create `/etc/wireshield/dashboard-config.json` with a random admin password
 - Install and start `wireshield-dashboard.service`
+
+Notes:
+- The installer first tries to download a prebuilt binary from GitHub Releases matching your platform. If a prebuilt is not available, it falls back to building from source when Go is present. If neither is possible, it prints guidance.
 
 Then access it via your reverse proxy at `https://your-domain/` or locally `http://127.0.0.1:51821`.
 

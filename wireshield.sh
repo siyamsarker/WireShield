@@ -986,25 +986,20 @@ function _ws_header() {
 	echo ""
 }
 
-# Offer to install the optional web dashboard if Go toolchain is available
+# Offer to install the optional web dashboard (prebuilt or build-from-source)
 function _ws_offer_dashboard_install() {
-	if command -v go >/dev/null 2>&1; then
-		echo ""
-		read -rp "Install WireShield Web Dashboard (binds to 127.0.0.1:51821)? [Y/n]: " -e DASH
-		DASH=${DASH:-Y}
-		if [[ ${DASH} =~ ^[Yy]$ ]]; then
-			local repo_root script_dir
-			script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-			repo_root="${script_dir}"
-			if [[ -x "${repo_root}/scripts/install-dashboard.sh" ]]; then
-				bash "${repo_root}/scripts/install-dashboard.sh"
-			else
-				echo -e "${ORANGE}Dashboard installer not found. Please run scripts/install-dashboard.sh manually.${NC}"
-			fi
+	echo ""
+	read -rp "Install WireShield Web Dashboard (binds to 127.0.0.1:51821)? [Y/n]: " -e DASH
+	DASH=${DASH:-Y}
+	if [[ ${DASH} =~ ^[Yy]$ ]]; then
+		local repo_root script_dir
+		script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+		repo_root="${script_dir}"
+		if [[ -x "${repo_root}/scripts/install-dashboard.sh" ]]; then
+			bash "${repo_root}/scripts/install-dashboard.sh"
+		else
+			echo -e "${ORANGE}Dashboard installer not found. Please run scripts/install-dashboard.sh manually.${NC}"
 		fi
-	else
-		echo -e "${ORANGE}Go toolchain not found. Skipping dashboard installation.${NC}"
-		echo -e "${ORANGE}You can install the dashboard later with: scripts/install-dashboard.sh (see README.md • Web Dashboard section).${NC}"
 	fi
 }
 
