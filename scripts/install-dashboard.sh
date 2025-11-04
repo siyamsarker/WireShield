@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure running as root (re-exec with sudo if available)
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+  exec sudo -E bash "$0" "$@"
+fi
+
 BIN_NAME=wireshield-dashboard
 PREFIX=/usr/local/bin
 CONFIG_DIR=/etc/wireshield
@@ -34,15 +39,15 @@ install_go() {
   if command -v apk >/dev/null 2>&1; then PM=apk; fi
   case "$PM" in
     apt-get)
-      sudo apt-get update -y && sudo apt-get install -y golang || true;;
+      apt-get update -y && apt-get install -y golang || true;;
     dnf)
-      sudo dnf install -y golang || true;;
+      dnf install -y golang || true;;
     yum)
-      sudo yum install -y golang || true;;
+      yum install -y golang || true;;
     pacman)
-      sudo pacman -Sy --noconfirm go || true;;
+      pacman -Sy --noconfirm go || true;;
     apk)
-      sudo apk add --no-cache go || true;;
+      apk add --no-cache go || true;;
   esac
   if command -v go >/dev/null 2>&1; then return 0; fi
   # Fallback: install from official tarball (linux only)
@@ -56,7 +61,6 @@ install_go() {
     amd64) TAR="go${GOV}.linux-amd64.tar.gz";;
     arm64) TAR="go${GOV}.linux-arm64.tar.gz";;
     386) TAR="go${GOV}.linux-386.tar.gz";;
-    armv6|armv7) TAR="go${GOV}.linux-armv6l.tar.gz";;
     *) echo "Unsupported ARCH for Go tarball: $ARCH"; return 1;;
   esac
   url="https://go.dev/dl/${TAR}"
@@ -64,8 +68,8 @@ install_go() {
   trap 'rm -rf "$tmpdir"' EXIT
   echo "Downloading Go: $url"
   curl -fsSL "$url" -o "$tmpdir/go.tgz"
-  sudo rm -rf /usr/local/go
-  sudo tar -C /usr/local -xzf "$tmpdir/go.tgz"
+  rm -rf /usr/local/go
+  tar -C /usr/local -xzf "$tmpdir/go.tgz"
   export PATH="/usr/local/go/bin:$PATH"
 }
 

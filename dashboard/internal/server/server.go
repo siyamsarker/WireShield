@@ -10,6 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/siyamsarker/WireShield/dashboard/config"
 	"github.com/siyamsarker/WireShield/dashboard/internal/auth"
@@ -30,10 +33,12 @@ type Server struct {
 	sess    *auth.Manager
 	wg      *wireguard.Service
 	tmpls   *template.Template
+	limMu   sync.Mutex
+	lim     map[string][]time.Time
 }
 
 func New(cfg *config.Config, cfgPath string) *Server {
-	s := &Server{cfg: cfg, cfgPath: cfgPath, mux: http.NewServeMux(), sess: auth.New(cfg.SessionKey)}
+	s := &Server{cfg: cfg, cfgPath: cfgPath, mux: http.NewServeMux(), sess: auth.New(cfg.SessionKey), lim: make(map[string][]time.Time)}
 	// locate script path
 	script := os.Getenv("WIRE_SHIELD_SCRIPT")
 	if script == "" {
@@ -75,12 +80,24 @@ func (s *Server) routes() {
 }
 
 func (s *Server) Start() error {
-	return http.ListenAndServe(s.cfg.Listen, s.logRequests(s.mux))
+	srv := &http.Server{
+		Addr:         s.cfg.Listen,
+		Handler:      s.logRequests(s.mux),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	return srv.ListenAndServe()
 }
 
 func (s *Server) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		// Security headers (adjust CSP for CDN Pico.css and HTMX)
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -103,15 +120,21 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid CSRF", http.StatusForbidden)
 			return
 		}
+		if !s.allowLogin(r) {
+			http.Error(w, "too many login attempts", http.StatusTooManyRequests)
+			return
+		}
 		u := r.FormValue("username")
 		p := r.FormValue("password")
 		for _, a := range s.cfg.Admins {
 			if a.Username == u && config.CheckPassword(a.PasswordHash, p) {
+				s.clearLoginAttempts(r)
 				s.sess.SetUser(w, u)
 				http.Redirect(w, r, "/", http.StatusFound)
 				return
 			}
 		}
+		s.recordFailedLogin(r)
 		s.render(w, "login.tmpl", map[string]any{"Error": "Invalid credentials", "CSRF": s.sess.EnsureCSRF(w, r)})
 		return
 	}
@@ -359,4 +382,54 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	if err := s.tmpls.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, err.Error(), 500)
 	}
+}
+
+// --- basic login rate limiting ---
+const (
+	maxAttempts = 5
+	window      = 5 * time.Minute
+)
+
+func (s *Server) clientIP(r *http.Request) string {
+	if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
+		parts := strings.Split(xf, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	ip := r.RemoteAddr
+	if i := strings.LastIndex(ip, ":"); i != -1 {
+		return ip[:i]
+	}
+	return ip
+}
+
+func (s *Server) allowLogin(r *http.Request) bool {
+	ip := s.clientIP(r)
+	now := time.Now()
+	s.limMu.Lock()
+	defer s.limMu.Unlock()
+	lst := s.lim[ip]
+	pruned := lst[:0]
+	for _, t := range lst {
+		if now.Sub(t) <= window {
+			pruned = append(pruned, t)
+		}
+	}
+	s.lim[ip] = pruned
+	return len(pruned) < maxAttempts
+}
+
+func (s *Server) recordFailedLogin(r *http.Request) {
+	ip := s.clientIP(r)
+	s.limMu.Lock()
+	s.lim[ip] = append(s.lim[ip], time.Now())
+	s.limMu.Unlock()
+}
+
+func (s *Server) clearLoginAttempts(r *http.Request) {
+	ip := s.clientIP(r)
+	s.limMu.Lock()
+	delete(s.lim, ip)
+	s.limMu.Unlock()
 }
