@@ -14,8 +14,14 @@ Config: {{.config_path}}</pre>
   {{end}}
   <form method="post" action="/clients/new">
     <input type="hidden" name="csrf" value="{{.CSRF}}" />
-    <label>Name <input name="name" required pattern="[A-Za-z0-9_-]{1,15}" /></label>
-    <label>Expires in days (optional) <input type="number" name="days" min="1" /></label>
+    <label>Name
+      <input name="name" required pattern="[A-Za-z0-9_-]{1,15}" title="Letters, numbers, underscore or dash; max 15" placeholder="e.g. alice-phone" autocomplete="off" />
+      <small class="muted">Allowed: letters, numbers, _ or - (max 15)</small>
+    </label>
+    <label>Expires in days (optional)
+      <input type="number" name="days" min="1" inputmode="numeric" placeholder="e.g. 30" />
+      <small class="muted">Leave blank for no expiration</small>
+    </label>
     <button type="submit">Create</button>
   </form>
 </section>

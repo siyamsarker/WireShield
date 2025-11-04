@@ -1,0 +1,19 @@
+{{define "content"}}
+<section>
+  <h2>Client QR • {{.Name}}</h2>
+  <div class="grid" style="align-items:center">
+    <div>
+      <img src="{{.QRURL}}" alt="QR code for {{.Name}}" style="max-width:300px;height:auto;border:1px solid #e5e7eb;border-radius:.5rem;background:#fff;padding:.5rem" />
+      <div style="margin-top:.75rem">
+        <a class="secondary" href="/clients/qr.png?name={{.Name}}" download="{{.Name}}.png">Download PNG</a>
+        <a class="contrast outline" href="/clients/config?name={{.Name}}">Download .conf</a>
+      </div>
+    </div>
+    <div>
+      <label for="cfgText"><strong>Config</strong></label>
+      <pre id="cfgText" class="mono" style="max-height:50vh">{{.Config}}</pre>
+      <button class="secondary" data-copy-target="#cfgText">Copy to clipboard</button>
+    </div>
+  </div>
+</section>
+{{end}}

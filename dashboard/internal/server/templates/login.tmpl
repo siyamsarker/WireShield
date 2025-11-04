@@ -4,8 +4,8 @@
   {{if .Error}}<article role="alert">{{.Error}}</article>{{end}}
   <form method="post" action="/login">
     <input type="hidden" name="csrf" value="{{.CSRF}}" />
-    <label>Username <input name="username" required /></label>
-    <label>Password <input type="password" name="password" required /></label>
+    <label>Username <input name="username" required autocomplete="username" /></label>
+    <label>Password <input type="password" name="password" required autocomplete="current-password" minlength="8" /></label>
     <button type="submit">Login</button>
   </form>
 </section>

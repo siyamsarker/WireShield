@@ -10,6 +10,7 @@
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <link rel="stylesheet" href="/static/app.css" />
   <script src="/static/theme.js" defer></script>
+  <script src="/static/copy.js" defer></script>
   <style>
     header { margin-bottom: 1rem; }
     .muted { color: #888; }
@@ -34,6 +35,9 @@
     </nav>
   </header>
   <main class="container">
+    {{with .Flash}}
+    <div class="flash {{.Kind}}" role="status">{{.Message}}</div>
+    {{end}}
     {{template "content" .}}
   </main>
   <footer class="container muted" style="margin-top:2rem">

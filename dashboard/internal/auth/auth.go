@@ -112,3 +112,39 @@ func (m *Manager) VerifyCSRF(r *http.Request, formValue string) bool {
 	}
 	return v == formValue && formValue != ""
 }
+
+// Flash messages: signed cookie carrying a small message to be shown once
+const flashCookie = "ws_flash"
+
+// SetFlash stores a one-time message (kind: success|error|info)
+func (m *Manager) SetFlash(w http.ResponseWriter, kind, message string) {
+	if message == "" {
+		return
+	}
+	// payload: kind|base64(message)
+	payload := kind + "|" + base64.RawURLEncoding.EncodeToString([]byte(message))
+	http.SetCookie(w, &http.Cookie{Name: flashCookie, Value: m.Sign(payload), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: true})
+}
+
+// PopFlash retrieves and clears the flash message
+func (m *Manager) PopFlash(w http.ResponseWriter, r *http.Request) (kind, message string, ok bool) {
+	c, err := r.Cookie(flashCookie)
+	if err != nil {
+		return "", "", false
+	}
+	val, okv := m.Verify(c.Value)
+	// clear
+	http.SetCookie(w, &http.Cookie{Name: flashCookie, Value: "", Path: "/", Expires: time.Unix(0, 0), MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: true})
+	if !okv {
+		return "", "", false
+	}
+	parts := strings.SplitN(val, "|", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	msgBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return parts[0], "", true
+	}
+	return parts[0], string(msgBytes), true
+}

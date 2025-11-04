@@ -7,6 +7,10 @@ header nav ul li strong { color: var(--ws-accent); }
 table { width: 100%; }
 .actions { display: inline-flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .narrow { max-width: 520px; margin: 0 auto; }
+.flash { padding: .75rem 1rem; border-radius: .5rem; margin: 0 0 1rem 0; border: 1px solid transparent; }
+.flash.success { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+.flash.error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+.flash.info { background: #eff6ff; color: #1e3a8a; border-color: #bfdbfe; }
 @media (max-width: 600px) {
 	header nav ul li { margin: 0; }
 }
