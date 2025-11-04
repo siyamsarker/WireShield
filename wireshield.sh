@@ -637,6 +637,9 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 		echo -e "${ORANGE}Expires on: ${EXPIRY_DATE}${NC}"
 	fi
 	echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+	echo -e "${ORANGE}Troubleshooting:${NC} If you cannot find the .conf later, try:"
+	echo -e "  sudo ls -l /root/*.conf /home/*/*.conf 2>/dev/null"
+	echo -e "To copy to your machine: scp root@<server>:/root/${CLIENT_NAME}.conf ."
 	echo ""
 }
 
@@ -992,7 +995,18 @@ function _ws_offer_dashboard_install() {
 	read -rp "Install WireShield Web Dashboard (binds to 127.0.0.1:51821)? [Y/n]: " -e DASH
 	DASH=${DASH:-Y}
 	if [[ ${DASH} =~ ^[Yy]$ ]]; then
-		_ws_install_dashboard_inline
+		# Ask for bind address and optional Nginx
+		local default_listen="127.0.0.1:51821" listen_addr="" setup_nginx="N" public_host=""
+		read -rp "Dashboard bind address [ip:port] (recommended: 127.0.0.1:51821): " -e -i "$default_listen" listen_addr
+		listen_addr=${listen_addr:-$default_listen}
+
+		read -rp "Configure Nginx reverse proxy for a domain or IP? [y/N]: " -e setup_nginx
+		setup_nginx=${setup_nginx:-N}
+		if [[ ${setup_nginx} =~ ^[Yy]$ ]]; then
+			read -rp "Enter domain or IP to serve (e.g., vpn.example.com or 54.254.156.85): " -e public_host
+		fi
+
+		_ws_install_dashboard_inline "$listen_addr" "$public_host"
 	fi
 }
 
@@ -1004,6 +1018,9 @@ function _ws_install_dashboard_inline() {
 	PREFIX=/usr/local/bin
 	CONFIG_DIR=/etc/wireshield
 	SERVICE_FILE=/etc/systemd/system/wireshield-dashboard.service
+	local LISTEN_ADDR NGX_HOST
+	LISTEN_ADDR=${1:-"127.0.0.1:51821"}
+	NGX_HOST=${2:-""}
 	# repo root is the directory containing this script
 	REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
@@ -1101,7 +1118,7 @@ Type=simple
 User=root
 Group=root
 Environment=WIRE_SHIELD_SCRIPT=$WS_SCRIPT_PATH
-ExecStart=/usr/local/bin/wireshield-dashboard -config /etc/wireshield/dashboard-config.json
+ExecStart=/usr/local/bin/wireshield-dashboard -config /etc/wireshield/dashboard-config.json -listen ${LISTEN_ADDR}
 Restart=on-failure
 RestartSec=5s
 
@@ -1118,7 +1135,81 @@ UNIT
 	systemctl daemon-reload
 	systemctl enable --now wireshield-dashboard
 
-	echo "Dashboard started on http://127.0.0.1:51821 (bind can be changed in config)."
+	echo "Dashboard started on http://${LISTEN_ADDR} (can be changed with: sudo systemctl edit wireshield-dashboard or editing the config)."
+
+	# If requested, set up Nginx reverse proxy
+	if [[ -n "$NGX_HOST" ]]; then
+		_ws_setup_nginx_reverse_proxy "$NGX_HOST" "$LISTEN_ADDR"
+	fi
+}
+
+# Configure Nginx reverse proxy to forward to the dashboard
+function _ws_setup_nginx_reverse_proxy() {
+	local SERVER_NAME="$1" LISTEN="$2" PM CONF_PATH ENABLE_SYMLINK=0
+	if [[ -z "$SERVER_NAME" ]]; then return 0; fi
+
+	# Install nginx if missing
+	if ! command -v nginx >/dev/null 2>&1; then
+		echo "Installing Nginx..."
+		if command -v apt-get >/dev/null 2>&1; then
+			apt-get update -y && apt-get install -y nginx
+		elif command -v dnf >/dev/null 2>&1; then
+			dnf install -y nginx
+		elif command -v yum >/dev/null 2>&1; then
+			yum install -y nginx
+		elif command -v pacman >/dev/null 2>&1; then
+			pacman -Sy --noconfirm nginx
+		elif command -v apk >/dev/null 2>&1; then
+			apk add --no-cache nginx
+		else
+			echo -e "${ORANGE}Could not determine package manager to install Nginx. Skipping Nginx setup.${NC}"
+			return 0
+		fi
+		systemctl enable --now nginx || true
+	fi
+
+	# Choose config location
+	if [[ -d /etc/nginx/sites-available ]]; then
+		CONF_PATH=/etc/nginx/sites-available/wireshield-dashboard
+		ENABLE_SYMLINK=1
+	else
+		CONF_PATH=/etc/nginx/conf.d/wireshield-dashboard.conf
+		ENABLE_SYMLINK=0
+	fi
+
+	# Extract upstream port from LISTEN (default 51821)
+	local UP_PORT
+	UP_PORT=$(echo "$LISTEN" | awk -F: '{print $NF}')
+	if [[ -z "$UP_PORT" ]]; then UP_PORT=51821; fi
+
+	cat > "$CONF_PATH" <<'NGINX'
+server {
+	listen 80;
+	server_name ${SERVER_NAME} _;
+
+	location / {
+		proxy_pass http://127.0.0.1:${UP_PORT};
+		proxy_http_version 1.1;
+		proxy_set_header Host $host;
+		proxy_set_header X-Real-IP $remote_addr;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto $scheme;
+	}
+}
+NGINX
+
+	if [[ $ENABLE_SYMLINK -eq 1 ]]; then
+		ln -sf "$CONF_PATH" /etc/nginx/sites-enabled/wireshield-dashboard
+	fi
+
+	# Test and reload Nginx
+	if nginx -t; then
+		systemctl reload nginx
+		echo -e "${GREEN}Nginx reverse proxy configured for http://${SERVER_NAME}/ → 127.0.0.1:${UP_PORT}${NC}"
+		echo -e "${ORANGE}Remember to open TCP/80 (and 443 if you later enable HTTPS) in your firewall/security group.${NC}"
+	else
+		echo -e "${RED}Nginx configuration test failed. Please check the config and logs.${NC}"
+	fi
 }
 
 function _ws_summary() {
