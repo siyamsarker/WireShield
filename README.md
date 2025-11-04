@@ -48,6 +48,8 @@ Highlights:
 
 ## Supported platforms
 
+Linux servers only (systemd-managed services). The dashboard service uses systemd; non-systemd environments are not supported.
+
 WireShield supports these Linux distributions out of the box:
 
 - AlmaLinux ≥ 8
