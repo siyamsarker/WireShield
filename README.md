@@ -300,6 +300,15 @@ Key points:
 - Modern UI: minimal, responsive HTML with Pico.css + HTMX (no heavy SPA)
 - Minimal footprint: single Go binary, HTML templates embedded
 
+Features at a glance:
+
+- Clients list with actions (download config, view QR, revoke)
+- Dedicated QR page with PNG download and one-click “Copy config”
+- Flash messages after actions (revoke, restart, expire check)
+- CSRF protection, secure cookies, strict security headers (CSP, XFO, XCTO)
+- Login rate limiting per client IP
+- Health endpoint at `/health` returns `200 ok` for monitoring
+
 Why Go? Similar projects often choose:
 
 - wg-easy (Node.js + Docker + Vue) — popular, container-first but heavier runtime
