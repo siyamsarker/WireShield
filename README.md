@@ -59,7 +59,7 @@ WireShield supports these Linux distributions out of the box:
 - Oracle Linux
 - Rocky Linux ≥ 8
 - Ubuntu ≥ 18.04
-## Quick start
+## Quick start (no clone needed)
 
 Download and run the script as root (or with sudo):
 
@@ -74,13 +74,26 @@ You’ll be asked a few questions (address/hostname, public NIC, wg interface, I
 Optional: install the Web Dashboard (GUI)
 
 - If the Go toolchain is present on the host, the installer will offer to build and enable the dashboard automatically.
-- You can also install it later (recommended on a fresh server) with:
+- You can also install it later (no clone required) with:
 
 ```bash
-sudo ./scripts/install-dashboard.sh
+curl -fsSL https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/install-dashboard.sh | sudo bash
 ```
 
 The dashboard binds to 127.0.0.1:51821 by default; expose it via your HTTPS reverse proxy.
+
+### Alternative: clone the repo (for contributors)
+
+If you prefer working from a full checkout (or want to build from source):
+
+```bash
+git clone https://github.com/siyamsarker/WireShield.git
+cd WireShield
+# Install CLI
+sudo ./wireshield.sh
+# Install dashboard (from repo)
+sudo ./scripts/install-dashboard.sh
+```
 
 ## Usage
 
