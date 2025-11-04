@@ -1402,10 +1402,12 @@ function ws_add_client() {
 	if [[ -n "$ipv4_last" ]]; then
 		last="$ipv4_last"
 	else
-		for last in {2..254}; do
-			dot_exists=$(grep -c "${SERVER_WG_IPV4::-1}${last}" "$cfg")
-			if [[ $dot_exists == 0 ]]; then break; fi
-		done
+	    for last in {2..254}; do
+		    # Look for an existing peer using this IPv4 in the server config
+		    # Match the AllowedIPs line to avoid false positives
+		    dot_exists=$(grep -c -E "^AllowedIPs = ${base_v4}\\.${last}/32" "$cfg")
+		    if [[ $dot_exists == 0 ]]; then break; fi
+	    done
 	fi
 	local client_v4="${base_v4}.${last}"
 

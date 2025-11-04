@@ -360,10 +360,10 @@ We follow the proven, ops-friendly "single static binary" approach for reliabili
 
 ### Install the dashboard
 
-During install, if the Go toolchain is detected, you’ll be prompted to install the dashboard automatically. You can also install it later:
+During install, you’ll be prompted to install the dashboard automatically (the script will also install Go if needed and build the binary). You can also install or reinstall it later by re-running the main script and accepting the dashboard prompt:
 
 ```bash
-sudo ./scripts/install-dashboard.sh
+sudo ./wireshield.sh
 ```
 
 The installer will:
@@ -451,18 +451,18 @@ sudo systemctl restart wireshield-dashboard
 
 ### Development (dashboard)
 
-Run the dashboard locally (without systemd):
+Run the dashboard locally from the repo root (without systemd):
 
 ```bash
-cd dashboard
 go build -o wireshield-dashboard ./cmd/wireshield-dashboard
-WIRE_SHIELD_SCRIPT=/path/to/wireshield.sh \
+WIRE_SHIELD_SCRIPT=/absolute/path/to/wireshield.sh \
   ./wireshield-dashboard -config ./dev-config.json
 ```
 
 Tips:
-- Point `WIRE_SHIELD_SCRIPT` to your `wireshield.sh` if it’s not in the default location.
-- Create a minimal `dev-config.json` next to the binary if needed; the server will generate defaults on first run.
+- Point `WIRE_SHIELD_SCRIPT` to your `wireshield.sh` if it’s not in the default install location. The server also attempts to fall back to `/root/wireshield.sh` or `/usr/local/bin/wireshield.sh` if not set.
+- Create a minimal `dev-config.json` next to the binary if needed; or omit `-config` to let the server create defaults on first run. Keep it bound to `127.0.0.1` during development.
+- For production, keep the dashboard behind an HTTPS reverse proxy. Session cookies are marked `Secure`, so ensure your proxy sets `X-Forwarded-Proto https`.
 
 ## Uninstall
 
