@@ -323,6 +323,9 @@ The installer will (no-Go required):
 Notes:
 - The installer first tries to download a prebuilt binary from GitHub Releases matching your platform. If a prebuilt is not available, it falls back to building from source when Go is present. If neither is possible, it prints guidance.
 
+Releases:
+- Prebuilt binaries are published automatically when a tag like `v0.1.0` is pushed. If you see a 404 from the installer, it likely means no release exists yet for your platform/version. In that case either install Go and rerun the installer, or ask the maintainer to publish a release tag.
+
 Then access it via your reverse proxy at `https://your-domain/` or locally `http://127.0.0.1:51821`.
 
 Sample Caddyfile (TLS via Let’s Encrypt):
