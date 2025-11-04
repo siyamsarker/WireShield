@@ -1003,7 +1003,8 @@ function _ws_offer_dashboard_install() {
 			fi
 		fi
 	else
-		echo -e "${ORANGE}Go toolchain not found. Skipping dashboard installation. See dashboard/README for binaries or install instructions.${NC}"
+		echo -e "${ORANGE}Go toolchain not found. Skipping dashboard installation.${NC}"
+		echo -e "${ORANGE}You can install the dashboard later with: scripts/install-dashboard.sh (see README.md • Web Dashboard section).${NC}"
 	fi
 }
 

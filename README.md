@@ -71,6 +71,17 @@ sudo ./wireshield.sh
 
 You’ll be asked a few questions (address/hostname, public NIC, wg interface, IPs, port, DNS, AllowedIPs). A summary is shown at the end—confirm to proceed. WireShield will install WireGuard, configure the server, enable forwarding, set firewall rules, and create your first client.
 
+Optional: install the Web Dashboard (GUI)
+
+- If the Go toolchain is present on the host, the installer will offer to build and enable the dashboard automatically.
+- You can also install it later (recommended on a fresh server) with:
+
+```bash
+sudo ./scripts/install-dashboard.sh
+```
+
+The dashboard binds to 127.0.0.1:51821 by default; expose it via your HTTPS reverse proxy.
+
 ## Usage
 
 After installation, rerun the script anytime to open the interactive menu:
