@@ -444,6 +444,9 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 	newClient
 	echo -e "${GREEN}If you want to add more clients, you simply need to run this script another time!${NC}"
 
+	# Optionally offer to install the web dashboard
+	_ws_offer_dashboard_install
+
 	# Check if WireGuard is running
 	if [[ ${OS} == 'alpine' ]]; then
 		rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status
@@ -940,6 +943,15 @@ function uninstallWg() {
 			done
 		done
 
+		# Remove Web Dashboard service and config if present
+		if systemctl list-unit-files | grep -q '^wireshield-dashboard.service'; then
+			systemctl disable --now wireshield-dashboard 2>/dev/null || true
+			rm -f /etc/systemd/system/wireshield-dashboard.service
+			systemctl daemon-reload || true
+		fi
+		rm -f /usr/local/bin/wireshield-dashboard
+		rm -rf /etc/wireshield
+
 		if [[ ${OS} == 'alpine' ]]; then
 			rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status &>/dev/null
 		else
@@ -958,6 +970,7 @@ function uninstallWg() {
 			echo "WireGuard uninstalled successfully."
 			echo "All detected client .conf files have been removed from /root and /home."
 			echo "Removed WireShield cron job and helper script for auto-expiration."
+			echo "Removed WireShield Web Dashboard binary, service unit, and config (if present)."
 			exit 0
 		fi
 	else
@@ -971,6 +984,27 @@ function _ws_header() {
 	echo -e "${GREEN}Welcome to WireShield ✨${NC}"
 	echo "Repository: https://github.com/siyamsarker/WireShield"
 	echo ""
+}
+
+# Offer to install the optional web dashboard if Go toolchain is available
+function _ws_offer_dashboard_install() {
+	if command -v go >/dev/null 2>&1; then
+		echo ""
+		read -rp "Install WireShield Web Dashboard (binds to 127.0.0.1:51821)? [Y/n]: " -e DASH
+		DASH=${DASH:-Y}
+		if [[ ${DASH} =~ ^[Yy]$ ]]; then
+			local repo_root script_dir
+			script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+			repo_root="${script_dir}"
+			if [[ -x "${repo_root}/scripts/install-dashboard.sh" ]]; then
+				bash "${repo_root}/scripts/install-dashboard.sh"
+			else
+				echo -e "${ORANGE}Dashboard installer not found. Please run scripts/install-dashboard.sh manually.${NC}"
+			fi
+		fi
+	else
+		echo -e "${ORANGE}Go toolchain not found. Skipping dashboard installation. See dashboard/README for binaries or install instructions.${NC}"
+	fi
 }
 
 function _ws_summary() {
@@ -1131,6 +1165,264 @@ function manageMenu() {
 		echo ""
 		read -rp "Press Enter to continue..." _
 	done
+}
+
+# ================ Programmatic API (for dashboard/automation) =================
+
+# Ensure /etc/wireguard/params is loaded (idempotent)
+function _ws_ensure_params_loaded() {
+	if [[ -z "${SERVER_WG_NIC}" ]] && [[ -e /etc/wireguard/params ]]; then
+		# shellcheck disable=SC1091
+		source /etc/wireguard/params
+	fi
+}
+
+# Minimal JSON string escaper (handles quotes and backslashes)
+function _ws_json_escape() {
+	local s="$1"
+	s=${s//\\/\\\\}
+	s=${s//\"/\\\"}
+	s=${s//$'\n'/} # strip newlines
+	echo -n "$s"
+}
+
+# ws_list_clients_json: print JSON array of clients with name and optional expiry
+# Usage: ws_list_clients_json
+function ws_list_clients_json() {
+	_ws_ensure_params_loaded
+	local cfg="/etc/wireguard/${SERVER_WG_NIC}.conf"
+	if [[ ! -f "$cfg" ]]; then
+		echo '[]'
+		return 0
+	fi
+
+	local out="[" first=1
+	while IFS= read -r line; do
+		if [[ $line =~ ^###[[:space:]]Client[[:space:]](.+) ]]; then
+			local info="${BASH_REMATCH[1]}" name expiry=""
+			if [[ $info =~ ^([^[:space:]]+)[[:space:]]\|[[:space:]]Expires:[[:space:]]([0-9]{4}-[0-9]{2}-[0-9]{2})$ ]]; then
+				name="${BASH_REMATCH[1]}"
+				expiry="${BASH_REMATCH[2]}"
+			else
+				name="$info"
+				expiry=""
+			fi
+			if [[ $first -eq 0 ]]; then out+=" , "; fi
+			first=0
+			out+="{\"name\":\"$(_ws_json_escape "$name")\",\"expires\":"
+			if [[ -n "$expiry" ]]; then
+				out+="\"$expiry\""
+			else
+				out+="null"
+			fi
+			out+="}"
+		fi
+	done < "$cfg"
+	out+="]"
+	echo -n "$out"
+}
+
+# ws_get_client_config NAME: print the client config content to stdout
+function ws_get_client_config() {
+	_ws_ensure_params_loaded
+	local name="$1"
+	if [[ -z "$name" ]]; then
+		echo "Error: missing client name" 1>&2
+		return 2
+	fi
+	local home_dir cfg
+	home_dir=$(getHomeDirForClient "$name")
+	cfg="${home_dir}/${name}.conf"
+	if [[ ! -f "$cfg" ]]; then
+		echo "Error: config not found for client '$name' at $cfg" 1>&2
+		return 1
+	fi
+	cat "$cfg"
+}
+
+# ws_revoke_client NAME: revoke by name (non-interactive)
+function ws_revoke_client() {
+	_ws_ensure_params_loaded
+	local name="$1"
+	if [[ -z "$name" ]]; then
+		echo "Error: missing client name" 1>&2
+		return 2
+	fi
+	local cfg="/etc/wireguard/${SERVER_WG_NIC}.conf"
+	if [[ ! -f "$cfg" ]]; then
+		echo "Error: server config not found: $cfg" 1>&2
+		return 1
+	fi
+	# Remove both header variants
+	sed -i "/^### Client ${name} | Expires: .*$/,/^$/d" "$cfg" 2>/dev/null || true
+	sed -i "/^### Client ${name}\$/,/^$/d" "$cfg"
+
+	# Remove client config files
+	local home_dir
+	home_dir=$(getHomeDirForClient "$name")
+	rm -f "${home_dir}/${name}.conf"
+	find /root /home /etc/wireguard -maxdepth 2 -type f -name "${name}.conf" -delete 2>/dev/null || true
+
+	# Apply live
+	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+	echo "{\"revoked\":true,\"name\":\"$(_ws_json_escape "$name")\"}"
+}
+
+# ws_add_client --name <name> [--days N | --expires YYYY-MM-DD]
+#                [--ipv4-last OCTET] [--ipv6-id ID]
+# Non-interactive: allocates free IPs if not provided; prints JSON summary.
+function ws_add_client() {
+	_ws_ensure_params_loaded
+	local name="" days="" expires="" ipv4_last="" ipv6_id=""
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			--name) name="$2"; shift 2;;
+			--days) days="$2"; shift 2;;
+			--expires) expires="$2"; shift 2;;
+			--ipv4-last) ipv4_last="$2"; shift 2;;
+			--ipv6-id) ipv6_id="$2"; shift 2;;
+			*) echo "Unknown option: $1" 1>&2; return 2;;
+		esac
+	done
+	if [[ -z "$name" ]]; then
+		echo "Error: --name is required" 1>&2
+		return 2
+	fi
+	if ! [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]] || [[ ${#name} -ge 16 ]]; then
+		echo "Error: invalid client name" 1>&2
+		return 2
+	fi
+
+	local cfg="/etc/wireguard/${SERVER_WG_NIC}.conf"
+	if grep -q -E "^### Client ${name}$" "$cfg"; then
+		echo "Error: client exists" 1>&2
+		return 1
+	fi
+
+	# Determine IPv4 last octet
+	local base_v4 last dot_exists
+	base_v4=$(echo "$SERVER_WG_IPV4" | awk -F '.' '{ print $1"."$2"."$3 }')
+	if [[ -n "$ipv4_last" ]]; then
+		last="$ipv4_last"
+	else
+		for last in {2..254}; do
+			dot_exists=$(grep -c "${SERVER_WG_IPV4::-1}${last}" "$cfg")
+			if [[ $dot_exists == 0 ]]; then break; fi
+		done
+	fi
+	local client_v4="${base_v4}.${last}"
+
+	# Determine IPv6 id
+	local base_v6
+	base_v6=$(echo "$SERVER_WG_IPV6" | awk -F '::' '{ print $1 }')
+	if [[ -z "$ipv6_id" ]]; then ipv6_id="$last"; fi
+	local client_v6="${base_v6}::${ipv6_id}"
+
+	# Keys
+	local priv pub psk
+	priv=$(wg genkey)
+	pub=$(echo "$priv" | wg pubkey)
+	psk=$(wg genpsk)
+
+	# Expiry date
+	local exp=""
+	if [[ -n "$expires" ]]; then
+		exp="$expires"
+	elif [[ -n "$days" ]] && [[ "$days" =~ ^[0-9]+$ ]] && [[ $days -gt 0 ]]; then
+		if date --version >/dev/null 2>&1; then
+			exp=$(date -d "+${days} days" '+%Y-%m-%d')
+		else
+			exp=$(date -v+${days}d '+%Y-%m-%d')
+		fi
+	fi
+
+	# Client file
+	local home_dir client_cfg endpoint
+	home_dir=$(getHomeDirForClient "$name")
+	client_cfg="${home_dir}/${name}.conf"
+	endpoint="${SERVER_PUB_IP}:${SERVER_PORT}"
+	if [[ ${SERVER_PUB_IP} =~ .*:.* ]] && [[ ${SERVER_PUB_IP} != *"["* || ${SERVER_PUB_IP} != *"]"* ]]; then
+		endpoint="[${SERVER_PUB_IP}]:${SERVER_PORT}"
+	fi
+	cat >"$client_cfg" <<CFG
+[Interface]
+PrivateKey = ${priv}
+Address = ${client_v4}/32,${client_v6}/128
+DNS = ${CLIENT_DNS_1},${CLIENT_DNS_2}
+
+[Peer]
+PublicKey = ${SERVER_PUB_KEY}
+PresharedKey = ${psk}
+Endpoint = ${endpoint}
+AllowedIPs = ${ALLOWED_IPS}
+CFG
+
+	# Append peer to server config
+	if [[ -n "$exp" ]]; then
+		echo -e "\n### Client ${name} | Expires: ${exp}
+[Peer]
+PublicKey = ${pub}
+PresharedKey = ${psk}
+AllowedIPs = ${client_v4}/32,${client_v6}/128" >>"$cfg"
+	else
+		echo -e "\n### Client ${name}
+[Peer]
+PublicKey = ${pub}
+PresharedKey = ${psk}
+AllowedIPs = ${client_v4}/32,${client_v6}/128" >>"$cfg"
+	fi
+
+	chmod 600 "$client_cfg"
+	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+
+	# JSON summary
+	echo -n "{\"name\":\"$(_ws_json_escape "$name")\",\"ipv4\":\"${client_v4}\",\"ipv6\":\"${client_v6}\",\"expires\":"
+	if [[ -n "$exp" ]]; then echo -n "\"$exp\""; else echo -n "null"; fi
+	echo -n ",\"config_path\":\"$(_ws_json_escape "$client_cfg")\"}"
+}
+
+# ws_check_expired_json: run expiration cleanup and print JSON {removed:[names]}
+function ws_check_expired_json() {
+	_ws_ensure_params_loaded
+	local cfg="/etc/wireguard/${SERVER_WG_NIC}.conf"; [[ -f "$cfg" ]] || { echo '{"removed":[]}'; return 0; }
+	local removed=() name exp
+	# Get current date seconds
+	local now_s
+	if date --version >/dev/null 2>&1; then
+		now_s=$(date '+%s')
+	else
+		now_s=$(date '+%s')
+	fi
+	while IFS= read -r line; do
+		if [[ $line =~ ^###[[:space:]]Client[[:space:]]([^[:space:]]+)[[:space:]]\|[[:space:]]Expires:[[:space:]]([0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+			name="${BASH_REMATCH[1]}"; exp="${BASH_REMATCH[2]}"
+			local exp_s
+			if date --version >/dev/null 2>&1; then
+				exp_s=$(date -d "$exp" '+%s')
+			else
+				exp_s=$(date -j -f "%Y-%m-%d" "$exp" '+%s')
+			fi
+			if [[ $now_s -gt $exp_s ]]; then
+				# delete blocks
+				sed -i "/^### Client ${name} | Expires: ${exp}\$/,/^$/d" "$cfg"
+				sed -i "/^### Client ${name}\$/,/^$/d" "$cfg" 2>/dev/null || true
+				# remove files
+				find /root /home /etc/wireguard -maxdepth 2 -type f -name "${name}.conf" -delete 2>/dev/null || true
+				removed+=("$name")
+			fi
+		fi
+	done < "$cfg"
+	if [[ ${#removed[@]} -gt 0 ]]; then
+		wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+	fi
+	# print JSON
+	echo -n '{"removed":['
+	local i
+	for ((i=0; i<${#removed[@]}; i++)); do
+		if [[ $i -gt 0 ]]; then echo -n ','; fi
+		echo -n "\"$(_ws_json_escape "${removed[$i]}")\""
+	done
+	echo -n ']}'
 }
 
 # Check for root, virt, OS...

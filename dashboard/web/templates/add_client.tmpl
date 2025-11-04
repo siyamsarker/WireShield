@@ -1,0 +1,22 @@
+{{define "content"}}
+<section>
+  <h2>Add client</h2>
+  {{if .Error}}<article role="alert">{{.Error}}</article>{{end}}
+  {{if .Success}}
+    <article>Client created successfully.</article>
+    {{with .Result}}
+    <pre class="mono">Name: {{.name}}
+IPv4: {{.ipv4}}
+IPv6: {{.ipv6}}
+Expires: {{if .expires}}{{.expires}}{{else}}none{{end}}
+Config: {{.config_path}}</pre>
+    {{end}}
+  {{end}}
+  <form method="post" action="/clients/new">
+    <label>Name <input name="name" required pattern="[A-Za-z0-9_-]{1,15}" /></label>
+    <label>Expires in days (optional) <input type="number" name="days" min="1" /></label>
+    <button type="submit">Create</button>
+  </form>
+</section>
+{{end}}
+{{template "layout" .}}

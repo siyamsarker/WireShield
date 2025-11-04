@@ -1,0 +1,21 @@
+[Unit]
+Description=WireShield Web Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh
+ExecStart=/usr/local/bin/wireshield-dashboard -config /etc/wireshield/dashboard-config.json
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

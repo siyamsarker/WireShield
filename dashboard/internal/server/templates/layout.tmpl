@@ -1,0 +1,39 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WireShield Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    header { margin-bottom: 1rem; }
+    .muted { color: #888; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <ul>
+        <li><strong>WireShield</strong></li>
+      </ul>
+      <ul>
+        <li><a href="/">Dashboard</a></li>
+        <li><a href="/clients">Clients</a></li>
+        <li><a href="/clients/new">Add Client</a></li>
+        <li><a href="/status">Status</a></li>
+        <li><a href="/logout">Logout</a></li>
+      </ul>
+    </nav>
+  </header>
+  <main class="container">
+    {{template "content" .}}
+  </main>
+  <footer class="container muted" style="margin-top:2rem">
+    <small>WireShield Dashboard • Runs on localhost by default • Secure behind TLS proxy for production</small>
+  </footer>
+</body>
+</html>
+{{end}}

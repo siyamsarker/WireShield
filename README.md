@@ -39,6 +39,7 @@ Highlights:
 - [Configuration details](#configuration-details)
 - [Security considerations](#security-considerations)
 - [Troubleshooting](#troubleshooting)
+- [Web Dashboard (optional)](#web-dashboard-optional)
 - [Uninstall](#uninstall)
 - [FAQ](#faq)
 - [Contributing](#contributing)
@@ -262,6 +263,108 @@ sequenceDiagram
   - For office subnets only, set AllowedIPs to e.g. `10.0.0.0/8,192.168.0.0/16` instead of default `0.0.0.0/0,::/0`.
 
 </details>
+
+## Web Dashboard (optional)
+
+WireShield includes an optional, lightweight web dashboard that lets you do everything the CLI menu can do: sign in, list/add/revoke clients, download configs, and run an expiration cleanup.
+
+Key points:
+
+- Secure-by-default: binds to `127.0.0.1:51821`; put behind your TLS reverse proxy (Caddy, Nginx, Traefik)
+- Simple auth: local admin users with bcrypt-hashed passwords and signed session cookies
+- Modern UI: minimal, responsive HTML with Pico.css + HTMX (no heavy SPA)
+- Minimal footprint: single Go binary, HTML templates embedded
+
+Why Go? Similar projects often choose:
+
+- wg-easy (Node.js + Docker + Vue) — popular, container-first but heavier runtime
+- wireguard-ui (Go + templates) — single binary, fast, low memory
+- Others (React/Next/Flask/Django) — capable, but often add more moving parts
+
+We follow the proven, ops-friendly "single static binary" approach for reliability and ease of deployment.
+
+### Install the dashboard
+
+During install, if the Go toolchain is detected, you’ll be prompted to install the dashboard automatically. You can also install it later:
+
+```bash
+sudo ./scripts/install-dashboard.sh
+```
+
+The installer will:
+- Build and install `/usr/local/bin/wireshield-dashboard`
+- Create `/etc/wireshield/dashboard-config.json` with a random admin password
+- Install and start `wireshield-dashboard.service`
+
+Then access it via your reverse proxy at `https://your-domain/` or locally `http://127.0.0.1:51821`.
+
+Sample Caddyfile (TLS via Let’s Encrypt):
+
+```caddyfile
+your.domain.com {
+  reverse_proxy 127.0.0.1:51821
+}
+```
+
+Nginx example (snippet):
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:51821;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Notes:
+- Change the default admin password right after first login.
+- Keep the service bound to localhost and terminate TLS at the proxy.
+- The dashboard shells out to the script’s programmatic API (ws_* functions) and requires root.
+
+### Configuration (dashboard)
+
+Dashboard configuration lives at `/etc/wireshield/dashboard-config.json`:
+
+```json
+{
+  "listen": "127.0.0.1:51821",
+  "session_key": "<random>",
+  "admins": [
+    {"username": "admin", "password_hash": "<bcrypt>"}
+  ]
+}
+```
+
+- `listen`: Keep as 127.0.0.1 and expose via an HTTPS reverse proxy
+- `session_key`: Random string used for signing cookies
+- `admins`: Local admin accounts; passwords are bcrypt-hashed
+
+To initialize or reset admins non-interactively:
+
+```bash
+sudo /usr/local/bin/wireshield-dashboard \
+  -init-admin <username> \
+  -init-admin-pass <password> \
+  -config /etc/wireshield/dashboard-config.json
+sudo systemctl restart wireshield-dashboard
+```
+
+### Development (dashboard)
+
+Run the dashboard locally (without systemd):
+
+```bash
+cd dashboard
+go build -o wireshield-dashboard ./cmd/wireshield-dashboard
+WIRE_SHIELD_SCRIPT=/path/to/wireshield.sh \
+  ./wireshield-dashboard -config ./dev-config.json
+```
+
+Tips:
+- Point `WIRE_SHIELD_SCRIPT` to your `wireshield.sh` if it’s not in the default location.
+- Create a minimal `dev-config.json` next to the binary if needed; the server will generate defaults on first run.
 
 ## Uninstall
 
