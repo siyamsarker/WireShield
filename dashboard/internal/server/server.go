@@ -65,6 +65,7 @@ func New(cfg *config.Config, cfgPath string) *Server {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/login", s.handleLogin)
 	s.mux.HandleFunc("/logout", s.withAuth(s.handleLogout))
+	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/", s.withAuth(s.handleHome))
 	s.mux.HandleFunc("/clients", s.withAuth(s.handleClients))
 	s.mux.HandleFunc("/clients/new", s.withAuth(s.handleAddClient))
@@ -298,6 +299,13 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "backup.tmpl", map[string]any{"Path": path})
+}
+
+// Health check endpoint (unauthenticated)
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
 }
 
 func (s *Server) handleUninstall(w http.ResponseWriter, r *http.Request) {
