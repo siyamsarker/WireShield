@@ -179,13 +179,13 @@ func (s *Server) handleAddClient(w http.ResponseWriter, r *http.Request) {
 		}
 		res, err := s.wg.AddClient(name, days)
 		if err != nil {
-			s.render(w, r, "add_client.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r)})
+			s.render(w, r, "add.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r)})
 			return
 		}
-		s.render(w, r, "add_client.tmpl", map[string]any{"Success": true, "Result": res, "CSRF": s.sess.EnsureCSRF(w, r)})
+		s.render(w, r, "add.tmpl", map[string]any{"Success": true, "Result": res, "CSRF": s.sess.EnsureCSRF(w, r)})
 		return
 	}
-	s.render(w, r, "add_client.tmpl", map[string]any{"CSRF": s.sess.EnsureCSRF(w, r)})
+	s.render(w, r, "add.tmpl", map[string]any{"CSRF": s.sess.EnsureCSRF(w, r)})
 }
 
 func (s *Server) handleRevokeClient(w http.ResponseWriter, r *http.Request) {
