@@ -3,9 +3,11 @@
   <h2>Server status</h2>
   <div style="display:flex; gap:1rem; margin: .5rem 0;">
     <form method="post" action="/restart" onsubmit="return confirm('Restart WireGuard?')">
+      <input type="hidden" name="csrf" value="{{.CSRF}}" />
       <button type="submit">Restart</button>
     </form>
     <form method="post" action="/backup">
+      <input type="hidden" name="csrf" value="{{.CSRF}}" />
       <button type="submit" class="secondary">Backup config</button>
     </form>
   </div>

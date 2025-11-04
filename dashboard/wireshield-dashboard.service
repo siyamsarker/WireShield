@@ -6,7 +6,9 @@ After=network.target
 Type=simple
 User=root
 Group=root
-Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh
+# NOTE: This file is a template. The installer rewrites it with the detected script path.
+# Default fallback; the server also tries /root/wireshield.sh and /usr/local/bin/wireshield.sh when unset.
+Environment=WIRE_SHIELD_SCRIPT=/usr/local/bin/wireshield.sh
 ExecStart=/usr/local/bin/wireshield-dashboard -config /etc/wireshield/dashboard-config.json
 Restart=on-failure
 RestartSec=5s

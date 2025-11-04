@@ -13,6 +13,7 @@ Config: {{.config_path}}</pre>
     {{end}}
   {{end}}
   <form method="post" action="/clients/new">
+    <input type="hidden" name="csrf" value="{{.CSRF}}" />
     <label>Name <input name="name" required pattern="[A-Za-z0-9_-]{1,15}" /></label>
     <label>Expires in days (optional) <input type="number" name="days" min="1" /></label>
     <button type="submit">Create</button>

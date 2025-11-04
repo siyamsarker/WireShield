@@ -45,7 +45,7 @@ func main() {
 		log.Fatalf("failed to ensure config dir: %v", err)
 	}
 
-	srv := server.New(cfg)
+	srv := server.New(cfg, *cfgPath)
 	log.Printf("WireShield Dashboard listening on http://%s", cfg.Listen)
 	log.Fatal(srv.Start())
 }

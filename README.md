@@ -323,6 +323,24 @@ Notes:
 - Keep the service bound to localhost and terminate TLS at the proxy.
 - The dashboard shells out to the script’s programmatic API (ws_* functions) and requires root.
 
+### Manage admin password
+
+Use the Settings page in the dashboard to change the current admin’s password. This updates the bcrypt hash in `dashboard-config.json`. A minimum length of 8 characters is enforced, and session cookies expire after 24 hours by default.
+
+Non-interactive initialization/reset can also be done from the CLI (overwrites existing admin list):
+
+```bash
+sudo /usr/local/bin/wireshield-dashboard \
+  -init-admin <username> \
+  -init-admin-pass <password> \
+  -config /etc/wireshield/dashboard-config.json
+sudo systemctl restart wireshield-dashboard
+```
+
+### QR codes for mobile onboarding
+
+From the Clients page, click “QR” next to a client to view a QR code encoding the full WireGuard client configuration. Scan it in the WireGuard mobile app to import.
+
 ### Configuration (dashboard)
 
 Dashboard configuration lives at `/etc/wireshield/dashboard-config.json`:
