@@ -75,10 +75,10 @@ Web Dashboard (GUI)
 
 - The installer is a single flow that covers both the CLI and the GUI. During setup, you'll be prompted to enable the dashboard (default: Yes).
 - All dependencies are installed automatically; if Go isn't available, the installer will fetch and install it to build the dashboard.
-- You can also install or reinstall the dashboard later (no clone required) with:
+- You can also install or reinstall the dashboard later by re-running the main script and accepting the dashboard prompt:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/install-dashboard.sh | sudo bash
+sudo ./wireshield.sh
 ```
 
 The dashboard binds to 127.0.0.1:51821 by default; expose it via your HTTPS reverse proxy.
@@ -90,19 +90,14 @@ If you prefer working from a full checkout (or want to build from source):
 ```bash
 git clone https://github.com/siyamsarker/WireShield.git
 cd WireShield
-# Install CLI
 sudo ./wireshield.sh
-# Install dashboard (from repo)
-sudo ./scripts/install-dashboard.sh
 ```
 
 ## Project structure
 
 ```
 WireShield/
-├─ wireshield.sh                      # Main Bash installer/manager (CLI)
-├─ scripts/
-│  └─ install-dashboard.sh            # Builds and installs the web dashboard and its systemd unit
+├─ wireshield.sh                      # Main Bash installer/manager (CLI + dashboard installer)
 └─ dashboard/                         # Web dashboard (Go 1.22)
   ├─ go.mod, go.sum
   ├─ cmd/
@@ -138,7 +133,7 @@ Naming conventions:
 
 - Go packages and folders: all lowercase, short, no underscores (standard Go style)
 - Templates and static assets: kebab- or single-word names for clarity (e.g., `add.tmpl`)
-- Shell scripts: kebab-case, executable with a clear verb-noun (e.g., `install-dashboard.sh`)
+- Shell scripts: kebab-case, executable with a clear verb-noun; single entrypoint is `wireshield.sh`
 
 
 ## Usage

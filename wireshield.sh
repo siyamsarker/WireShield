@@ -992,15 +992,115 @@ function _ws_offer_dashboard_install() {
 	read -rp "Install WireShield Web Dashboard (binds to 127.0.0.1:51821)? [Y/n]: " -e DASH
 	DASH=${DASH:-Y}
 	if [[ ${DASH} =~ ^[Yy]$ ]]; then
-		local repo_root script_dir
-		script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-		repo_root="${script_dir}"
-		if [[ -x "${repo_root}/scripts/install-dashboard.sh" ]]; then
-			bash "${repo_root}/scripts/install-dashboard.sh"
-		else
-			echo -e "${ORANGE}Dashboard installer not found. Please run scripts/install-dashboard.sh manually.${NC}"
+		_ws_install_dashboard_inline
+	fi
+}
+
+# Inline dashboard installer (Linux + systemd). Builds Go binary if needed, writes config, and sets up systemd.
+function _ws_install_dashboard_inline() {
+	set -e
+	local BIN_NAME PREFIX CONFIG_DIR SERVICE_FILE REPO_ROOT OS ARCH
+	BIN_NAME=wireshield-dashboard
+	PREFIX=/usr/local/bin
+	CONFIG_DIR=/etc/wireshield
+	SERVICE_FILE=/etc/systemd/system/wireshield-dashboard.service
+	REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. 2>/dev/null || cd "$(dirname "${BASH_SOURCE[0]}")"; pwd)
+
+	# Detect platform (Linux expected)
+	OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+	if [[ "$OS" != "linux" ]]; then
+		echo -e "${RED}The web dashboard install is supported on Linux servers (systemd) only.${NC}"
+		return 1
+	fi
+
+	# Ensure Go toolchain
+	if ! command -v go >/dev/null 2>&1; then
+		echo "Installing Go toolchain..."
+		local PM=""
+		if command -v apt-get >/dev/null 2>&1; then PM=apt-get; fi
+		if command -v dnf >/dev/null 2>&1; then PM=dnf; fi
+		if command -v yum >/dev/null 2>&1; then PM=yum; fi
+		if command -v pacman >/dev/null 2>&1; then PM=pacman; fi
+		if command -v apk >/dev/null 2>&1; then PM=apk; fi
+		case "$PM" in
+			apt-get) apt-get update -y && apt-get install -y golang || true;;
+			dnf) dnf install -y golang || true;;
+			yum) yum install -y golang || true;;
+			pacman) pacman -Sy --noconfirm go || true;;
+			apk) apk add --no-cache go || true;;
+		esac
+		if ! command -v go >/dev/null 2>&1; then
+			# Fallback to official tarball (Linux only)
+			ARCH=$(uname -m)
+			case "$ARCH" in
+				x86_64|amd64) ARCH=amd64;;
+				aarch64|arm64) ARCH=arm64;;
+				i386|i686) ARCH=386;;
+				*) echo -e "${RED}Unsupported ARCH for Go tarball: $ARCH${NC}"; return 1;;
+			esac
+			local GOV TAR url tmpdir
+			GOV=1.22.0
+			TAR="go${GOV}.linux-${ARCH}.tar.gz"
+			url="https://go.dev/dl/${TAR}"
+			tmpdir=$(mktemp -d)
+			trap 'rm -rf "$tmpdir"' RETURN
+			echo "Downloading Go: $url"
+			curl -fsSL "$url" -o "$tmpdir/go.tgz"
+			rm -rf /usr/local/go
+			tar -C /usr/local -xzf "$tmpdir/go.tgz"
+			export PATH="/usr/local/go/bin:$PATH"
 		fi
 	fi
+
+	echo "Building dashboard from source..."
+	(cd "$REPO_ROOT/dashboard" && go build -o "$BIN_NAME" ./cmd/wireshield-dashboard)
+	install -m 0755 "$REPO_ROOT/dashboard/$BIN_NAME" "$PREFIX/$BIN_NAME"
+
+	mkdir -p "$CONFIG_DIR"
+	if [[ ! -f "$CONFIG_DIR/dashboard-config.json" ]]; then
+		echo "Initializing dashboard config..."
+		local randpw
+		randpw=$(openssl rand -hex 12 2>/dev/null || head -c 12 /dev/urandom | hexdump -v -e '/1 "%02x"')
+		"$PREFIX/$BIN_NAME" -init-admin admin -init-admin-pass "$randpw" -config "$CONFIG_DIR/dashboard-config.json"
+		echo "Config written to $CONFIG_DIR/dashboard-config.json (default admin user: admin with random password)."
+	fi
+
+	# Resolve script path for dashboard integration
+	local WS_SCRIPT_PATH
+	WS_SCRIPT_PATH="${REPO_ROOT}/wireshield.sh"
+	if [[ ! -f "$WS_SCRIPT_PATH" ]]; then
+		if [[ -f "/root/wireshield.sh" ]]; then WS_SCRIPT_PATH="/root/wireshield.sh"; fi
+		if [[ -f "/usr/local/bin/wireshield.sh" ]]; then WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"; fi
+	fi
+
+	cat > "$SERVICE_FILE" <<UNIT
+[Unit]
+Description=WireShield Web Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+Environment=WIRE_SHIELD_SCRIPT=$WS_SCRIPT_PATH
+ExecStart=/usr/local/bin/wireshield-dashboard -config /etc/wireshield/dashboard-config.json
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+	systemctl daemon-reload
+	systemctl enable --now wireshield-dashboard
+
+	echo "Dashboard started on http://127.0.0.1:51821 (bind can be changed in config)."
 }
 
 function _ws_summary() {
