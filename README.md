@@ -71,10 +71,11 @@ sudo ./wireshield.sh
 
 You’ll be asked a few questions (address/hostname, public NIC, wg interface, IPs, port, DNS, AllowedIPs). A summary is shown at the end—confirm to proceed. WireShield will install WireGuard, configure the server, enable forwarding, set firewall rules, and create your first client.
 
-Optional: install the Web Dashboard (GUI)
+Web Dashboard (GUI)
 
-- If the Go toolchain is present on the host, the installer will offer to build and enable the dashboard automatically.
-- You can also install it later (no clone required) with:
+- The installer is a single flow that covers both the CLI and the GUI. During setup, you'll be prompted to enable the dashboard (default: Yes).
+- All dependencies are installed automatically; if Go isn't available, the installer will fetch and install it to build the dashboard.
+- You can also install or reinstall the dashboard later (no clone required) with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/install-dashboard.sh | sudo bash
@@ -315,16 +316,14 @@ During install, if the Go toolchain is detected, you’ll be prompted to install
 sudo ./scripts/install-dashboard.sh
 ```
 
-The installer will (no-Go required):
+The installer will:
+- Ensure dependencies (including Go if missing)
 - Build and install `/usr/local/bin/wireshield-dashboard`
 - Create `/etc/wireshield/dashboard-config.json` with a random admin password
 - Install and start `wireshield-dashboard.service`
 
 Notes:
-- The installer first tries to download a prebuilt binary from GitHub Releases matching your platform. If a prebuilt is not available, it falls back to building from source when Go is present. If neither is possible, it prints guidance.
-
-Releases:
-- Prebuilt binaries are published automatically when a tag like `v0.1.0` is pushed. If you see a 404 from the installer, it likely means no release exists yet for your platform/version. In that case either install Go and rerun the installer, or ask the maintainer to publish a release tag.
+- If your distro Go package is too old, the installer fetches a suitable tarball from go.dev and installs it under `/usr/local/go` for the build.
 
 Then access it via your reverse proxy at `https://your-domain/` or locally `http://127.0.0.1:51821`.
 

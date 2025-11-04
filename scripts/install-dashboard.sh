@@ -6,7 +6,6 @@ PREFIX=/usr/local/bin
 CONFIG_DIR=/etc/wireshield
 SERVICE_FILE=/etc/systemd/system/wireshield-dashboard.service
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OWNER_REPO="siyamsarker/WireShield"
 
 detect_platform() {
   OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -20,71 +19,67 @@ detect_platform() {
   esac
 }
 
-download_prebuilt() {
-  if ! command -v curl >/dev/null 2>&1; then
-    return 1
-  fi
+install_go() {
+  if command -v go >/dev/null 2>&1; then return 0; fi
+  echo "Installing Go toolchain..."
+  # Try distro package manager first
+  if [[ -f /etc/os-release ]]; then . /etc/os-release; fi
+  ID_LIKE=${ID_LIKE:-}
+  ID=${ID:-}
+  PM=""
+  if command -v apt-get >/dev/null 2>&1; then PM=apt-get; fi
+  if command -v dnf >/dev/null 2>&1; then PM=dnf; fi
+  if command -v yum >/dev/null 2>&1; then PM=yum; fi
+  if command -v pacman >/dev/null 2>&1; then PM=pacman; fi
+  if command -v apk >/dev/null 2>&1; then PM=apk; fi
+  case "$PM" in
+    apt-get)
+      sudo apt-get update -y && sudo apt-get install -y golang || true;;
+    dnf)
+      sudo dnf install -y golang || true;;
+    yum)
+      sudo yum install -y golang || true;;
+    pacman)
+      sudo pacman -Sy --noconfirm go || true;;
+    apk)
+      sudo apk add --no-cache go || true;;
+  esac
+  if command -v go >/dev/null 2>&1; then return 0; fi
+  # Fallback: install from official tarball (linux only)
   detect_platform
-  # Expect assets named with OS/ARCH; try to discover via GitHub API
-  echo "Attempting to download prebuilt dashboard binary (${OS}/${ARCH})..."
-  api_url="https://api.github.com/repos/${OWNER_REPO}/releases/latest"
-  json=$(curl -fsSL "$api_url" || true)
-  if [[ -z "$json" ]]; then
+  if [[ "$OS" != "linux" ]]; then
+    echo "Unsupported OS for automatic Go install via tarball: $OS" >&2
     return 1
   fi
-  # Grep download URLs; prefer matches containing both OS and ARCH
-  mapfile -t urls < <(printf "%s\n" "$json" | grep -oE '"browser_download_url"\s*:\s*"[^"]+"' | sed -E 's/.*:\s*"([^"]+)"/\1/' )
-  candidate=""
-  for u in "${urls[@]}"; do
-    if [[ "$u" == *"${BIN_NAME}"* && "$u" == *"${OS}"* && "$u" == *"${ARCH}"* ]]; then
-      candidate="$u"; break
-    fi
-  done
-  # Fallback: first url containing binary name
-  if [[ -z "$candidate" ]]; then
-    for u in "${urls[@]}"; do
-      if [[ "$u" == *"${BIN_NAME}"* ]]; then candidate="$u"; break; fi
-    done
-  fi
-  [[ -z "$candidate" ]] && return 1
-
+  GOV="1.22.0"
+  case "$ARCH" in
+    amd64) TAR="go${GOV}.linux-amd64.tar.gz";;
+    arm64) TAR="go${GOV}.linux-arm64.tar.gz";;
+    386) TAR="go${GOV}.linux-386.tar.gz";;
+    armv6|armv7) TAR="go${GOV}.linux-armv6l.tar.gz";;
+    *) echo "Unsupported ARCH for Go tarball: $ARCH"; return 1;;
+  esac
+  url="https://go.dev/dl/${TAR}"
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' EXIT
-  file="$tmpdir/asset"
-  echo "Downloading: $candidate"
-  curl -fsSL "$candidate" -o "$file"
-  # If it's an archive, try to extract; else assume it's the binary
-  if file "$file" 2>/dev/null | grep -qiE 'gzip|tar'; then
-    tar -xzf "$file" -C "$tmpdir" || true
-    # find binary
-    found=$(find "$tmpdir" -type f -name "$BIN_NAME" | head -n1 || true)
-    if [[ -n "$found" ]]; then file="$found"; fi
-  fi
-  if [[ ! -s "$file" ]]; then
-    return 1
-  fi
-  install -m 0755 "$file" "$PREFIX/$BIN_NAME"
+  echo "Downloading Go: $url"
+  curl -fsSL "$url" -o "$tmpdir/go.tgz"
+  sudo rm -rf /usr/local/go
+  sudo tar -C /usr/local -xzf "$tmpdir/go.tgz"
+  export PATH="/usr/local/go/bin:$PATH"
 }
 
 build_from_source() {
   if ! command -v go >/dev/null 2>&1; then
-    return 1
+    install_go || return 1
   fi
   echo "Building dashboard from source..."
   (cd "$REPO_ROOT/dashboard" && go build -o "$BIN_NAME" ./cmd/wireshield-dashboard)
   install -m 0755 "$REPO_ROOT/dashboard/$BIN_NAME" "$PREFIX/$BIN_NAME"
 }
 
-# Try prebuilt first; fallback to build if Go is present
-if ! download_prebuilt; then
-  if ! build_from_source; then
-    echo "Failed to install dashboard: no prebuilt binary found and Go toolchain not available." >&2
-    echo "Options:" >&2
-    echo "  - Install Go >=1.22 and re-run this installer" >&2
-    echo "  - Or place a prebuilt '${BIN_NAME}' at ${PREFIX}/${BIN_NAME} and re-run" >&2
-    exit 1
-  fi
-fi
+# Always build from source; ensure Go is installed automatically
+build_from_source || { echo "Failed to install dashboard." >&2; exit 1; }
 
 mkdir -p "$CONFIG_DIR"
 if [[ ! -f "$CONFIG_DIR/dashboard-config.json" ]]; then
