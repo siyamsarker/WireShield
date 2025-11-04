@@ -3,6 +3,7 @@ package server
 import (
 	"embed"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -14,8 +15,8 @@ import (
 	"github.com/siyamsarker/WireShield/dashboard/internal/wireguard"
 )
 
-//go:embed templates/*.tmpl
-var templatesFS embed.FS
+//go:embed templates/*.tmpl static/*
+var uiFS embed.FS
 
 type Server struct {
 	cfg   *config.Config
@@ -39,7 +40,12 @@ func New(cfg *config.Config) *Server {
 	s.wg = wireguard.NewService(script)
 
 	// templates
-	s.tmpls = template.Must(template.New("").ParseFS(templatesFS, "templates/*.tmpl"))
+	s.tmpls = template.Must(template.New("").ParseFS(uiFS, "templates/*.tmpl"))
+
+	// static files (embedded)
+	if sub, err := fs.Sub(uiFS, "static"); err == nil {
+		s.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
+	}
 
 	s.routes()
 	return s

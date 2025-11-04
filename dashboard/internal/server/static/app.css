@@ -1,0 +1,5 @@
+/* WireShield minimal overrides */
+:root { --ws-accent: #0ea5e9; }
+a { color: var(--ws-accent); }
+pre.mono { background: #0b0b0b; color: #e5e7eb; padding: .75rem; border-radius: .5rem; overflow: auto; }
+header nav ul li strong { color: var(--ws-accent); }
