@@ -1054,8 +1054,25 @@ function _ws_install_dashboard_inline() {
 	fi
 
 	echo "Building dashboard from source..."
-	(cd "$REPO_ROOT" && go build -o "$BIN_NAME" ./cmd/wireshield-dashboard)
-	install -m 0755 "$REPO_ROOT/$BIN_NAME" "$PREFIX/$BIN_NAME"
+	
+	# Check if go.mod exists in REPO_ROOT (cloned repo scenario)
+	if [[ ! -f "$REPO_ROOT/go.mod" ]]; then
+		# Standalone script scenario: clone the repo to build
+		echo "Cloning WireShield repository to build dashboard..."
+		local TEMP_CLONE
+		TEMP_CLONE=$(mktemp -d)
+		trap 'rm -rf "$TEMP_CLONE"' RETURN
+		git clone --depth=1 https://github.com/siyamsarker/WireShield.git "$TEMP_CLONE" || {
+			echo -e "${RED}Failed to clone repository. Ensure git is installed.${NC}"
+			return 1
+		}
+		(cd "$TEMP_CLONE" && go build -o "$BIN_NAME" ./cmd/wireshield-dashboard)
+		install -m 0755 "$TEMP_CLONE/$BIN_NAME" "$PREFIX/$BIN_NAME"
+	else
+		# Cloned repo scenario: build directly
+		(cd "$REPO_ROOT" && go build -o "$BIN_NAME" ./cmd/wireshield-dashboard)
+		install -m 0755 "$REPO_ROOT/$BIN_NAME" "$PREFIX/$BIN_NAME"
+	fi
 
 	mkdir -p "$CONFIG_DIR"
 	if [[ ! -f "$CONFIG_DIR/dashboard-config.json" ]]; then
