@@ -7,6 +7,7 @@
     <button type="submit" class="secondary">Check expired</button>
   </form>
   {{if .Clients}}
+  <div class="table-responsive">
   <table>
     <thead><tr><th>Name</th><th>Expires</th><th>Actions</th></tr></thead>
     <tbody>
@@ -15,18 +16,21 @@
         <td class="mono">{{.Name}}</td>
         <td>{{if .Expires}}{{.Expires}}{{else}}—{{end}}</td>
         <td>
-          <a href="/clients/config?name={{.Name}}">Download</a>
-          <a href="/clients/qr?name={{.Name}}">QR</a>
-          <form method="post" action="/clients/revoke" style="display:inline" onsubmit="return confirm('Revoke {{.Name}}?')">
+          <div class="actions">
+          <a href="/clients/config?name={{.Name}}" aria-label="Download config for {{.Name}}">Download</a>
+          <a href="/clients/qr?name={{.Name}}" aria-label="View QR for {{.Name}}">QR</a>
+          <form method="post" action="/clients/revoke" onsubmit="return confirm('Revoke {{.Name}}?')">
             <input type="hidden" name="csrf" value="{{$.CSRF}}" />
             <input type="hidden" name="name" value="{{.Name}}" />
             <button type="submit" class="secondary">Revoke</button>
           </form>
+          </div>
         </td>
       </tr>
       {{end}}
     </tbody>
   </table>
+  </div>
   {{else}}
     <p>No clients yet.</p>
   {{end}}
