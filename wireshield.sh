@@ -1004,7 +1004,8 @@ function _ws_install_dashboard_inline() {
 	PREFIX=/usr/local/bin
 	CONFIG_DIR=/etc/wireshield
 	SERVICE_FILE=/etc/systemd/system/wireshield-dashboard.service
-	REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. 2>/dev/null || cd "$(dirname "${BASH_SOURCE[0]}")"; pwd)
+	# repo root is the directory containing this script
+	REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 	# Detect platform (Linux expected)
 	OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -1053,8 +1054,8 @@ function _ws_install_dashboard_inline() {
 	fi
 
 	echo "Building dashboard from source..."
-	(cd "$REPO_ROOT/dashboard" && go build -o "$BIN_NAME" ./cmd/wireshield-dashboard)
-	install -m 0755 "$REPO_ROOT/dashboard/$BIN_NAME" "$PREFIX/$BIN_NAME"
+	(cd "$REPO_ROOT" && go build -o "$BIN_NAME" ./cmd/wireshield-dashboard)
+	install -m 0755 "$REPO_ROOT/$BIN_NAME" "$PREFIX/$BIN_NAME"
 
 	mkdir -p "$CONFIG_DIR"
 	if [[ ! -f "$CONFIG_DIR/dashboard-config.json" ]]; then

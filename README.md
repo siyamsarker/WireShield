@@ -100,34 +100,33 @@ sudo ./wireshield.sh
 ```
 WireShield/
 ├─ wireshield.sh                      # Main Bash installer/manager (CLI + dashboard installer)
-└─ dashboard/                         # Web dashboard (Go 1.22)
-  ├─ go.mod, go.sum
-  ├─ cmd/
-  │  └─ wireshield-dashboard/
-  │     └─ main.go                  # Entry point for the dashboard binary
-  ├─ config/
-  │  └─ config.go                   # JSON config load/save and helpers
-  └─ internal/
-    ├─ auth/                       # Cookie sessions, CSRF, flash messages
-    │  └─ auth.go
-    ├─ server/                     # HTTP routes, templates, static assets (embedded)
-    │  ├─ server.go
-    │  ├─ templates/
-    │  │  ├─ add.tmpl
-    │  │  ├─ backup.tmpl
-    │  │  ├─ clients.tmpl
-    │  │  ├─ layout.tmpl
-    │  │  ├─ login.tmpl
-    │  │  ├─ password.tmpl
-    │  │  ├─ qr.tmpl
-    │  │  ├─ status.tmpl
-    │  │  └─ uninstall.tmpl
-    │  └─ static/
-    │     ├─ app.css
-    │     ├─ copy.js
-    │     ├─ favicon.svg
-    │     └─ theme.js
-    └─ wireguard/                  # Thin wrapper calling Bash script functions
+├─ go.mod, go.sum                   # Go module for the dashboard (root module)
+├─ cmd/
+│  └─ wireshield-dashboard/
+│     └─ main.go                    # Entry point for the dashboard binary
+├─ config/
+│  └─ config.go                     # JSON config load/save and helpers
+└─ internal/
+   ├─ auth/                         # Cookie sessions, CSRF, flash messages
+   │  └─ auth.go
+   ├─ server/                       # HTTP routes, templates, static assets (embedded)
+   │  ├─ server.go
+   │  ├─ templates/
+   │  │  ├─ add.tmpl
+   │  │  ├─ backup.tmpl
+   │  │  ├─ clients.tmpl
+   │  │  ├─ layout.tmpl
+   │  │  ├─ login.tmpl
+   │  │  ├─ password.tmpl
+   │  │  ├─ qr.tmpl
+   │  │  ├─ status.tmpl
+   │  │  └─ uninstall.tmpl
+   │  └─ static/
+   │     ├─ app.css
+   │     ├─ copy.js
+   │     ├─ favicon.svg
+   │     └─ theme.js
+   └─ wireguard/                    # Thin wrapper calling Bash script functions
       └─ service.go
 ```
 

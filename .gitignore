@@ -1,6 +1,6 @@
 # Build artifacts
-/dashboard/wireshield-dashboard
-/dashboard/wireshield-dashboard.exe
+/wireshield-dashboard
+/wireshield-dashboard.exe
 **/*.log
 **/*.tmp
 .DS_Store

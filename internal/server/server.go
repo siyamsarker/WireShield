@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/siyamsarker/WireShield/dashboard/config"
-	"github.com/siyamsarker/WireShield/dashboard/internal/auth"
-	"github.com/siyamsarker/WireShield/dashboard/internal/wireguard"
+	"github.com/siyamsarker/WireShield/config"
+	"github.com/siyamsarker/WireShield/internal/auth"
+	"github.com/siyamsarker/WireShield/internal/wireguard"
 	"github.com/skip2/go-qrcode"
 )
 

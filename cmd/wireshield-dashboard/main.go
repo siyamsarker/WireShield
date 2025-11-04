@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/siyamsarker/WireShield/dashboard/config"
-	"github.com/siyamsarker/WireShield/dashboard/internal/server"
+	"github.com/siyamsarker/WireShield/config"
+	"github.com/siyamsarker/WireShield/internal/server"
 )
 
 func main() {
