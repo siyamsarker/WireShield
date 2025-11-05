@@ -539,6 +539,7 @@ location / {
 - 🔑 Change the default admin password right after first login
 - 🔒 Keep the service bound to localhost and terminate TLS at the proxy
 - 🛡️ The dashboard shells out to the script's programmatic API (`ws_*` functions) and requires root
+- 🔐 **HTTPS support**: Cookies automatically detect HTTP/HTTPS via `X-Forwarded-Proto` header (set by reverse proxy) and adjust the Secure flag accordingly - works seamlessly in both modes
 
 ### 🔑 Manage admin password
 
