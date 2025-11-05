@@ -623,7 +623,18 @@ The installer now automatically copies the script to `/root/wireshield.sh` durin
 ### 🔄 Upgrade
 
 - **Core** (bash installer/CLI): re-download `wireshield.sh` (or pull latest from git) and run it again; settings are preserved in `/etc/wireguard/params` and the interface config.
-- **Dashboard**: re-run `./wireshield.sh` and accept the dashboard prompt; it will rebuild and redeploy the binary and restart the service.
+- **Dashboard**:
+  - Recommended: re-run `./wireshield.sh` and accept the dashboard prompt; it will rebuild and redeploy the binary and restart the service.
+  - Ops one-liner (production servers):
+
+    ```bash
+    sudo su -
+    wget -O /tmp/upgrade-dashboard.sh https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/upgrade-dashboard.sh
+    chmod +x /tmp/upgrade-dashboard.sh
+    /tmp/upgrade-dashboard.sh
+    ```
+
+    This performs a safe in-place upgrade: pulls latest code, rebuilds `/usr/local/bin/wireshield-dashboard`, ensures `/root/wireshield.sh` exists, updates `WIRE_SHIELD_SCRIPT` in systemd if needed, and restarts the service.
 
 ## 🗑️ Uninstall
 
