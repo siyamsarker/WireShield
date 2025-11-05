@@ -1,39 +1,90 @@
 {{define "content"}}
-<section>
-  <h2>Clients</h2>
-  <form method="post" action="/clients/check-expired" style="display:flex; gap:1rem; align-items:center">
-    <a href="/clients/new">+ Add client</a>
-    <input type="hidden" name="csrf" value="{{.CSRF}}" />
-    <button type="submit" class="secondary">Check expired</button>
-  </form>
+<div class="page-header">
+  <h2 class="page-title">Clients</h2>
+  <p class="page-subtitle">Manage your WireGuard VPN clients</p>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Active Clients</div>
+    <div style="display: flex; gap: 0.75rem;">
+      <form method="post" action="/clients/check-expired" style="display: inline;">
+        <input type="hidden" name="csrf" value="{{.CSRF}}" />
+        <button type="submit" class="btn btn-secondary btn-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          Check Expired
+        </button>
+      </form>
+      <a href="/clients/new" class="btn btn-primary btn-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        Add Client
+      </a>
+    </div>
+  </div>
+  
   {{if .Clients}}
-  <div class="table-responsive">
-  <table>
-    <thead><tr><th>Name</th><th>Expires</th><th>Actions</th></tr></thead>
-    <tbody>
-      {{range .Clients}}
-      <tr>
-        <td class="mono">{{.Name}}</td>
-        <td>{{if .Expires}}{{.Expires}}{{else}}—{{end}}</td>
-        <td>
-          <div class="actions">
-          <a href="/clients/config?name={{.Name}}" aria-label="Download config for {{.Name}}">Download</a>
-          <a href="/clients/qr?name={{.Name}}" aria-label="View QR for {{.Name}}">QR</a>
-          <form method="post" action="/clients/revoke" onsubmit="return confirm('Revoke {{.Name}}?')">
-            <input type="hidden" name="csrf" value="{{$.CSRF}}" />
-            <input type="hidden" name="name" value="{{.Name}}" />
-            <button type="submit" class="secondary">Revoke</button>
-          </form>
-          </div>
-        </td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Client Name</th>
+          <th>Expiration</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Clients}}
+        <tr>
+          <td>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              <span class="font-mono fw-bold">{{.Name}}</span>
+            </div>
+          </td>
+          <td>
+            {{if .Expires}}
+              <span class="badge badge-warning">{{.Expires}}</span>
+            {{else}}
+              <span class="badge badge-success">No expiration</span>
+            {{end}}
+          </td>
+          <td>
+            <span class="badge badge-success">Active</span>
+          </td>
+          <td>
+            <div class="table-actions">
+              <a href="/clients/config?name={{.Name}}" class="btn btn-outline btn-sm" title="Download Config">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              </a>
+              <a href="/clients/qr?name={{.Name}}" class="btn btn-outline btn-sm" title="View QR Code">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              </a>
+              <form method="post" action="/clients/revoke" onsubmit="return confirm('Are you sure you want to revoke access for {{.Name}}?')" style="display: inline;">
+                <input type="hidden" name="csrf" value="{{$.CSRF}}" />
+                <input type="hidden" name="name" value="{{.Name}}" />
+                <button type="submit" class="btn btn-danger btn-sm" title="Revoke Client">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
   </div>
   {{else}}
-    <p>No clients yet.</p>
+  <div class="empty-state">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+    <h3>No clients yet</h3>
+    <p>Get started by adding your first VPN client</p>
+    <a href="/clients/new" class="btn btn-primary mt-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Add Your First Client
+    </a>
+  </div>
   {{end}}
-</section>
+</div>
 {{end}}
 {{template "layout" .}}

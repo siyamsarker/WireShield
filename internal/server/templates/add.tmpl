@@ -1,29 +1,92 @@
 {{define "content"}}
-<section>
-  <h2>Add client</h2>
-  {{if .Error}}<article role="alert">{{.Error}}</article>{{end}}
-  {{if .Success}}
-    <article>Client created successfully.</article>
-    {{with .Result}}
-    <pre class="mono">Name: {{.name}}
+<div class="page-header">
+  <h2 class="page-title">Add New Client</h2>
+  <p class="page-subtitle">Create a new VPN client configuration</p>
+</div>
+
+{{if .Success}}
+<div class="card">
+  <div class="alert alert-success">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <div>Client created successfully!</div>
+  </div>
+  
+  {{with .Result}}
+  <div style="margin-top: 1.5rem;">
+    <h3 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 1rem; color: var(--gray-900);">Client Details</h3>
+    <div class="code-block">Name: {{.name}}
 IPv4: {{.ipv4}}
 IPv6: {{.ipv6}}
-Expires: {{if .expires}}{{.expires}}{{else}}none{{end}}
-Config: {{.config_path}}</pre>
-    {{end}}
+Expires: {{if .expires}}{{.expires}}{{else}}No expiration{{end}}
+Config: {{.config_path}}</div>
+  </div>
+  
+  <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem;">
+    <a href="/clients/qr?name={{.name}}" class="btn btn-primary">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+      View QR Code
+    </a>
+    <a href="/clients/config?name={{.name}}" class="btn btn-secondary">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      Download Config
+    </a>
+    <a href="/clients" class="btn btn-outline">Back to Clients</a>
+  </div>
   {{end}}
+</div>
+{{else}}
+
+{{if .Error}}
+<div class="alert alert-error">
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+  <div>{{.Error}}</div>
+</div>
+{{end}}
+
+<div class="card">
   <form method="post" action="/clients/new">
     <input type="hidden" name="csrf" value="{{.CSRF}}" />
-    <label>Name
-      <input name="name" required pattern="[A-Za-z0-9_-]{1,15}" title="Letters, numbers, underscore or dash; max 15" placeholder="e.g. alice-phone" autocomplete="off" />
-      <small class="muted">Allowed: letters, numbers, _ or - (max 15)</small>
-    </label>
-    <label>Expires in days (optional)
-      <input type="number" name="days" min="1" inputmode="numeric" placeholder="e.g. 30" />
-      <small class="muted">Leave blank for no expiration</small>
-    </label>
-    <button type="submit">Create</button>
+    
+    <div class="form-group">
+      <label for="name">
+        Client Name <span class="required">*</span>
+      </label>
+      <input 
+        type="text" 
+        id="name" 
+        name="name" 
+        required 
+        pattern="[A-Za-z0-9_-]{1,15}" 
+        title="Letters, numbers, underscore or dash; max 15 characters" 
+        placeholder="e.g. alice-phone" 
+        autocomplete="off" 
+      />
+      <div class="input-hint">Allowed: letters, numbers, underscore (_) or dash (-). Maximum 15 characters.</div>
+    </div>
+    
+    <div class="form-group">
+      <label for="days">Expiration (optional)</label>
+      <input 
+        type="number" 
+        id="days" 
+        name="days" 
+        min="1" 
+        inputmode="numeric" 
+        placeholder="e.g. 30" 
+      />
+      <div class="input-hint">Number of days until this client expires. Leave blank for no expiration.</div>
+    </div>
+    
+    <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+      <button type="submit" class="btn btn-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        Create Client
+      </button>
+      <a href="/clients" class="btn btn-outline">Cancel</a>
+    </div>
   </form>
-</section>
+</div>
+
+{{end}}
 {{end}}
 {{template "layout" .}}

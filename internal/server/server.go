@@ -151,7 +151,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	clients, _ := s.wg.ListClients()
-	s.render(w, r, "clients.tmpl", map[string]any{"Clients": clients, "CSRF": s.sess.EnsureCSRF(w, r)})
+	s.render(w, r, "clients.tmpl", map[string]any{"Clients": clients, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "dashboard", "PageTitle": "Dashboard"})
 }
 
 func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +160,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.render(w, r, "clients.tmpl", map[string]any{"Clients": clients, "CSRF": s.sess.EnsureCSRF(w, r)})
+	s.render(w, r, "clients.tmpl", map[string]any{"Clients": clients, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "clients", "PageTitle": "Clients"})
 }
 
 func (s *Server) handleAddClient(w http.ResponseWriter, r *http.Request) {
@@ -179,13 +179,13 @@ func (s *Server) handleAddClient(w http.ResponseWriter, r *http.Request) {
 		}
 		res, err := s.wg.AddClient(name, days)
 		if err != nil {
-			s.render(w, r, "add.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r)})
+			s.render(w, r, "add.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r), "Page": "add-client", "PageTitle": "Add Client"})
 			return
 		}
-		s.render(w, r, "add.tmpl", map[string]any{"Success": true, "Result": res, "CSRF": s.sess.EnsureCSRF(w, r)})
+		s.render(w, r, "add.tmpl", map[string]any{"Success": true, "Result": res, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "add-client", "PageTitle": "Add Client"})
 		return
 	}
-	s.render(w, r, "add.tmpl", map[string]any{"CSRF": s.sess.EnsureCSRF(w, r)})
+	s.render(w, r, "add.tmpl", map[string]any{"CSRF": s.sess.EnsureCSRF(w, r), "Page": "add-client", "PageTitle": "Add Client"})
 }
 
 func (s *Server) handleRevokeClient(w http.ResponseWriter, r *http.Request) {
@@ -240,10 +240,12 @@ func (s *Server) handleClientQR(w http.ResponseWriter, r *http.Request) {
 	}
 	// Render page embedding image served from /clients/qr.png
 	data := map[string]any{
-		"Name":   name,
-		"QRURL":  "/clients/qr.png?name=" + name,
-		"Config": cfgText,
-		"CSRF":   s.sess.EnsureCSRF(w, r),
+		"Name":      name,
+		"QRURL":     "/clients/qr.png?name=" + name,
+		"Config":    cfgText,
+		"CSRF":      s.sess.EnsureCSRF(w, r),
+		"Page":      "clients",
+		"PageTitle": "QR Code",
 	}
 	s.render(w, r, "qr.tmpl", data)
 }
@@ -297,7 +299,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(500)
 	}
-	s.render(w, r, "status.tmpl", map[string]any{"Output": out, "CSRF": s.sess.EnsureCSRF(w, r)})
+	s.render(w, r, "status.tmpl", map[string]any{"Output": out, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "status", "PageTitle": "Server Status"})
 }
 
 func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
@@ -364,7 +366,7 @@ func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		s.render(w, r, "password.tmpl", map[string]any{"CSRF": s.sess.EnsureCSRF(w, r)})
+		s.render(w, r, "password.tmpl", map[string]any{"CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -379,11 +381,11 @@ func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 	npw := r.FormValue("new_password")
 	cpw := r.FormValue("confirm_password")
 	if npw == "" || len(npw) < 8 {
-		s.render(w, r, "password.tmpl", map[string]any{"Error": "New password must be at least 8 characters", "CSRF": s.sess.EnsureCSRF(w, r)})
+		s.render(w, r, "password.tmpl", map[string]any{"Error": "New password must be at least 8 characters", "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
 		return
 	}
 	if npw != cpw {
-		s.render(w, r, "password.tmpl", map[string]any{"Error": "Passwords do not match", "CSRF": s.sess.EnsureCSRF(w, r)})
+		s.render(w, r, "password.tmpl", map[string]any{"Error": "Passwords do not match", "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
 		return
 	}
 	// find admin
@@ -399,12 +401,12 @@ func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !config.CheckPassword(s.cfg.Admins[idx].PasswordHash, old) {
-		s.render(w, r, "password.tmpl", map[string]any{"Error": "Current password is incorrect", "CSRF": s.sess.EnsureCSRF(w, r)})
+		s.render(w, r, "password.tmpl", map[string]any{"Error": "Current password is incorrect", "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
 		return
 	}
 	hash, err := config.HashPassword(npw)
 	if err != nil {
-		s.render(w, r, "password.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r)})
+		s.render(w, r, "password.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
 		return
 	}
 	s.cfg.Admins[idx].PasswordHash = hash
@@ -413,10 +415,10 @@ func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := config.Save(s.cfgPath, s.cfg); err != nil {
-		s.render(w, r, "password.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r)})
+		s.render(w, r, "password.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
 		return
 	}
-	s.render(w, r, "password.tmpl", map[string]any{"Success": true, "CSRF": s.sess.EnsureCSRF(w, r)})
+	s.render(w, r, "password.tmpl", map[string]any{"Success": true, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data any) {

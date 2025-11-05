@@ -1,13 +1,49 @@
-{{define "content"}}
-<section class="narrow">
-  <h2>Sign in</h2>
-  {{if .Error}}<article role="alert">{{.Error}}</article>{{end}}
-  <form method="post" action="/login">
-    <input type="hidden" name="csrf" value="{{.CSRF}}" />
-    <label>Username <input name="username" required autocomplete="username" /></label>
-    <label>Password <input type="password" name="password" required autocomplete="current-password" minlength="8" /></label>
-    <button type="submit">Login</button>
-  </form>
-</section>
-{{end}}
-{{template "layout" .}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign In - WireShield</title>
+  <link rel="icon" href="/static/favicon.svg" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-container">
+      <div class="login-header">
+        <h1>🛡️ WireShield</h1>
+        <p>Sign in to your dashboard</p>
+      </div>
+      
+      {{if .Error}}
+      <div class="alert alert-error">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        <div>{{.Error}}</div>
+      </div>
+      {{end}}
+      
+      <form method="post" action="/login">
+        <input type="hidden" name="csrf" value="{{.CSRF}}" />
+        
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" required autocomplete="username" placeholder="Enter your username" />
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required autocomplete="current-password" minlength="8" placeholder="Enter your password" />
+        </div>
+        
+        <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+          Sign In
+        </button>
+      </form>
+      
+      <div style="margin-top: 1.5rem; text-align: center; font-size: 0.875rem; color: var(--gray-500);">
+        WireShield VPN Management Dashboard
+      </div>
+    </div>
+  </div>
+</body>
+</html>
