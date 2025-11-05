@@ -1138,7 +1138,15 @@ function _ws_install_dashboard_inline() {
 		local randpw
 		randpw=$(openssl rand -hex 12 2>/dev/null || head -c 12 /dev/urandom | hexdump -v -e '/1 "%02x"')
 		"$PREFIX/$BIN_NAME" -init-admin admin -init-admin-pass "$randpw" -config "$CONFIG_DIR/dashboard-config.json"
-		echo "Config written to $CONFIG_DIR/dashboard-config.json (default admin user: admin with random password)."
+		echo ""
+		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+		echo -e "${GREEN}Dashboard credentials:${NC}"
+		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+		echo -e "  Username: ${ORANGE}admin${NC}"
+		echo -e "  Password: ${ORANGE}${randpw}${NC}"
+		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+		echo -e "${YELLOW}⚠️  Save these credentials now! Change the password after first login.${NC}"
+		echo ""
 	fi
 
 	# Resolve script path for dashboard integration
