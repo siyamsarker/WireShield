@@ -166,7 +166,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	clients, _ := s.wg.ListClients()
-	
+
 	// Calculate dashboard stats
 	activeCount := 0
 	expiringCount := 0
@@ -178,10 +178,10 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 			activeCount++
 		}
 	}
-	
+
 	// Check if server is running
 	serverRunning := s.wg.IsRunning()
-	
+
 	s.render(w, r, "dashboard.tmpl", map[string]any{
 		"Clients":       clients,
 		"ActiveCount":   activeCount,
