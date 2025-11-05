@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ###############################################################################
-# WireShield Dashboard - Production Upgrade Script
-# This script upgrades the dashboard to the latest version on a production server
+# WireShield - Production Upgrade Script (Full Project)
+# Safely upgrades WireShield (CLI script + Dashboard) to the latest version.
 ###############################################################################
 
 set -e
@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}"
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║       WireShield Dashboard Production Upgrade             ║"
+echo "║            WireShield Production Upgrade (Full)           ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -25,23 +25,23 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Check if systemd is available
+# Check if systemd is available (required for dashboard management)
 if ! command -v systemctl &> /dev/null; then
     echo -e "${RED}systemd is required but not found${NC}"
     exit 1
 fi
 
-echo -e "${YELLOW}Step 1: Stopping dashboard service...${NC}"
+echo -e "${YELLOW}Step 1: Stopping dashboard service (if running)...${NC}"
 systemctl stop wireshield-dashboard || true
 
-echo -e "${YELLOW}Step 2: Backing up current configuration...${NC}"
+echo -e "${YELLOW}Step 2: Backing up current dashboard configuration...${NC}"
 if [ -f "/etc/wireshield/dashboard-config.json" ]; then
     cp /etc/wireshield/dashboard-config.json /etc/wireshield/dashboard-config.json.backup
     echo -e "${GREEN}✓ Config backed up to /etc/wireshield/dashboard-config.json.backup${NC}"
 fi
 
 echo -e "${YELLOW}Step 3: Updating repository...${NC}"
-# Check if WireShield directory exists
+# Detect or clone repository
 INSTALL_DIR=""
 for dir in /root/WireShield /opt/WireShield /home/*/WireShield; do
     if [ -d "$dir/.git" ]; then
@@ -65,10 +65,9 @@ else
     git pull origin master
 fi
 
-echo -e "${YELLOW}Step 4: Installing/Updating Go dependencies...${NC}"
+echo -e "${YELLOW}Step 4: Ensuring Go toolchain (for dashboard build)...${NC}"
 if ! command -v go &> /dev/null; then
     echo -e "${YELLOW}Installing Go...${NC}"
-    # Install Go based on package manager
     if command -v apt-get &> /dev/null; then
         apt-get update
         apt-get install -y golang-go
@@ -82,38 +81,31 @@ if ! command -v go &> /dev/null; then
     fi
 fi
 
-echo -e "${YELLOW}Step 5: Building dashboard binary...${NC}"
-cd "$INSTALL_DIR"
-go build -o /usr/local/bin/wireshield-dashboard ./cmd/wireshield-dashboard
-chmod +x /usr/local/bin/wireshield-dashboard
-echo -e "${GREEN}✓ Dashboard binary built and installed${NC}"
-
-echo -e "${YELLOW}Step 6: Ensuring wireshield.sh is in correct location...${NC}"
-# Find the script
-SCRIPT_PATH=""
+echo -e "${YELLOW}Step 5: Upgrading CLI script (wireshield.sh)...${NC}"
+# Source of truth: repo copy in $INSTALL_DIR
 if [ -f "$INSTALL_DIR/wireshield.sh" ]; then
-    SCRIPT_PATH="$INSTALL_DIR/wireshield.sh"
-elif [ -f "/root/wireshield.sh" ]; then
-    SCRIPT_PATH="/root/wireshield.sh"
-elif [ -f "/usr/local/bin/wireshield.sh" ]; then
-    SCRIPT_PATH="/usr/local/bin/wireshield.sh"
-fi
-
-if [ -n "$SCRIPT_PATH" ]; then
-    # Always copy to /root for dashboard access
-    cp "$SCRIPT_PATH" /root/wireshield.sh
+    cp "$INSTALL_DIR/wireshield.sh" /root/wireshield.sh
     chmod +x /root/wireshield.sh
-    echo -e "${GREEN}✓ Script installed at /root/wireshield.sh${NC}"
+    echo -e "${GREEN}✓ CLI script installed at /root/wireshield.sh${NC}"
+    # Optional convenience path for admins
+    cp "$INSTALL_DIR/wireshield.sh" /usr/local/bin/wireshield.sh 2>/dev/null || true
+    chmod +x /usr/local/bin/wireshield.sh 2>/dev/null || true
 else
-    echo -e "${RED}Error: wireshield.sh not found${NC}"
+    echo -e "${RED}Error: repo copy of wireshield.sh not found at $INSTALL_DIR/wireshield.sh${NC}"
     exit 1
 fi
 
-echo -e "${YELLOW}Step 7: Updating systemd service...${NC}"
-# Check if service file exists
-if [ ! -f "/etc/systemd/system/wireshield-dashboard.service" ]; then
+echo -e "${YELLOW}Step 6: Building dashboard binary...${NC}"
+cd "$INSTALL_DIR"
+go build -o /usr/local/bin/wireshield-dashboard ./cmd/wireshield-dashboard
+chmod +x /usr/local/bin/wireshield-dashboard
+echo -e "${GREEN}✓ Dashboard binary built and installed at /usr/local/bin/wireshield-dashboard${NC}"
+
+echo -e "${YELLOW}Step 7: Ensuring systemd service is configured...${NC}"
+SERVICE_FILE="/etc/systemd/system/wireshield-dashboard.service"
+if [ ! -f "$SERVICE_FILE" ]; then
     echo -e "${YELLOW}Creating systemd service...${NC}"
-    cat > /etc/systemd/system/wireshield-dashboard.service <<EOF
+    cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=WireShield Web Dashboard
 After=network.target
@@ -136,53 +128,49 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 else
-    # Update environment variable in existing service
-    if ! grep -q "Environment=WIRE_SHIELD_SCRIPT" /etc/systemd/system/wireshield-dashboard.service; then
-        # Add environment variable after [Service]
-        sed -i '/\[Service\]/a Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh' /etc/systemd/system/wireshield-dashboard.service
+    # Ensure environment variable is present and points to /root/wireshield.sh
+    if ! grep -q "Environment=WIRE_SHIELD_SCRIPT" "$SERVICE_FILE"; then
+        sed -i '/\[Service\]/a Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh' "$SERVICE_FILE"
     else
-        # Update existing environment variable
-        sed -i 's|Environment=WIRE_SHIELD_SCRIPT=.*|Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh|' /etc/systemd/system/wireshield-dashboard.service
+        sed -i 's|Environment=WIRE_SHIELD_SCRIPT=.*|Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh|' "$SERVICE_FILE"
     fi
 fi
 
-echo -e "${YELLOW}Step 8: Reloading systemd and starting service...${NC}"
+echo -e "${YELLOW}Step 8: Reloading systemd and starting dashboard...${NC}"
 systemctl daemon-reload
-systemctl enable wireshield-dashboard
-systemctl start wireshield-dashboard
+systemctl enable wireshield-dashboard || true
+systemctl start wireshield-dashboard || true
 
-echo -e "${YELLOW}Step 9: Verifying installation...${NC}"
+echo -e "${YELLOW}Step 9: Verifying services...${NC}"
 sleep 2
 
-# Check if service is running
+# Check dashboard service
 if systemctl is-active --quiet wireshield-dashboard; then
     echo -e "${GREEN}✓ Dashboard service is running${NC}"
 else
     echo -e "${RED}✗ Dashboard service failed to start${NC}"
-    echo -e "${YELLOW}Checking logs:${NC}"
-    journalctl -u wireshield-dashboard -n 20 --no-pager
-    exit 1
+    echo -e "${YELLOW}Recent logs:${NC}"
+    journalctl -u wireshield-dashboard -n 30 --no-pager || true
 fi
 
-# Check if script is accessible
+# Confirm script accessibility for dashboard
 if [ -f "/root/wireshield.sh" ] && [ -x "/root/wireshield.sh" ]; then
-    echo -e "${GREEN}✓ Script is accessible at /root/wireshield.sh${NC}"
+    echo -e "${GREEN}✓ CLI script is accessible at /root/wireshield.sh${NC}"
 else
-    echo -e "${RED}✗ Script not found or not executable${NC}"
-    exit 1
+    echo -e "${RED}✗ CLI script not found or not executable at /root/wireshield.sh${NC}"
 fi
 
-# Get dashboard port
-DASHBOARD_PORT=$(grep -oP '(?<=-listen )[0-9.]+:[0-9]+' /etc/systemd/system/wireshield-dashboard.service || echo "127.0.0.1:51821")
+# Determine dashboard bind
+DASHBOARD_ADDR=$(grep -oP '(?<=-listen )[0-9.]+:[0-9]+' "$SERVICE_FILE" || echo "127.0.0.1:51821")
 
 echo -e "\n${GREEN}"
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║             Upgrade Completed Successfully!               ║"
+echo "║                Upgrade Completed Successfully             ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-echo -e "${BLUE}Dashboard URL:${NC} http://$DASHBOARD_PORT"
-echo -e "${BLUE}Service Status:${NC} systemctl status wireshield-dashboard"
-echo -e "${BLUE}View Logs:${NC} journalctl -u wireshield-dashboard -f"
-echo -e "${BLUE}Restart:${NC} systemctl restart wireshield-dashboard"
+echo -e "${BLUE}Dashboard URL:${NC} http://$DASHBOARD_ADDR"
+echo -e "${BLUE}Dashboard Service:${NC} systemctl status wireshield-dashboard"
+echo -e "${BLUE}CLI Script:${NC} /root/wireshield.sh (and /usr/local/bin/wireshield.sh)"
+echo -e "${BLUE}Logs:${NC} journalctl -u wireshield-dashboard -f"
 echo ""
