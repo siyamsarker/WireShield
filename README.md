@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🛡️ WireShield
+<img src="internal/server/static/favicon.svg" alt="WireShield Logo" width="80" height="80" />
+
+# WireShield
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)

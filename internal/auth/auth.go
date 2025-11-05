@@ -47,13 +47,13 @@ func (m *Manager) SetUser(w http.ResponseWriter, username string) {
 	// simple payload: username|expiryUnix
 	exp := time.Now().Add(24 * time.Hour).Unix()
 	payload := username + "|" + base64.RawURLEncoding.EncodeToString([]byte(time.Unix(exp, 0).Format(time.RFC3339)))
-	cookie := &http.Cookie{Name: m.cookie, Value: m.Sign(payload), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: true}
-	// NOTE: set Secure=true when behind TLS terminator
+	cookie := &http.Cookie{Name: m.cookie, Value: m.Sign(payload), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode}
+	// Note: Secure flag should be set by reverse proxy via X-Forwarded-Proto
 	http.SetCookie(w, cookie)
 }
 
 func (m *Manager) Clear(w http.ResponseWriter) {
-	cookie := &http.Cookie{Name: m.cookie, Value: "", Path: "/", Expires: time.Unix(0, 0), MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: true}
+	cookie := &http.Cookie{Name: m.cookie, Value: "", Path: "/", Expires: time.Unix(0, 0), MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode}
 	http.SetCookie(w, cookie)
 }
 
@@ -96,7 +96,7 @@ func (m *Manager) EnsureCSRF(w http.ResponseWriter, r *http.Request) string {
 	// create a token using timestamp (sufficient with HMAC signing)
 	v := time.Now().Format(time.RFC3339Nano)
 	signed := m.Sign(v)
-	http.SetCookie(w, &http.Cookie{Name: csrfCookie, Value: signed, Path: "/", HttpOnly: false, SameSite: http.SameSiteStrictMode, Secure: true})
+	http.SetCookie(w, &http.Cookie{Name: csrfCookie, Value: signed, Path: "/", HttpOnly: false, SameSite: http.SameSiteStrictMode})
 	return v
 }
 
@@ -123,7 +123,7 @@ func (m *Manager) SetFlash(w http.ResponseWriter, kind, message string) {
 	}
 	// payload: kind|base64(message)
 	payload := kind + "|" + base64.RawURLEncoding.EncodeToString([]byte(message))
-	http.SetCookie(w, &http.Cookie{Name: flashCookie, Value: m.Sign(payload), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: true})
+	http.SetCookie(w, &http.Cookie{Name: flashCookie, Value: m.Sign(payload), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 }
 
 // PopFlash retrieves and clears the flash message
@@ -134,7 +134,7 @@ func (m *Manager) PopFlash(w http.ResponseWriter, r *http.Request) (kind, messag
 	}
 	val, okv := m.Verify(c.Value)
 	// clear
-	http.SetCookie(w, &http.Cookie{Name: flashCookie, Value: "", Path: "/", Expires: time.Unix(0, 0), MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: true})
+	http.SetCookie(w, &http.Cookie{Name: flashCookie, Value: "", Path: "/", Expires: time.Unix(0, 0), MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 	if !okv {
 		return "", "", false
 	}
