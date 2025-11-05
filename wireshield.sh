@@ -1151,10 +1151,22 @@ function _ws_install_dashboard_inline() {
 
 	# Resolve script path for dashboard integration
 	local WS_SCRIPT_PATH
-	WS_SCRIPT_PATH="${REPO_ROOT}/wireshield.sh"
+	# Try to find the actual script location (not temp clone)
+	if [[ -f "/root/wireshield.sh" ]]; then
+		WS_SCRIPT_PATH="/root/wireshield.sh"
+	elif [[ -f "/usr/local/bin/wireshield.sh" ]]; then
+		WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"
+	elif [[ -f "${REPO_ROOT}/wireshield.sh" && "$REPO_ROOT" != "/tmp/"* ]]; then
+		WS_SCRIPT_PATH="${REPO_ROOT}/wireshield.sh"
+	else
+		# Fallback: try to find it
+		WS_SCRIPT_PATH=$(command -v wireshield.sh 2>/dev/null || echo "/root/wireshield.sh")
+	fi
+	
+	# Verify the script exists and warn if not
 	if [[ ! -f "$WS_SCRIPT_PATH" ]]; then
-		if [[ -f "/root/wireshield.sh" ]]; then WS_SCRIPT_PATH="/root/wireshield.sh"; fi
-		if [[ -f "/usr/local/bin/wireshield.sh" ]]; then WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"; fi
+		echo -e "${YELLOW}Warning: Script path $WS_SCRIPT_PATH not found. Dashboard may not work correctly.${NC}"
+		echo -e "${YELLOW}Make sure wireshield.sh is in /root/ or /usr/local/bin/${NC}"
 	fi
 
 	cat > "$SERVICE_FILE" <<UNIT
