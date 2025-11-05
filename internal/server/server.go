@@ -132,7 +132,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		for _, a := range s.cfg.Admins {
 			if a.Username == u && config.CheckPassword(a.PasswordHash, p) {
 				s.clearLoginAttempts(r)
-				s.sess.SetUser(w, u)
+				s.sess.SetUser(w, r, u)
 				http.Redirect(w, r, "/", http.StatusFound)
 				return
 			}
@@ -145,7 +145,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	s.sess.Clear(w)
+	s.sess.Clear(w, r)
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
@@ -206,7 +206,7 @@ func (s *Server) handleRevokeClient(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.sess.SetFlash(w, "success", "Client '"+name+"' revoked")
+	s.sess.SetFlash(w, r, "success", "Client '"+name+"' revoked")
 	http.Redirect(w, r, "/clients", http.StatusFound)
 }
 
@@ -286,9 +286,9 @@ func (s *Server) handleCheckExpired(w http.ResponseWriter, r *http.Request) {
 		return
 	} else {
 		if len(removed) == 0 {
-			s.sess.SetFlash(w, "info", "No expired clients found")
+			s.sess.SetFlash(w, r, "info", "No expired clients found")
 		} else {
-			s.sess.SetFlash(w, "success", "Removed "+strconv.Itoa(len(removed))+" expired client(s)")
+			s.sess.SetFlash(w, r, "success", "Removed "+strconv.Itoa(len(removed))+" expired client(s)")
 		}
 	}
 	http.Redirect(w, r, "/clients", http.StatusFound)
@@ -315,7 +315,7 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.sess.SetFlash(w, "success", "WireGuard restarted")
+	s.sess.SetFlash(w, r, "success", "WireGuard restarted")
 	http.Redirect(w, r, "/status", http.StatusFound)
 }
 

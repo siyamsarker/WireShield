@@ -18,6 +18,19 @@ func New(secret string) *Manager {
 	return &Manager{secret: []byte(secret), cookie: "ws_session"}
 }
 
+// isSecure detects if request came through HTTPS (directly or via reverse proxy)
+func isSecure(r *http.Request) bool {
+	// Check X-Forwarded-Proto header (set by reverse proxies like Nginx/Caddy)
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" {
+		return true
+	}
+	// Check direct TLS connection
+	if r.TLS != nil {
+		return true
+	}
+	return false
+}
+
 func (m *Manager) Sign(value string) string {
 	h := hmac.New(sha256.New, m.secret)
 	h.Write([]byte(value))
@@ -43,17 +56,32 @@ func (m *Manager) Verify(signed string) (string, bool) {
 	return value, true
 }
 
-func (m *Manager) SetUser(w http.ResponseWriter, username string) {
+func (m *Manager) SetUser(w http.ResponseWriter, r *http.Request, username string) {
 	// simple payload: username|expiryUnix
 	exp := time.Now().Add(24 * time.Hour).Unix()
 	payload := username + "|" + base64.RawURLEncoding.EncodeToString([]byte(time.Unix(exp, 0).Format(time.RFC3339)))
-	cookie := &http.Cookie{Name: m.cookie, Value: m.Sign(payload), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode}
-	// Note: Secure flag should be set by reverse proxy via X-Forwarded-Proto
+	cookie := &http.Cookie{
+		Name:     m.cookie,
+		Value:    m.Sign(payload),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecure(r), // Auto-detect based on protocol
+	}
 	http.SetCookie(w, cookie)
 }
 
-func (m *Manager) Clear(w http.ResponseWriter) {
-	cookie := &http.Cookie{Name: m.cookie, Value: "", Path: "/", Expires: time.Unix(0, 0), MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode}
+func (m *Manager) Clear(w http.ResponseWriter, r *http.Request) {
+	cookie := &http.Cookie{
+		Name:     m.cookie,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecure(r),
+	}
 	http.SetCookie(w, cookie)
 }
 
@@ -96,7 +124,15 @@ func (m *Manager) EnsureCSRF(w http.ResponseWriter, r *http.Request) string {
 	// create a token using timestamp (sufficient with HMAC signing)
 	v := time.Now().Format(time.RFC3339Nano)
 	signed := m.Sign(v)
-	http.SetCookie(w, &http.Cookie{Name: csrfCookie, Value: signed, Path: "/", HttpOnly: false, SameSite: http.SameSiteStrictMode})
+	cookie := &http.Cookie{
+		Name:     csrfCookie,
+		Value:    signed,
+		Path:     "/",
+		HttpOnly: false, // Must be accessible to JavaScript if needed
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecure(r), // Auto-detect based on protocol
+	}
+	http.SetCookie(w, cookie)
 	return v
 }
 
@@ -117,13 +153,21 @@ func (m *Manager) VerifyCSRF(r *http.Request, formValue string) bool {
 const flashCookie = "ws_flash"
 
 // SetFlash stores a one-time message (kind: success|error|info)
-func (m *Manager) SetFlash(w http.ResponseWriter, kind, message string) {
+func (m *Manager) SetFlash(w http.ResponseWriter, r *http.Request, kind, message string) {
 	if message == "" {
 		return
 	}
 	// payload: kind|base64(message)
 	payload := kind + "|" + base64.RawURLEncoding.EncodeToString([]byte(message))
-	http.SetCookie(w, &http.Cookie{Name: flashCookie, Value: m.Sign(payload), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	cookie := &http.Cookie{
+		Name:     flashCookie,
+		Value:    m.Sign(payload),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecure(r),
+	}
+	http.SetCookie(w, cookie)
 }
 
 // PopFlash retrieves and clears the flash message
@@ -134,7 +178,17 @@ func (m *Manager) PopFlash(w http.ResponseWriter, r *http.Request) (kind, messag
 	}
 	val, okv := m.Verify(c.Value)
 	// clear
-	http.SetCookie(w, &http.Cookie{Name: flashCookie, Value: "", Path: "/", Expires: time.Unix(0, 0), MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	cookie := &http.Cookie{
+		Name:     flashCookie,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecure(r),
+	}
+	http.SetCookie(w, cookie)
 	if !okv {
 		return "", "", false
 	}
