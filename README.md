@@ -136,35 +136,37 @@ sudo ./wireshield.sh
 
 ```
 WireShield/
-├─ 📜 wireshield.sh                    # Main Bash installer/manager (CLI + dashboard installer)
-├─ 📦 go.mod, go.sum                   # Go module for the dashboard (root module)
+├─ 📜 wireshield.sh                      # Primary Bash installer/manager (CLI + dashboard installer)
+├─ 🧰 scripts/
+│  ├─ upgrade.sh                         # One-command full upgrade (CLI + Dashboard)
+│  └─ install-dashboard.sh               # Optional helper to install the dashboard
 ├─ 📁 cmd/
 │  └─ wireshield-dashboard/
-│     └─ main.go                       # Entry point for the dashboard binary
+│     └─ main.go                         # Dashboard binary entrypoint
 ├─ 📁 config/
-│  └─ config.go                        # JSON config load/save and helpers
+│  └─ config.go                          # JSON config load/save and helpers
 └─ 📁 internal/
-   ├─ 🔐 auth/                         # Cookie sessions, CSRF, flash messages
-   │  └─ auth.go
-   ├─ 🌐 server/                       # HTTP routes, templates, static assets (embedded)
-   │  ├─ server.go
-   │  ├─ templates/
-   │  │  ├─ add.tmpl
-   │  │  ├─ backup.tmpl
-   │  │  ├─ clients.tmpl
-   │  │  ├─ layout.tmpl
-   │  │  ├─ login.tmpl
-   │  │  ├─ password.tmpl
-   │  │  ├─ qr.tmpl
-   │  │  ├─ status.tmpl
-   │  │  └─ uninstall.tmpl
-   │  └─ static/
-   │     ├─ app.css
-   │     ├─ copy.js
-   │     ├─ favicon.svg
-   │     └─ theme.js
-   └─ 🔧 wireguard/                    # Thin wrapper calling Bash script functions
-      └─ service.go
+  ├─ 🔐 auth/                           # Cookie sessions, CSRF, flash messages
+  │  └─ auth.go
+  ├─ 🌐 server/                         # HTTP routes, templates, static assets (embedded)
+  │  ├─ server.go
+  │  ├─ templates/
+  │  │  ├─ dashboard.tmpl               # New dashboard home (stats, quick actions, recent clients)
+  │  │  ├─ clients.tmpl
+  │  │  ├─ add.tmpl
+  │  │  ├─ status.tmpl
+  │  │  ├─ backup.tmpl
+  │  │  ├─ login.tmpl
+  │  │  ├─ password.tmpl
+  │  │  ├─ qr.tmpl
+  │  │  └─ uninstall.tmpl
+  │  └─ static/
+  │     ├─ app.css
+  │     ├─ copy.js
+  │     ├─ theme.js
+  │     └─ favicon.svg
+  └─ 🔧 wireguard/                      # Thin wrapper calling Bash script functions
+    └─ service.go
 ```
 
 ### 📝 Naming conventions
@@ -182,23 +184,23 @@ After installation, rerun the script anytime to open the **interactive menu**:
 sudo ./wireshield.sh
 ```
 
-### 📋 Menu options
+### 📋 Menu options (CLI)
 
 ```
-┌─────────────────────────────────────┐
-│  WireShield Management Menu         │
-├─────────────────────────────────────┤
-│  1) 👤 Add a new client             │
-│  2) 📋 List clients                 │
-│  3) 📲 Show QR for a client         │
-│  4) ❌ Revoke existing client       │
-│  5) 🗓️  Check expired clients       │
-│  6) 📊 Show server status           │
-│  7) 🔄 Restart WireGuard            │
-│  8) 💾 Backup configuration         │
-│  9) 🗑️  Uninstall WireGuard         │
-│ 10) 🚪 Exit                         │
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│           WireShield Management             │
+├─────────────────────────────────────────────┤
+│  1) 👤 Add a new client                     │  Create a client config (+ QR)
+│  2) 📋 List clients                         │  Show all clients with details
+│  3) 📲 Show QR for a client                 │  Display scannable QR for mobile
+│  4) ❌ Revoke existing client               │  Remove peer and its config
+│  5) 🗓️  Check expired clients               │  Remove clients past expiration
+│  6) 📊 Show server status                   │  wg show (peers, handshakes, etc.)
+│  7) 🔄 Restart WireGuard                    │  Restart wg-quick@<iface>
+│  8) 💾 Backup configuration                 │  Archive configs (safe copy)
+│  9) 🗑️  Uninstall WireGuard                 │  Clean removal of WireGuard setup
+│ 10) 🚪 Exit                                  │  Quit the manager
+└─────────────────────────────────────────────┘
 ```
 
 ### 💡 Notes
@@ -629,12 +631,12 @@ The installer now automatically copies the script to `/root/wireshield.sh` durin
 
     ```bash
     sudo su -
-    wget -O /tmp/upgrade-dashboard.sh https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/upgrade-dashboard.sh
-    chmod +x /tmp/upgrade-dashboard.sh
-    /tmp/upgrade-dashboard.sh
+    wget -O /tmp/upgrade.sh https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/upgrade.sh
+    chmod +x /tmp/upgrade.sh
+    /tmp/upgrade.sh
     ```
 
-    This performs a safe in-place upgrade: pulls latest code, rebuilds `/usr/local/bin/wireshield-dashboard`, ensures `/root/wireshield.sh` exists, updates `WIRE_SHIELD_SCRIPT` in systemd if needed, and restarts the service.
+    This performs a safe in-place upgrade of the full project: pulls latest code, upgrades the CLI script (`/root/wireshield.sh` and `/usr/local/bin/wireshield.sh`), rebuilds `/usr/local/bin/wireshield-dashboard`, updates `WIRE_SHIELD_SCRIPT` in systemd if needed, and restarts the service.
 
 ## 🗑️ Uninstall
 
