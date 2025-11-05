@@ -1032,14 +1032,19 @@ function _ws_offer_dashboard_install() {
 	DASH=${DASH:-Y}
 	if [[ ${DASH} =~ ^[Yy]$ ]]; then
 		# Ask for bind address and optional Nginx
-		local default_listen="127.0.0.1:51821" listen_addr="" setup_nginx="N" public_host=""
+		local default_listen="127.0.0.1:51821" listen_addr="" setup_nginx="" public_host=""
 		read -rp "Dashboard bind address [ip:port] (recommended: 127.0.0.1:51821): " -e -i "$default_listen" listen_addr
 		listen_addr=${listen_addr:-$default_listen}
 
 		read -rp "Configure Nginx reverse proxy for a domain or IP? [y/N]: " -e setup_nginx
 		setup_nginx=${setup_nginx:-N}
+		
+		# Accept either y/Y or direct domain/IP entry
 		if [[ ${setup_nginx} =~ ^[Yy]$ ]]; then
 			read -rp "Enter domain or IP to serve (e.g., vpn.example.com or 54.254.156.85): " -e public_host
+		elif [[ -n "${setup_nginx}" && ! ${setup_nginx} =~ ^[Nn]$ ]]; then
+			# User directly entered domain/IP instead of y/N
+			public_host="${setup_nginx}"
 		fi
 
 		_ws_install_dashboard_inline "$listen_addr" "$public_host"
