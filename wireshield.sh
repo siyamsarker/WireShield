@@ -955,6 +955,42 @@ function uninstallWg() {
 		rm -f /usr/local/bin/wireshield-dashboard
 		rm -rf /etc/wireshield
 
+		# Remove Nginx configuration for WireShield dashboard
+		if command -v nginx >/dev/null 2>&1; then
+			# Remove config files
+			rm -f /etc/nginx/sites-available/wireshield-dashboard
+			rm -f /etc/nginx/sites-enabled/wireshield-dashboard
+			rm -f /etc/nginx/conf.d/wireshield-dashboard.conf
+			
+			# Test config and reload if valid
+			if nginx -t 2>/dev/null; then
+				systemctl reload nginx 2>/dev/null || true
+			fi
+			
+			# Optionally remove Nginx if it was installed for WireShield
+			read -rp "Remove Nginx as well? [y/N]: " -e REMOVE_NGINX
+			REMOVE_NGINX=${REMOVE_NGINX:-N}
+			if [[ ${REMOVE_NGINX} =~ ^[Yy]$ ]]; then
+				systemctl stop nginx 2>/dev/null || true
+				systemctl disable nginx 2>/dev/null || true
+				
+				if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
+					apt-get remove -y nginx nginx-common
+				elif [[ ${OS} == 'fedora' ]]; then
+					dnf remove -y nginx
+				elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]] || [[ ${OS} == 'oracle' ]]; then
+					yum remove -y nginx
+				elif [[ ${OS} == 'arch' ]]; then
+					pacman -Rs --noconfirm nginx
+				elif [[ ${OS} == 'alpine' ]]; then
+					apk del nginx
+				fi
+				echo "Nginx removed."
+			else
+				echo "Nginx configuration for WireShield removed, but Nginx itself kept."
+			fi
+		fi
+
 		if [[ ${OS} == 'alpine' ]]; then
 			rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status &>/dev/null
 		else
@@ -973,7 +1009,7 @@ function uninstallWg() {
 			echo "WireGuard uninstalled successfully."
 			echo "All detected client .conf files have been removed from /root and /home."
 			echo "Removed WireShield cron job and helper script for auto-expiration."
-			echo "Removed WireShield Web Dashboard binary, service unit, and config (if present)."
+			echo "Removed WireShield Web Dashboard binary, service unit, config, and Nginx configuration (if present)."
 			exit 0
 		fi
 	else
