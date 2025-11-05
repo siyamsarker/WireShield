@@ -89,9 +89,9 @@ body {
   background: var(--white);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
-  padding: 3rem;
+  padding: 2.5rem;
   width: 100%;
-  max-width: 440px;
+  max-width: 420px;
   position: relative;
   z-index: 1;
   backdrop-filter: blur(10px);
@@ -99,27 +99,27 @@ body {
 
 .login-header {
   text-align: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
 }
 
 .login-header img {
   width: 72px !important;
   height: 72px !important;
-  margin-bottom: 1.5rem !important;
+  margin-bottom: 1.25rem !important;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
 }
 
 .login-header h1 {
-  font-size: 2rem;
+  font-size: 1.875rem;
   font-weight: 700;
   color: var(--gray-900);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   letter-spacing: -0.02em;
 }
 
 .login-header p {
   color: var(--gray-600);
-  font-size: 1rem;
+  font-size: 0.9375rem;
 }
 
 /* Dashboard Layout */
@@ -162,9 +162,10 @@ body {
 }
 
 .sidebar-logo svg {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
+  filter: drop-shadow(0 2px 4px rgba(79, 70, 229, 0.2));
 }
 
 .sidebar-nav {

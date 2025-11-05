@@ -105,6 +105,13 @@ func (s *Service) ShowStatus() (string, error) {
 	return string(out), nil
 }
 
+func (s *Service) IsRunning() bool {
+	// Check if WireGuard is running by trying to execute wg show
+	cmd := exec.Command("wg", "show")
+	err := cmd.Run()
+	return err == nil
+}
+
 func (s *Service) Restart() error {
 	_, err := s.runBash(fmt.Sprintf("source '%s'; restartWireGuard", s.ScriptPath))
 	return err

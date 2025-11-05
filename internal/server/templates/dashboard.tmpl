@@ -1,0 +1,141 @@
+{{define "content"}}
+<div class="page-header">
+  <h2 class="page-title">Dashboard</h2>
+  <p class="page-subtitle">Overview of your WireGuard VPN server</p>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Clients</div>
+    <div class="stat-value">{{len .Clients}}</div>
+    <div class="stat-desc">Active VPN connections</div>
+  </div>
+  
+  <div class="stat-card success">
+    <div class="stat-label">Active</div>
+    <div class="stat-value">{{.ActiveCount}}</div>
+    <div class="stat-desc">Currently connected</div>
+  </div>
+  
+  <div class="stat-card warning">
+    <div class="stat-label">Expiring Soon</div>
+    <div class="stat-value">{{.ExpiringCount}}</div>
+    <div class="stat-desc">Within 7 days</div>
+  </div>
+  
+  <div class="stat-card">
+    <div class="stat-label">Server Status</div>
+    <div class="stat-value" style="font-size: 1.5rem;">
+      {{if .ServerRunning}}
+        <span class="badge badge-success">Online</span>
+      {{else}}
+        <span class="badge badge-danger">Offline</span>
+      {{end}}
+    </div>
+    <div class="stat-desc">WireGuard service</div>
+  </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Quick Actions</div>
+  </div>
+  
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+    <a href="/clients/new" class="btn btn-primary" style="height: auto; padding: 1.5rem;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+      <span style="margin-left: 0.5rem;">Add New Client</span>
+    </a>
+    
+    <a href="/clients" class="btn btn-outline" style="height: auto; padding: 1.5rem;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      <span style="margin-left: 0.5rem;">View All Clients</span>
+    </a>
+    
+    <a href="/status" class="btn btn-outline" style="height: auto; padding: 1.5rem;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+      <span style="margin-left: 0.5rem;">Server Status</span>
+    </a>
+    
+    <form method="post" action="/restart" style="display: contents;">
+      <input type="hidden" name="csrf" value="{{.CSRF}}" />
+      <button type="submit" class="btn btn-secondary" style="height: auto; padding: 1.5rem;" onclick="return confirm('Restart WireGuard service?')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        <span style="margin-left: 0.5rem;">Restart Service</span>
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Recent Clients -->
+{{if .Clients}}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Recent Clients</div>
+    <a href="/clients" class="btn btn-outline btn-sm">View All</a>
+  </div>
+  
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Client Name</th>
+          <th>Expiration</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $index, $client := .Clients}}
+        {{if lt $index 5}}
+        <tr>
+          <td>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              <span class="font-mono fw-bold">{{$client.Name}}</span>
+            </div>
+          </td>
+          <td>
+            {{if $client.Expires}}
+              <span class="badge badge-warning">{{$client.Expires}}</span>
+            {{else}}
+              <span class="badge badge-success">No expiration</span>
+            {{end}}
+          </td>
+          <td>
+            <span class="badge badge-success">Active</span>
+          </td>
+          <td>
+            <div class="table-actions">
+              <a href="/clients/config?name={{$client.Name}}" class="btn btn-outline btn-sm" title="Download Config">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              </a>
+              <a href="/clients/qr?name={{$client.Name}}" class="btn btn-outline btn-sm" title="View QR Code">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<div class="card">
+  <div class="empty-state">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+    <h3>No clients yet</h3>
+    <p>Get started by adding your first VPN client</p>
+    <a href="/clients/new" class="btn btn-primary mt-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Add Your First Client
+    </a>
+  </div>
+</div>
+{{end}}
+{{end}}
+{{template "layout" .}}

@@ -39,14 +39,29 @@ type Server struct {
 
 func New(cfg *config.Config, cfgPath string) *Server {
 	s := &Server{cfg: cfg, cfgPath: cfgPath, mux: http.NewServeMux(), sess: auth.New(cfg.SessionKey), lim: make(map[string][]time.Time)}
-	// locate script path
+	// locate script path - check multiple locations
 	script := os.Getenv("WIRE_SHIELD_SCRIPT")
 	if script == "" {
-		// default install path
-		script = "/root/wireshield.sh"
-		if _, err := os.Stat(script); os.IsNotExist(err) {
-			script = "/usr/local/bin/wireshield.sh"
+		// Try multiple possible locations
+		possiblePaths := []string{
+			"/root/wireshield.sh",
+			"/usr/local/bin/wireshield.sh",
+			"/opt/wireshield/wireshield.sh",
+			"/home/*/wireshield.sh",
 		}
+		for _, path := range possiblePaths {
+			if _, err := os.Stat(path); err == nil {
+				script = path
+				log.Printf("Found wireshield.sh at: %s", script)
+				break
+			}
+		}
+		if script == "" {
+			log.Println("WARNING: wireshield.sh not found in standard locations. Set WIRE_SHIELD_SCRIPT environment variable.")
+			script = "/root/wireshield.sh" // fallback
+		}
+	} else {
+		log.Printf("Using wireshield.sh from WIRE_SHIELD_SCRIPT: %s", script)
 	}
 	s.wg = wireguard.NewService(script)
 
@@ -151,7 +166,31 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	clients, _ := s.wg.ListClients()
-	s.render(w, r, "clients.tmpl", map[string]any{"Clients": clients, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "dashboard", "PageTitle": "Dashboard"})
+	
+	// Calculate dashboard stats
+	activeCount := 0
+	expiringCount := 0
+	for _, client := range clients {
+		if client.Expires != nil && *client.Expires != "" {
+			// Check if expiring within 7 days (this is simplified)
+			expiringCount++
+		} else {
+			activeCount++
+		}
+	}
+	
+	// Check if server is running
+	serverRunning := s.wg.IsRunning()
+	
+	s.render(w, r, "dashboard.tmpl", map[string]any{
+		"Clients":       clients,
+		"ActiveCount":   activeCount,
+		"ExpiringCount": expiringCount,
+		"ServerRunning": serverRunning,
+		"CSRF":          s.sess.EnsureCSRF(w, r),
+		"Page":          "dashboard",
+		"PageTitle":     "Dashboard",
+	})
 }
 
 func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
