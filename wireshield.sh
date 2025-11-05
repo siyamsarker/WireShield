@@ -1150,24 +1150,37 @@ function _ws_install_dashboard_inline() {
 	fi
 
 	# Resolve script path for dashboard integration
-	local WS_SCRIPT_PATH
-	# Try to find the actual script location (not temp clone)
+	local WS_SCRIPT_PATH CURRENT_SCRIPT
+	
+	# Find the current running script (realpath if available for symlink resolution)
+	if command -v realpath >/dev/null 2>&1; then
+		CURRENT_SCRIPT=$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")
+	else
+		CURRENT_SCRIPT="${BASH_SOURCE[0]}"
+		# Make it absolute if relative
+		[[ "$CURRENT_SCRIPT" != /* ]] && CURRENT_SCRIPT="$(pwd)/$CURRENT_SCRIPT"
+	fi
+	
+	# Ensure the script is in a permanent location for the dashboard to use
 	if [[ -f "/root/wireshield.sh" ]]; then
 		WS_SCRIPT_PATH="/root/wireshield.sh"
 	elif [[ -f "/usr/local/bin/wireshield.sh" ]]; then
 		WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"
-	elif [[ -f "${REPO_ROOT}/wireshield.sh" && "$REPO_ROOT" != "/tmp/"* ]]; then
-		WS_SCRIPT_PATH="${REPO_ROOT}/wireshield.sh"
 	else
-		# Fallback: try to find it
-		WS_SCRIPT_PATH=$(command -v wireshield.sh 2>/dev/null || echo "/root/wireshield.sh")
+		# Copy current script to /root/wireshield.sh if not already there
+		echo "Installing wireshield.sh to /root/wireshield.sh for dashboard access..."
+		cp "$CURRENT_SCRIPT" /root/wireshield.sh
+		chmod +x /root/wireshield.sh
+		WS_SCRIPT_PATH="/root/wireshield.sh"
 	fi
 	
-	# Verify the script exists and warn if not
+	# Verify the script exists
 	if [[ ! -f "$WS_SCRIPT_PATH" ]]; then
-		echo -e "${YELLOW}Warning: Script path $WS_SCRIPT_PATH not found. Dashboard may not work correctly.${NC}"
-		echo -e "${YELLOW}Make sure wireshield.sh is in /root/ or /usr/local/bin/${NC}"
+		echo -e "${RED}Error: Could not set up script at $WS_SCRIPT_PATH${NC}"
+		return 1
 	fi
+	
+	echo "Dashboard will use script: $WS_SCRIPT_PATH"
 
 	cat > "$SERVICE_FILE" <<UNIT
 [Unit]

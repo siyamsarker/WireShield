@@ -599,6 +599,27 @@ sudo journalctl -u wireshield-dashboard -e
 
 > ℹ️ If the dashboard fails to start, ensure the systemd unit has a valid path for `WIRE_SHIELD_SCRIPT` and that `/etc/wireshield/dashboard-config.json` exists.
 
+**Dashboard navigation errors (command not found)?**
+
+If you see errors like `bash: ws_list_clients_json: command not found`, the dashboard can't find the script. Check and fix:
+
+```bash
+# Check what path the dashboard is using
+sudo systemctl cat wireshield-dashboard | grep WIRE_SHIELD_SCRIPT
+
+# Verify that file exists
+ls -l /root/wireshield.sh
+
+# If missing, copy your script there
+sudo cp /path/to/your/wireshield.sh /root/wireshield.sh
+sudo chmod +x /root/wireshield.sh
+
+# Restart dashboard
+sudo systemctl restart wireshield-dashboard
+```
+
+The installer now automatically copies the script to `/root/wireshield.sh` during setup.
+
 ### 🔄 Upgrade
 
 - **Core** (bash installer/CLI): re-download `wireshield.sh` (or pull latest from git) and run it again; settings are preserved in `/etc/wireguard/params` and the interface config.
