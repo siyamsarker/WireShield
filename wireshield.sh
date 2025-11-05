@@ -1359,9 +1359,9 @@ function manageMenu() {
 				4 "Revoke a client" \
 				5 "Check expired clients" \
 				6 "Show server status" \
-				7 "Restart WireGuard" \
+				7 "Restart WireShield" \
 				8 "Backup configuration" \
-				9 "Uninstall WireGuard" \
+				9 "Uninstall WireShield" \
 				10 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=10
 		else
 			echo "What do you want to do?"
@@ -1371,9 +1371,9 @@ function manageMenu() {
 			echo "   4) Revoke existing client"
 			echo "   5) Check expired clients"
 			echo "   6) Show server status"
-			echo "   7) Restart WireGuard"
+			echo "   7) Restart WireShield"
 			echo "   8) Backup configuration"
-			echo "   9) Uninstall WireGuard"
+			echo "   9) Uninstall WireShield"
 			echo "  10) Exit"
 			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$ ]]; do
 				read -rp "Select an option [1-10]: " MENU_OPTION
