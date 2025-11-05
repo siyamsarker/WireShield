@@ -190,11 +190,11 @@ sudo ./wireshield.sh
 │  2) 📋 List clients                 │
 │  3) 📲 Show QR for a client         │
 │  4) ❌ Revoke existing client       │
-│  5) 🗓️  Check expired clients        │
+│  5) 🗓️  Check expired clients       │
 │  6) 📊 Show server status           │
 │  7) 🔄 Restart WireGuard            │
 │  8) 💾 Backup configuration         │
-│  9) 🗑️  Uninstall WireGuard          │
+│  9) 🗑️  Uninstall WireGuard         │
 │ 10) 🚪 Exit                         │
 └─────────────────────────────────────┘
 ```
@@ -441,7 +441,7 @@ WireShield includes an optional, lightweight web dashboard that lets you do ever
 
 ### 🎯 Key points
 
-- 🔒 **Secure-by-default**: binds to `127.0.0.1:51821`; put behind your TLS reverse proxy (Caddy, Nginx, Traefik)
+- 🔒 **Secure-by-default**: binds to `127.0.0.1:51821`; put behind your TLS reverse proxy (Nginx, Traefik)
 - 👤 **Simple auth**: local admin users with bcrypt-hashed passwords and signed session cookies
 - 🎨 **Modern UI**: minimal, responsive HTML with Pico.css + HTMX (no heavy SPA)
 - 📦 **Minimal footprint**: single Go binary, HTML templates embedded
@@ -502,7 +502,7 @@ By default the dashboard listens only on `127.0.0.1:51821` for safety. The insta
   # Then open http://localhost:51821 in your browser
   ```
 
-- **Manual reverse proxy** (for advanced setups): terminate HTTPS at Caddy/Nginx/Traefik and proxy to `127.0.0.1:51821` (see examples below). Restrict access by IP, VPN, or additional auth.
+- **Manual reverse proxy** (for advanced setups): terminate HTTPS at Nginx/Traefik and proxy to `127.0.0.1:51821` (see example below). Restrict access by IP, VPN, or additional auth.
 
 - **Bind to the network** (manual configuration): During install, set bind to `0.0.0.0:51821`. Or edit `/etc/wireshield/dashboard-config.json` later and change
 
@@ -518,15 +518,7 @@ By default the dashboard listens only on `127.0.0.1:51821` for safety. The insta
 
   Be sure to open the port in your firewall/security group and protect access.
 
-### �🔐 Sample reverse proxy configs
-
-**Caddyfile** (TLS via Let's Encrypt):
-
-```caddyfile
-your.domain.com {
-  reverse_proxy 127.0.0.1:51821
-}
-```
+### 🔐 Sample reverse proxy config
 
 **Nginx** (snippet):
 
