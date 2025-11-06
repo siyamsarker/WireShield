@@ -138,7 +138,14 @@ body {
   width: 72px !important;
   height: 72px !important;
   margin-bottom: 1.25rem !important;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.12));
+  transition: transform 220ms ease, filter 220ms ease, box-shadow 220ms ease;
+}
+
+.login-header img:hover {
+  transform: translateY(-1px) scale(1.03);
+  filter: drop-shadow(0 6px 12px rgba(79, 70, 229, 0.35));
+  box-shadow: 0 0 0 6px rgba(79, 70, 229, 0.10), 0 0 24px rgba(118, 75, 162, 0.18);
 }
 
 .login-header h1 {
