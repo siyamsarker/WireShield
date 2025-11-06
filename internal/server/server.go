@@ -39,29 +39,33 @@ type Server struct {
 
 func New(cfg *config.Config, cfgPath string) *Server {
 	s := &Server{cfg: cfg, cfgPath: cfgPath, mux: http.NewServeMux(), sess: auth.New(cfg.SessionKey), lim: make(map[string][]time.Time)}
-	// locate script path - check multiple locations
-	script := os.Getenv("WIRE_SHIELD_SCRIPT")
-	if script == "" {
-		// Try multiple possible locations
-		possiblePaths := []string{
-			"/root/wireshield.sh",
-			"/usr/local/bin/wireshield.sh",
-			"/opt/wireshield/wireshield.sh",
-			"/home/*/wireshield.sh",
+	// Resolve script path robustly: validate env var and fall back to common paths
+	envScript := os.Getenv("WIRE_SHIELD_SCRIPT")
+	candidates := []string{
+		envScript,
+		"/usr/local/bin/wireshield.sh",
+		"/root/wireshield.sh",
+		"/home/ubuntu/wireshield.sh",
+	}
+	script := ""
+	for _, p := range candidates {
+		if p == "" {
+			continue
 		}
-		for _, path := range possiblePaths {
-			if _, err := os.Stat(path); err == nil {
-				script = path
-				log.Printf("Found wireshield.sh at: %s", script)
-				break
+		if _, err := os.Stat(p); err == nil {
+			script = p
+			if p == envScript && envScript != "" {
+				log.Printf("Using wireshield.sh from WIRE_SHIELD_SCRIPT: %s", p)
+			} else {
+				log.Printf("Resolved wireshield.sh at: %s", p)
 			}
+			break
 		}
-		if script == "" {
-			log.Println("WARNING: wireshield.sh not found in standard locations. Set WIRE_SHIELD_SCRIPT environment variable.")
-			script = "/root/wireshield.sh" // fallback
-		}
-	} else {
-		log.Printf("Using wireshield.sh from WIRE_SHIELD_SCRIPT: %s", script)
+	}
+	if script == "" {
+		// Last resort default; calls will fail gracefully with clear error
+		log.Println("WARNING: wireshield.sh not found. Ensure the script exists at /usr/local/bin/wireshield.sh or set WIRE_SHIELD_SCRIPT.")
+		script = "/usr/local/bin/wireshield.sh"
 	}
 	s.wg = wireguard.NewService(script)
 
