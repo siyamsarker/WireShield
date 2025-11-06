@@ -598,14 +598,7 @@ The installer now automatically copies the script to `/root/wireshield.sh` durin
 
 ### 🔄 Upgrade
 
-Run from your cloned repository:
-
-```bash
-git pull --rebase
-sudo ./wireshield.sh
-```
-
-Upgrade is now simply:
+From your cloned repository:
 
 ```bash
 git pull --rebase
