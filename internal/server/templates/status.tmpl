@@ -22,6 +22,14 @@
           Backup Config
         </button>
       </form>
+      <a class="btn btn-outline btn-sm" href="/backup/download">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M19 12l-7 7-7-7"></path></svg>
+        Download Backup
+      </a>
+      <button type="button" class="btn btn-danger btn-sm" onclick="openUninstallModal()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+        Uninstall
+      </button>
     </div>
   </div>
   
@@ -30,5 +38,60 @@
     <div class="code-block">{{.Output}}</div>
   </div>
 </div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Restore configuration</div>
+  </div>
+  <form method="post" action="/restore" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{.CSRF}}" />
+    <div class="form-group">
+      <label for="archive">Upload backup (.tar.gz)</label>
+      <input type="file" id="archive" name="archive" accept=".gz,.tgz,.tar.gz" required />
+      <div class="input-hint">Existing /etc/wireguard will be backed up automatically.</div>
+    </div>
+    <button class="btn btn-danger" type="submit" onclick="return confirm('Restore configuration now? This will overwrite current settings.')">Restore</button>
+  </form>
+</div>
+
+<!-- Uninstall Modal -->
+<div class="modal" id="uninstallModal" aria-hidden="true">
+  <div class="modal-backdrop" onclick="closeUninstallModal()"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 style="margin:0;font-size:1.1rem;">Confirm Uninstall</h3>
+      <button class="modal-close" type="button" onclick="closeUninstallModal()">&times;</button>
+    </div>
+    <p style="margin-bottom:1rem;">This will remove WireGuard and likely stop this dashboard. Continue?</p>
+    <div id="uninstallProgress" class="input-hint" style="margin-bottom:0.75rem;"></div>
+    <form id="uninstallForm" method="post" action="/uninstall" onsubmit="return submitUninstall(event)">
+      <input type="hidden" name="csrf" value="{{.CSRF}}" />
+      <div style="display:flex;gap:.75rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" onclick="closeUninstallModal()">Cancel</button>
+        <button type="submit" class="btn btn-danger">Yes, Uninstall</button>
+      </div>
+    </form>
+  </div>
+  
+</div>
+
+<script>
+function openUninstallModal(){ document.getElementById('uninstallModal').classList.add('open'); }
+function closeUninstallModal(){ document.getElementById('uninstallModal').classList.remove('open'); }
+async function submitUninstall(ev){
+  ev.preventDefault();
+  const prog=document.getElementById('uninstallProgress');
+  prog.textContent='Uninstalling...';
+  try {
+    const form=ev.target;
+    const fd=new FormData(form);
+    const res=await fetch('/uninstall',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},body:fd});
+    if(!res.ok){ prog.textContent='Failed: '+res.status; return false; }
+    prog.textContent='Uninstall started. The service may stop shortly.';
+    form.querySelector('button[type="submit"]').disabled=true;
+  } catch(e){ prog.textContent='Error: '+e.message; }
+  return false;
+}
+</script>
 {{end}}
 {{template "layout" .}}

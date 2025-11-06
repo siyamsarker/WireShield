@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -110,6 +111,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/login", s.handleLogin)
 	s.mux.HandleFunc("/logout", s.withAuth(s.handleLogout))
 	s.mux.HandleFunc("/health", s.handleHealth)
+	// Server-Sent Events for live updates (optional)
+	s.mux.HandleFunc("/events", s.withAuth(s.handleEvents))
 	s.mux.HandleFunc("/", s.withAuth(s.handleHome))
 	s.mux.HandleFunc("/clients", s.withAuth(s.handleClients))
 	s.mux.HandleFunc("/clients/new", s.withAuth(s.handleAddClient))
@@ -118,12 +121,20 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/clients/qr", s.withAuth(s.handleClientQR))
 	s.mux.HandleFunc("/clients/qr.png", s.withAuth(s.handleClientQRImage))
 	s.mux.HandleFunc("/clients/check-expired", s.withAuth(s.handleCheckExpired))
+	// JSON APIs for richer UI
+	s.mux.HandleFunc("/api/clients", s.withAuth(s.handleClientsAPI))             // GET list, POST add
+	s.mux.HandleFunc("/api/clients/revoke", s.withAuth(s.handleRevokeClientAPI)) // POST revoke
 	s.mux.HandleFunc("/api/peers", s.withAuth(s.handlePeersAPI))
 	s.mux.HandleFunc("/api/metrics", s.withAuth(s.handleMetricsAPI))
 	s.mux.HandleFunc("/status", s.withAuth(s.handleStatus))
 	s.mux.HandleFunc("/restart", s.withAuth(s.handleRestart))
+	// Backup/Restore
 	s.mux.HandleFunc("/backup", s.withAuth(s.handleBackup))
+	s.mux.HandleFunc("/backup/download", s.withAuth(s.handleBackupDownload)) // GET stream new backup
+	s.mux.HandleFunc("/restore", s.withAuth(s.handleRestore))                // POST multipart upload
 	s.mux.HandleFunc("/uninstall", s.withAuth(s.handleUninstall))
+	// Settings
+	s.mux.HandleFunc("/settings", s.withAuth(s.handleSettings))
 	s.mux.HandleFunc("/settings/password", s.withAuth(s.handlePassword))
 }
 
@@ -253,7 +264,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -334,7 +345,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 	clients, err := s.wg.ListClients()
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.render(w, r, "clients.tmpl", map[string]any{"Clients": clients, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "clients", "PageTitle": "Clients"})
@@ -376,11 +387,11 @@ func (s *Server) handleRevokeClient(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.FormValue("name")
 	if name == "" {
-		http.Error(w, "missing name", 400)
+		http.Error(w, "missing name", http.StatusBadRequest)
 		return
 	}
 	if err := s.wg.RevokeClient(name); err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.sess.SetFlash(w, r, "success", "Client '"+name+"' revoked")
@@ -390,12 +401,12 @@ func (s *Server) handleRevokeClient(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	if name == "" {
-		http.Error(w, "missing name", 400)
+		http.Error(w, "missing name", http.StatusBadRequest)
 		return
 	}
 	cfg, err := s.wg.GetClientConfig(name)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -407,12 +418,12 @@ func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleClientQR(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	if name == "" {
-		http.Error(w, "missing name", 400)
+		http.Error(w, "missing name", http.StatusBadRequest)
 		return
 	}
 	cfgText, err := s.wg.GetClientConfig(name)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	// Render page embedding image served from /clients/qr.png
@@ -431,21 +442,21 @@ func (s *Server) handleClientQR(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleClientQRImage(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	if name == "" {
-		http.Error(w, "missing name", 400)
+		http.Error(w, "missing name", http.StatusBadRequest)
 		return
 	}
 	cfgText, err := s.wg.GetClientConfig(name)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	png, err := qrcode.Encode(cfgText, qrcode.Medium, 300)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(png)
 }
 
@@ -453,12 +464,81 @@ func (s *Server) handleClientQRImage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePeersAPI(w http.ResponseWriter, r *http.Request) {
 	stats, err := s.wg.PeerStats()
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
 	_ = enc.Encode(stats)
+}
+
+// Clients API: GET -> list, POST -> add
+func (s *Server) handleClientsAPI(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		clients, err := s.wg.ListClients()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(clients)
+	case http.MethodPost:
+		if !s.sess.VerifyCSRF(r, r.Header.Get("X-CSRF")) {
+			http.Error(w, "invalid CSRF", http.StatusForbidden)
+			return
+		}
+		var payload struct {
+			Name string `json:"name"`
+			Days int    `json:"days"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(payload.Name) == "" {
+			http.Error(w, "name required", http.StatusBadRequest)
+			return
+		}
+		res, err := s.wg.AddClient(payload.Name, payload.Days)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(res)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// Revoke via JSON
+func (s *Server) handleRevokeClientAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.sess.VerifyCSRF(r, r.Header.Get("X-CSRF")) {
+		http.Error(w, "invalid CSRF", http.StatusForbidden)
+		return
+	}
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.Name) == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+	if err := s.wg.RevokeClient(payload.Name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"revoked": true, "name": payload.Name})
 }
 
 func (s *Server) handleCheckExpired(w http.ResponseWriter, r *http.Request) {
@@ -486,7 +566,7 @@ func (s *Server) handleCheckExpired(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	out, err := s.wg.ShowStatus()
 	if err != nil {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}
 	s.render(w, r, "status.tmpl", map[string]any{"Output": out, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "status", "PageTitle": "Server Status"})
 }
@@ -501,7 +581,7 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.wg.Restart(); err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.sess.SetFlash(w, r, "success", "WireGuard restarted")
@@ -519,10 +599,68 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	path, err := s.wg.Backup()
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.render(w, r, "backup.tmpl", map[string]any{"Path": path})
+}
+
+// GET /backup/download -> creates a backup and streams it
+func (s *Server) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path, err := s.wg.Backup()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", "attachment; filename="+filepath.Base(path))
+	_, _ = io.Copy(w, f)
+}
+
+// POST /restore multipart form with file field "archive"
+func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.NotFound(w, r)
+		return
+	}
+	if !s.sess.VerifyCSRF(r, r.FormValue("csrf")) {
+		http.Error(w, "invalid CSRF", http.StatusForbidden)
+		return
+	}
+	file, hdr, err := r.FormFile("archive")
+	if err != nil {
+		http.Error(w, "missing file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("ws-restore-%d-%s", time.Now().UnixNano(), filepath.Base(hdr.Filename)))
+	out, err := os.Create(tmp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := io.Copy(out, file); err != nil {
+		out.Close()
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	out.Close()
+	if err := s.wg.Restore(tmp); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.sess.SetFlash(w, r, "success", "Configuration restored")
+	http.Redirect(w, r, "/status", http.StatusFound)
 }
 
 // Health check endpoint (unauthenticated)
@@ -541,11 +679,60 @@ func (s *Server) handleUninstall(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid CSRF", http.StatusForbidden)
 		return
 	}
+	// Run uninstall; if AJAX request, respond JSON; else render page
+	ajax := r.Header.Get("X-Requested-With") == "XMLHttpRequest" || strings.Contains(r.Header.Get("Accept"), "application/json")
+	if ajax {
+		go func() { _ = s.wg.Uninstall() }() // fire and forget to avoid hanging UI
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]any{"started": true})
+		return
+	}
 	if err := s.wg.Uninstall(); err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.render(w, r, "uninstall.tmpl", nil)
+}
+
+// SSE endpoint: emits peers and metrics periodically
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "stream unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	// On connect, send one burst immediately
+	send := func(kind string, payload any) {
+		b, _ := json.Marshal(payload)
+		fmt.Fprintf(w, "event: %s\n", kind)
+		fmt.Fprintf(w, "data: %s\n\n", string(b))
+		flusher.Flush()
+	}
+	// initial
+	if stats, err := s.wg.PeerStats(); err == nil {
+		send("peers", stats)
+	}
+	s.metricsMu.RLock()
+	send("metrics", map[string]any{"traffic": s.trafficSamples, "usage": s.usageSamples})
+	s.metricsMu.RUnlock()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			if stats, err := s.wg.PeerStats(); err == nil {
+				send("peers", stats)
+			}
+			s.metricsMu.RLock()
+			send("metrics", map[string]any{"traffic": s.trafficSamples, "usage": s.usageSamples})
+			s.metricsMu.RUnlock()
+		}
+	}
 }
 
 func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
@@ -586,7 +773,7 @@ func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if idx < 0 {
-		http.Error(w, "user not found", 404)
+		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
 	if !config.CheckPassword(s.cfg.Admins[idx].PasswordHash, old) {
@@ -610,6 +797,40 @@ func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "password.tmpl", map[string]any{"Success": true, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
 }
 
+// General settings page (port/DNS/AllowedIPs)
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		st, err := s.wg.GetSettings()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		s.render(w, r, "settings.tmpl", map[string]any{"S": st, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
+		return
+	}
+	if r.Method == http.MethodPost {
+		if !s.sess.VerifyCSRF(r, r.FormValue("csrf")) {
+			http.Error(w, "invalid CSRF", http.StatusForbidden)
+			return
+		}
+		// parse
+		port, _ := strconv.Atoi(r.FormValue("server_port"))
+		st := wireguard.Settings{
+			ServerPort: port,
+			ClientDNS1: strings.TrimSpace(r.FormValue("dns1")),
+			ClientDNS2: strings.TrimSpace(r.FormValue("dns2")),
+			AllowedIPs: strings.TrimSpace(r.FormValue("allowed_ips")),
+		}
+		if err := s.wg.UpdateSettings(st); err != nil {
+			s.render(w, r, "settings.tmpl", map[string]any{"Error": err.Error(), "S": st, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
+			return
+		}
+		s.render(w, r, "settings.tmpl", map[string]any{"Success": true, "S": st, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "settings", "PageTitle": "Settings"})
+		return
+	}
+	http.NotFound(w, r)
+}
+
 func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data any) {
 	// Inject flash message if present
 	if m, ok := data.(map[string]any); ok {
@@ -618,7 +839,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		}
 	}
 	if err := s.tmpls.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 

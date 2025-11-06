@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
@@ -172,6 +173,147 @@ func (s *Service) Backup() (string, error) {
 func (s *Service) Uninstall() error {
 	// This will remove WireGuard and likely make dashboard unusable until reboot/redeploy
 	_, err := s.runBash(fmt.Sprintf("source '%s'; REMOVE=y; uninstallWg", s.ScriptPath))
+	return err
+}
+
+// Settings holds a subset of tunables we expose safely via the dashboard.
+type Settings struct {
+	ServerPort int    `json:"server_port"`
+	ClientDNS1 string `json:"client_dns_1"`
+	ClientDNS2 string `json:"client_dns_2"`
+	AllowedIPs string `json:"allowed_ips"`
+	Interface  string `json:"interface"`
+}
+
+// GetSettings reads /etc/wireguard/params and returns key values.
+func (s *Service) GetSettings() (Settings, error) {
+	p, err := readParamsFile()
+	if err != nil {
+		return Settings{}, err
+	}
+	port, _ := strconv.Atoi(p["SERVER_PORT"])
+	return Settings{
+		ServerPort: port,
+		ClientDNS1: p["CLIENT_DNS_1"],
+		ClientDNS2: p["CLIENT_DNS_2"],
+		AllowedIPs: p["ALLOWED_IPS"],
+		Interface:  p["SERVER_WG_NIC"],
+	}, nil
+}
+
+// UpdateSettings updates allowed keys in params file and adjusts wg conf when port changes.
+func (s *Service) UpdateSettings(in Settings) error {
+	// basic validation
+	if in.ServerPort < 1 || in.ServerPort > 65535 {
+		return errors.New("invalid port")
+	}
+	ipRe := regexp.MustCompile(`^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`)
+	if in.ClientDNS1 == "" || !ipRe.MatchString(in.ClientDNS1) {
+		return errors.New("invalid DNS1")
+	}
+	if in.ClientDNS2 != "" && !ipRe.MatchString(in.ClientDNS2) {
+		return errors.New("invalid DNS2")
+	}
+	if strings.TrimSpace(in.AllowedIPs) == "" {
+		return errors.New("allowed_ips required")
+	}
+
+	params, err := readParamsFile()
+	if err != nil {
+		return err
+	}
+	oldPort := params["SERVER_PORT"]
+	params["SERVER_PORT"] = strconv.Itoa(in.ServerPort)
+	params["CLIENT_DNS_1"] = in.ClientDNS1
+	if in.ClientDNS2 != "" {
+		params["CLIENT_DNS_2"] = in.ClientDNS2
+	}
+	params["ALLOWED_IPS"] = in.AllowedIPs
+	if err := writeParamsFile(params); err != nil {
+		return err
+	}
+	// Update ListenPort in wg config if port changed
+	if oldPort != strconv.Itoa(in.ServerPort) {
+		nic := params["SERVER_WG_NIC"]
+		if nic == "" {
+			nic = in.Interface
+		}
+		if nic != "" {
+			cfg := "/etc/wireguard/" + nic + ".conf"
+			b, err := ioutil.ReadFile(cfg)
+			if err == nil {
+				text := string(b)
+				re := regexp.MustCompile(`(?m)^ListenPort\s*=\s*\d+\s*$`)
+				text = re.ReplaceAllString(text, "ListenPort = "+strconv.Itoa(in.ServerPort))
+				_ = ioutil.WriteFile(cfg, []byte(text), 0600)
+			}
+		}
+		// restart service to apply new port
+		_ = s.Restart()
+	}
+	return nil
+}
+
+func readParamsFile() (map[string]string, error) {
+	b, err := ioutil.ReadFile("/etc/wireguard/params")
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]string{}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if i := strings.Index(line, "="); i > 0 {
+			k := strings.TrimSpace(line[:i])
+			v := strings.TrimSpace(line[i+1:])
+			m[k] = v
+		}
+	}
+	return m, nil
+}
+
+func writeParamsFile(m map[string]string) error {
+	// Reconstruct with the keys we know while preserving a stable order
+	keys := []string{"SERVER_PUB_IP", "SERVER_PUB_NIC", "SERVER_WG_NIC", "SERVER_WG_IPV4", "SERVER_WG_IPV6", "SERVER_PORT", "SERVER_PRIV_KEY", "SERVER_PUB_KEY", "CLIENT_DNS_1", "CLIENT_DNS_2", "ALLOWED_IPS"}
+	var sb strings.Builder
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			sb.WriteString(k + "=" + v + "\n")
+		}
+	}
+	return ioutil.WriteFile("/etc/wireguard/params", []byte(sb.String()), 0600)
+}
+
+// Restore replaces /etc/wireguard with the content of the provided tar.gz archive
+// and attempts to reload the WireGuard interface found in the restored params file.
+func (s *Service) Restore(archivePath string) error {
+	if strings.TrimSpace(archivePath) == "" {
+		return errors.New("empty archive path")
+	}
+	// The script will:
+	// 1) create a timestamped backup of current /etc/wireguard if exists
+	// 2) extract provided archive into /tmp/ws-restore-XXXX
+	// 3) move extracted etc/wireguard content into place
+	// 4) reload wg-quick@<nic> based on params file
+	bash := fmt.Sprintf(`set -e
+tmpd=$(mktemp -d)
+tar xzf %q -C "$tmpd"
+ts=$(date +%%Y%%m%%d-%%H%%M%%S)
+if [ -d /etc/wireguard ]; then mv /etc/wireguard "/etc/wireguard.bak-$ts"; fi
+if [ -d "$tmpd/etc/wireguard" ]; then
+	mkdir -p /etc
+	mv "$tmpd/etc/wireguard" /etc/wireguard
+else
+	# archive may directly contain wireguard dir
+	if [ -d "$tmpd/wireguard" ]; then mv "$tmpd/wireguard" /etc/wireguard; else echo 'archive missing wireguard dir' >&2; exit 1; fi
+fi
+chmod -R 600 /etc/wireguard || true
+if [ -f /etc/wireguard/params ]; then source /etc/wireguard/params; fi
+if command -v systemctl >/dev/null 2>&1 && [ -n "$SERVER_WG_NIC" ]; then systemctl restart "wg-quick@$SERVER_WG_NIC" || true; fi
+rm -rf "$tmpd"`, archivePath)
+	_, err := s.runBash(bash)
 	return err
 }
 

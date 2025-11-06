@@ -240,7 +240,8 @@ async function refreshPeers(manual){
 }
 function startPeersAuto(){
   refreshPeers(false);
-  peersTimer=setInterval(refreshPeers,false, 8000);
+  // Refresh every 8s; pass manual=false correctly
+  peersTimer = setInterval(() => refreshPeers(false), 8000);
 }
 document.addEventListener('DOMContentLoaded', startPeersAuto);
 
@@ -285,5 +286,22 @@ function updateCharts(data){
   usageChart.update('quiet');
 }
 async function tickMetrics(){ const d=await fetchMetrics(); updateCharts(d); }
-document.addEventListener('DOMContentLoaded',()=>{initCharts(); tickMetrics(); metricsTimer=setInterval(tickMetrics,5000);});
+// Prefer SSE if available
+function startSSE(){
+  try{
+    const es=new EventSource('/events');
+    es.addEventListener('peers', ev=>{ try{ const d=JSON.parse(ev.data); window._lastPeers=d; const body=document.getElementById('peers-body'); if(!body) return; if(!Array.isArray(d)||d.length===0){ body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--gray-600)">No active peers</td></tr>'; return;} body.innerHTML=d.map(p=>`<tr>
+      <td class="font-mono">${p.name||''}</td>
+      <td>${p.endpoint||'—'}</td>
+      <td>${formatHandshake(p.handshake_ago_sec||0)}</td>
+      <td>${formatBytes(p.rx_bytes||p.ReceiveBytes)}</td>
+      <td>${formatBytes(p.tx_bytes||p.TransmitBytes)}</td>
+      <td>${p.allowed_ips||p.AllowedIPs||'—'}</td>
+      <td>${p.expires?`<span class=\"badge badge-warning\">${p.expires}</span>`:'<span class=\"badge badge-success\">—</span>'}</td>
+    </tr>`).join(''); }catch{}});
+    es.addEventListener('metrics', ev=>{ try{ const d=JSON.parse(ev.data); updateCharts(d);}catch{}});
+    window._es=es; return true;
+  }catch{ return false; }
+}
+document.addEventListener('DOMContentLoaded',()=>{initCharts(); if(!startSSE()){ tickMetrics(); metricsTimer=setInterval(tickMetrics,5000);} });
 </script>

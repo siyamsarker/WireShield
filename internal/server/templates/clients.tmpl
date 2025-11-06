@@ -15,10 +15,10 @@
           Check Expired
         </button>
       </form>
-      <a href="/clients/new" class="btn btn-primary btn-sm">
+      <button type="button" class="btn btn-primary btn-sm" onclick="openAddClientModal()">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         Add Client
-      </a>
+      </button>
     </div>
   </div>
   <div class="client-tools" style="padding:0 1.25rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
@@ -66,13 +66,9 @@
               <a href="/clients/qr?name={{.Name}}" class="btn btn-outline btn-sm" title="View QR Code">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
               </a>
-              <form method="post" action="/clients/revoke" onsubmit="return confirm('Are you sure you want to revoke access for {{.Name}}?')" style="display: inline;">
-                <input type="hidden" name="csrf" value="{{$.CSRF}}" />
-                <input type="hidden" name="name" value="{{.Name}}" />
-                <button type="submit" class="btn btn-danger btn-sm" title="Revoke Client">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                </button>
-              </form>
+              <button type="button" class="btn btn-danger btn-sm" title="Revoke Client" onclick="revokeClient('{{.Name}}')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
             </div>
           </td>
         </tr>
@@ -96,6 +92,7 @@
 {{template "layout" .}}
 
 <script>
+const CSRF='{{.CSRF}}';
 function filterClients(){
   const q=document.getElementById('clientSearch').value.toLowerCase();
   const rows=[...document.querySelectorAll('table tbody tr')];
@@ -112,4 +109,54 @@ function filterClients(){
   if(cnt) cnt.textContent=shown;
 }
 document.addEventListener('DOMContentLoaded', ()=>{filterClients();});
+
+// Modal UI for Add Client
+function openAddClientModal(){
+  document.getElementById('addClientModal').classList.add('open');
+}
+function closeAddClientModal(){
+  document.getElementById('addClientModal').classList.remove('open');
+}
+async function submitAddClient(e){
+  e.preventDefault();
+  const name=document.getElementById('ac_name').value.trim();
+  const days=parseInt(document.getElementById('ac_days').value||'0',10)||0;
+  if(!name){alert('Name required');return}
+  const res=await fetch('/api/clients',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF':CSRF},body:JSON.stringify({name,days})});
+  if(!res.ok){const t=await res.text(); alert('Add failed: '+t); return}
+  closeAddClientModal();
+  location.reload();
+}
+
+async function revokeClient(name){
+  if(!confirm('Revoke client '+name+'?')) return;
+  const res=await fetch('/api/clients/revoke',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF':CSRF},body:JSON.stringify({name})});
+  if(!res.ok){const t=await res.text(); alert('Revoke failed: '+t); return}
+  location.reload();
+}
 </script>
+
+<!-- Add Client Modal -->
+<div id="addClientModal" class="modal">
+  <div class="modal-backdrop" onclick="closeAddClientModal()"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Add Client</h3>
+      <button class="modal-close" onclick="closeAddClientModal()">×</button>
+    </div>
+    <form onsubmit="submitAddClient(event)">
+      <div class="form-group">
+        <label for="ac_name">Client Name</label>
+        <input id="ac_name" type="text" required pattern="[A-Za-z0-9_-]{1,15}" placeholder="e.g. alice-phone" />
+      </div>
+      <div class="form-group">
+        <label for="ac_days">Expiration (days, optional)</label>
+        <input id="ac_days" type="number" min="1" placeholder="30" />
+      </div>
+      <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="btn btn-secondary" onclick="closeAddClientModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+  </div>
