@@ -734,6 +734,27 @@ tbody tr:hover {
   height: auto;
 }
 
+/* Live peers specific adjustments */
+#live-peers-card table td, #live-peers-card table th { white-space: nowrap; }
+#live-peers-card table td:nth-child(2) { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+#live-peers-card table td:nth-child(6) { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Search input style enhancement */
+input#clientSearch.input, #clientSearch.input, #clientSearch {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: border-color .15s, background .15s;
+}
+input#clientSearch.input:focus, #clientSearch:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .sidebar {

@@ -82,8 +82,9 @@
           <div>{{.Message}}</div>
         </div>
         {{end}}
-        
-        {{template "content" .}}
+
+        {{/* Use block so per-page templates can override content without global name collisions */}}
+        {{block "content" .}}{{end}}
       </div>
     </div>
   </div>

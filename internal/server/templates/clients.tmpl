@@ -21,6 +21,12 @@
       </a>
     </div>
   </div>
+  <div class="client-tools" style="padding:0 1.25rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:220px;">
+      <input id="clientSearch" type="text" placeholder="Search clients…" class="input" oninput="filterClients()" style="width:100%;">
+    </div>
+    <div style="font-size:.75rem;color:var(--gray-600)">Showing <span id="clientCount">0</span> clients</div>
+  </div>
   
   {{if .Clients}}
   <div class="table-container">
@@ -88,3 +94,22 @@
 </div>
 {{end}}
 {{template "layout" .}}
+
+<script>
+function filterClients(){
+  const q=document.getElementById('clientSearch').value.toLowerCase();
+  const rows=[...document.querySelectorAll('table tbody tr')];
+  let shown=0;
+  rows.forEach(r=>{
+    const nameCell=r.querySelector('td .font-mono');
+    if(!nameCell){return;}
+    const name=nameCell.textContent.toLowerCase();
+    const match=name.indexOf(q)!==-1;
+    r.style.display=match?'':'none';
+    if(match) shown++;
+  });
+  const cnt=document.getElementById('clientCount');
+  if(cnt) cnt.textContent=shown;
+}
+document.addEventListener('DOMContentLoaded', ()=>{filterClients();});
+</script>

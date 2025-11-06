@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+    "encoding/json"
 
 	"github.com/siyamsarker/WireShield/config"
 	"github.com/siyamsarker/WireShield/internal/auth"
@@ -94,6 +95,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/clients/qr", s.withAuth(s.handleClientQR))
 	s.mux.HandleFunc("/clients/qr.png", s.withAuth(s.handleClientQRImage))
 	s.mux.HandleFunc("/clients/check-expired", s.withAuth(s.handleCheckExpired))
+	// Live peers API for dashboard auto-refresh
+	s.mux.HandleFunc("/api/peers", s.withAuth(s.handlePeersAPI))
 	s.mux.HandleFunc("/status", s.withAuth(s.handleStatus))
 	s.mux.HandleFunc("/restart", s.withAuth(s.handleRestart))
 	s.mux.HandleFunc("/backup", s.withAuth(s.handleBackup))
@@ -313,6 +316,18 @@ func (s *Server) handleClientQRImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.WriteHeader(200)
 	_, _ = w.Write(png)
+}
+
+// JSON API: live peers status
+func (s *Server) handlePeersAPI(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.wg.PeerStats()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	enc := json.NewEncoder(w)
+	_ = enc.Encode(stats)
 }
 
 func (s *Server) handleCheckExpired(w http.ResponseWriter, r *http.Request) {

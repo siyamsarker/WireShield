@@ -37,6 +37,35 @@
   </div>
 </div>
 
+<!-- Live Connections -->
+<div class="card" id="live-peers-card">
+  <div class="card-header">
+    <div class="card-title">Live Connections</div>
+    <div style="display:flex;align-items:center;gap:.5rem;font-size:.75rem;color:var(--gray-600)">
+      <span id="peers-refresh-status">Updating…</span>
+      <button class="btn btn-outline btn-sm" type="button" onclick="refreshPeers(true)">Refresh Now</button>
+    </div>
+  </div>
+  <div class="table-container">
+    <table id="peers-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Endpoint</th>
+          <th>Handshake</th>
+          <th>RX</th>
+          <th>TX</th>
+          <th>Allowed IPs</th>
+          <th>Expires</th>
+        </tr>
+      </thead>
+      <tbody id="peers-body">
+        <tr><td colspan="7" style="text-align:center;color:var(--gray-600)">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Quick Actions -->
 <div class="card">
   <div class="card-header">
@@ -139,3 +168,63 @@
 {{end}}
 {{end}}
 {{template "layout" .}}
+
+<script>
+async function fetchPeers() {
+  try {
+    const res = await fetch('/api/peers',{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    return await res.json();
+  } catch(e) {
+    console.error('Peers fetch failed', e);
+    return null;
+  }
+}
+function formatBytes(b){
+  if(!b||b<1) return '0 B';
+  const units=['B','KiB','MiB','GiB','TiB'];
+  let i=0, val=b;
+  while(val>=1024 && i<units.length-1){val/=1024;i++;}
+  return val.toFixed(val<10?2:1)+' '+units[i];
+}
+function formatHandshake(sec){
+  if(sec<=0) return '—';
+  if(sec<60) return sec+'s';
+  if(sec<3600) return Math.floor(sec/60)+'m';
+  if(sec<86400) return Math.floor(sec/3600)+'h';
+  return Math.floor(sec/86400)+'d';
+}
+let peersTimer=null;
+async function refreshPeers(manual){
+  const statusEl=document.getElementById('peers-refresh-status');
+  if(statusEl) statusEl.textContent= manual? 'Refreshing…':'Updating…';
+  const data=await fetchPeers();
+  const body=document.getElementById('peers-body');
+  if(!body) return;
+  if(!data){
+    body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--danger-600)">Failed to load peers</td></tr>';
+    if(statusEl) statusEl.textContent='Error';
+    return;
+  }
+  if(data.length===0){
+    body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--gray-600)">No active peers</td></tr>';
+    if(statusEl) statusEl.textContent='Idle';
+    return;
+  }
+  body.innerHTML=data.map(p=>`<tr>
+    <td class="font-mono">${p.name||'<span style=\"color:var(--gray-500)\">(unknown)</span>'}</td>
+    <td>${p.endpoint||'—'}</td>
+    <td>${formatHandshake(p.handshake_ago_sec)}</td>
+    <td>${formatBytes(p.rx_bytes)}</td>
+    <td>${formatBytes(p.tx_bytes)}</td>
+    <td>${p.allowed_ips||'—'}</td>
+    <td>${p.expires?`<span class=\"badge badge-warning\">${p.expires}</span>`:'<span class=\"badge badge-success\">—</span>'}</td>
+  </tr>`).join('');
+  if(statusEl) statusEl.textContent='Updated';
+}
+function startPeersAuto(){
+  refreshPeers(false);
+  peersTimer=setInterval(refreshPeers,false, 8000);
+}
+document.addEventListener('DOMContentLoaded', startPeersAuto);
+</script>
