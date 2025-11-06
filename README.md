@@ -605,7 +605,7 @@ git pull --rebase
 sudo ./wireshield.sh
 ```
 
-Helper scripts (`install.sh`, `local-install.sh`, `upgrade.sh`) were removed to reduce confusion. The single entrypoint `wireshield.sh` handles initial setup, client management, optional dashboard build, and future re-runs. If you previously used the one-line curl installer, just clone the repo and continue managing with this script.
+The single entrypoint `wireshield.sh` handles initial setup, client management, optional dashboard build, and future re-runs. If you previously used the one-line curl installer, just clone the repo and continue managing with this script.
 
 ## 🗑️ Uninstall
 
