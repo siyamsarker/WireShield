@@ -629,7 +629,14 @@ The installer now automatically copies the script to `/root/wireshield.sh` durin
   curl -fsSL https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/install.sh | sudo bash
   ```
 
-- Legacy path: `scripts/upgrade.sh` still exists but is deprecated in favor of the release-based installer.
+- Also supported: `scripts/upgrade.sh` remains available and supported for production servers that prefer an in-place upgrade flow. It will pull the latest code, install the CLI script to both `/usr/local/bin` and `/root`, rebuild/reinstall the dashboard binary if needed, update the systemd unit, and restart the service.
+
+  ```bash
+  sudo su -
+  wget -O /tmp/upgrade.sh https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/upgrade.sh
+  chmod +x /tmp/upgrade.sh
+  /tmp/upgrade.sh
+  ```
 
 ## 🗑️ Uninstall
 
