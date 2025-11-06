@@ -66,6 +66,21 @@
   </div>
 </div>
 
+<!-- Charts Row -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Traffic (RX/TX) and Server Usage</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+    <div>
+      <canvas id="trafficChart" height="120"></canvas>
+    </div>
+    <div>
+      <canvas id="usageChart" height="120"></canvas>
+    </div>
+  </div>
+</div>
+
 <!-- Quick Actions -->
 <div class="card">
   <div class="card-header">
@@ -169,6 +184,7 @@
 {{end}}
 {{template "layout" .}}
 
+<script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script>
 async function fetchPeers() {
   try {
@@ -227,4 +243,47 @@ function startPeersAuto(){
   peersTimer=setInterval(refreshPeers,false, 8000);
 }
 document.addEventListener('DOMContentLoaded', startPeersAuto);
+
+// Charts
+let trafficChart, usageChart, metricsTimer=null;
+function initCharts(){
+  const tc=document.getElementById('trafficChart');
+  const uc=document.getElementById('usageChart');
+  trafficChart=new Chart(tc,{type:'line',data:{labels:[],datasets:[
+    {label:'RX (KB/s)',data:[],borderColor:'#10b981',tension:.25,pointRadius:0},
+    {label:'TX (KB/s)',data:[],borderColor:'#6366f1',tension:.25,pointRadius:0}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true}},scales:{x:{ticks:{display:false}},y:{beginAtZero:true}}});
+  usageChart=new Chart(uc,{type:'line',data:{labels:[],datasets:[
+    {label:'CPU %',data:[],borderColor:'#ef4444',tension:.25,pointRadius:0},
+    {label:'Mem %',data:[],borderColor:'#f59e0b',tension:.25,pointRadius:0}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true}},scales:{x:{ticks:{display:false}},y:{beginAtZero:true,max:100}}});
+}
+
+async function fetchMetrics(){
+  try{const r=await fetch('/api/metrics',{cache:'no-store'}); if(!r.ok) throw new Error(); return await r.json();}catch{return null}
+}
+function updateCharts(data){
+  if(!data) return;
+  const tr=data.traffic||[]; const us=data.usage||[];
+  const labels=tr.map(p=>new Date(p.ts));
+  // rates from cumulative: compute delta over delta time (KB/s)
+  const rx=[]; const tx=[];
+  for(let i=1;i<tr.length;i++){
+    const dt=(tr[i].ts - tr[i-1].ts)/1000; if(dt<=0){rx.push(0);tx.push(0);continue}
+    rx.push((tr[i].rx - tr[i-1].rx)/dt/1024);
+    tx.push((tr[i].tx - tr[i-1].tx)/dt/1024);
+  }
+  trafficChart.data.labels=labels.slice(1);
+  trafficChart.data.datasets[0].data=rx;
+  trafficChart.data.datasets[1].data=tx;
+  trafficChart.update('quiet');
+
+  const ulabels=us.map(p=>new Date(p.ts));
+  usageChart.data.labels=ulabels;
+  usageChart.data.datasets[0].data=us.map(p=>p.cpu_percent||p.CPUPercent||0);
+  usageChart.data.datasets[1].data=us.map(p=>p.mem_used_pct||p.MemUsedPct||0);
+  usageChart.update('quiet');
+}
+async function tickMetrics(){ const d=await fetchMetrics(); updateCharts(d); }
+document.addEventListener('DOMContentLoaded',()=>{initCharts(); tickMetrics(); metricsTimer=setInterval(tickMetrics,5000);});
 </script>

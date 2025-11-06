@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bufio"
 	"embed"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
@@ -13,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-    "encoding/json"
 
 	"github.com/siyamsarker/WireShield/config"
 	"github.com/siyamsarker/WireShield/internal/auth"
@@ -36,6 +38,25 @@ type Server struct {
 	tmpls   *template.Template
 	limMu   sync.Mutex
 	lim     map[string][]time.Time
+	// metrics ring buffers
+	metricsMu      sync.RWMutex
+	trafficSamples []TrafficSample
+	usageSamples   []UsageSample
+}
+
+// TrafficSample holds timestamp & rx/tx totals
+type TrafficSample struct {
+	Ts int64 `json:"ts"`
+	Rx int64 `json:"rx"`
+	Tx int64 `json:"tx"`
+}
+
+// UsageSample holds timestamp & CPU/Mem usage
+type UsageSample struct {
+	Ts           int64   `json:"ts"`
+	CPUPercent   float64 `json:"cpu_percent"`
+	MemUsedBytes uint64  `json:"mem_used_bytes"`
+	MemUsedPct   float64 `json:"mem_used_pct"`
 }
 
 func New(cfg *config.Config, cfgPath string) *Server {
@@ -72,13 +93,16 @@ func New(cfg *config.Config, cfgPath string) *Server {
 
 	// templates
 	s.tmpls = template.Must(template.New("").ParseFS(templatesFS, "templates/*.tmpl"))
-
 	// static files (embedded) - mount sub FS at 'static' so /static/* resolves
 	if sub, err := fs.Sub(staticFS, "static"); err == nil {
 		s.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
 	}
 
 	s.routes()
+	// initialize metric buffers (roughly 30 minutes at 5s)
+	s.trafficSamples = make([]TrafficSample, 0, 360)
+	s.usageSamples = make([]UsageSample, 0, 360)
+	go s.sampleLoop()
 	return s
 }
 
@@ -91,12 +115,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/clients/new", s.withAuth(s.handleAddClient))
 	s.mux.HandleFunc("/clients/revoke", s.withAuth(s.handleRevokeClient))
 	s.mux.HandleFunc("/clients/config", s.withAuth(s.handleClientConfig))
-	// HTML QR view and raw PNG endpoints
 	s.mux.HandleFunc("/clients/qr", s.withAuth(s.handleClientQR))
 	s.mux.HandleFunc("/clients/qr.png", s.withAuth(s.handleClientQRImage))
 	s.mux.HandleFunc("/clients/check-expired", s.withAuth(s.handleCheckExpired))
-	// Live peers API for dashboard auto-refresh
 	s.mux.HandleFunc("/api/peers", s.withAuth(s.handlePeersAPI))
+	s.mux.HandleFunc("/api/metrics", s.withAuth(s.handleMetricsAPI))
 	s.mux.HandleFunc("/status", s.withAuth(s.handleStatus))
 	s.mux.HandleFunc("/restart", s.withAuth(s.handleRestart))
 	s.mux.HandleFunc("/backup", s.withAuth(s.handleBackup))
@@ -104,6 +127,114 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/settings/password", s.withAuth(s.handlePassword))
 }
 
+// sampleLoop collects traffic totals, CPU percentage and system memory usage every 5s.
+func (s *Server) sampleLoop() {
+	interval := 5 * time.Second
+	// previous CPU counters
+	prevBusy, prevTotal := readCPUCounters()
+	for {
+		start := time.Now()
+		rxTot, txTot, terr := s.wg.TransferTotals()
+		busy, total := readCPUCounters()
+		cpuPercent := 0.0
+		if prevTotal > 0 && total > prevTotal && busy >= prevBusy {
+			cpuPercent = (float64(busy-prevBusy) / float64(total-prevTotal)) * 100.0
+		}
+		prevBusy, prevTotal = busy, total
+		memUsedBytes, memUsedPct := readMemInfo()
+		s.metricsMu.Lock()
+		if terr == nil {
+			s.trafficSamples = append(s.trafficSamples, TrafficSample{Ts: time.Now().UnixMilli(), Rx: rxTot, Tx: txTot})
+			if len(s.trafficSamples) > cap(s.trafficSamples) {
+				s.trafficSamples = s.trafficSamples[len(s.trafficSamples)-cap(s.trafficSamples):]
+			}
+		}
+		s.usageSamples = append(s.usageSamples, UsageSample{Ts: time.Now().UnixMilli(), CPUPercent: cpuPercent, MemUsedBytes: memUsedBytes, MemUsedPct: memUsedPct})
+		if len(s.usageSamples) > cap(s.usageSamples) {
+			s.usageSamples = s.usageSamples[len(s.usageSamples)-cap(s.usageSamples):]
+		}
+		s.metricsMu.Unlock()
+		elapsed := time.Since(start)
+		sleepFor := interval - elapsed
+		if sleepFor < time.Second {
+			sleepFor = time.Second
+		}
+		time.Sleep(sleepFor)
+	}
+}
+
+// readCPUCounters returns busy and total jiffies from /proc/stat (Linux only).
+func readCPUCounters() (busy, total uint64) {
+	f, err := os.Open("/proc/stat")
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "cpu ") { // aggregate line
+			fields := strings.Fields(line)[1:]
+			// user nice system idle iowait irq softirq steal guest guest_nice
+			var nums []uint64
+			for _, v := range fields {
+				val, _ := strconv.ParseUint(v, 10, 64)
+				nums = append(nums, val)
+			}
+			if len(nums) < 4 {
+				return 0, 0
+			}
+			user, nice, system, idle := nums[0], nums[1], nums[2], nums[3]
+			busy = user + nice + system
+			total = 0
+			for _, n := range nums {
+				total += n
+			}
+			_ = idle
+			return busy, total
+		}
+	}
+	return 0, 0
+}
+
+// readMemInfo returns used memory bytes and percentage using MemTotal & MemAvailable.
+func readMemInfo() (usedBytes uint64, usedPct float64) {
+	f, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+	var memTotal, memAvail uint64
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "MemTotal:") {
+			fmt.Sscanf(line, "MemTotal: %d kB", &memTotal)
+		} else if strings.HasPrefix(line, "MemAvailable:") {
+			fmt.Sscanf(line, "MemAvailable: %d kB", &memAvail)
+		}
+		if memTotal > 0 && memAvail > 0 {
+			break
+		}
+	}
+	if memTotal == 0 {
+		return 0, 0
+	}
+	usedKB := memTotal - memAvail
+	usedBytes = usedKB * 1024
+	usedPct = (float64(usedKB) / float64(memTotal)) * 100.0
+	return usedBytes, usedPct
+}
+
+// Metrics API returns traffic & usage samples
+func (s *Server) handleMetricsAPI(w http.ResponseWriter, r *http.Request) {
+	s.metricsMu.RLock()
+	traffic := append([]TrafficSample(nil), s.trafficSamples...)
+	usage := append([]UsageSample(nil), s.usageSamples...)
+	s.metricsMu.RUnlock()
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"traffic": traffic, "usage": usage})
+}
 func (s *Server) Start() error {
 	srv := &http.Server{
 		Addr:         s.cfg.Listen,
@@ -122,7 +253,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		next.ServeHTTP(w, r)
 	})
 }

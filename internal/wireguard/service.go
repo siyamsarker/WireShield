@@ -8,8 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 type Client struct {
@@ -19,14 +19,14 @@ type Client struct {
 
 // PeerStat represents a live peer status derived from `wg show` combined with config mapping.
 type PeerStat struct {
-	Name            string `json:"name"`
-	PublicKey       string `json:"public_key"`
-	Endpoint        string `json:"endpoint"`
-	LatestHandshake string `json:"latest_handshake"`
-	HandshakeAgoSec int    `json:"handshake_ago_sec"`
-	ReceiveBytes    int64  `json:"rx_bytes"`
-	TransmitBytes   int64  `json:"tx_bytes"`
-	AllowedIPs      string `json:"allowed_ips"`
+	Name            string  `json:"name"`
+	PublicKey       string  `json:"public_key"`
+	Endpoint        string  `json:"endpoint"`
+	LatestHandshake string  `json:"latest_handshake"`
+	HandshakeAgoSec int     `json:"handshake_ago_sec"`
+	ReceiveBytes    int64   `json:"rx_bytes"`
+	TransmitBytes   int64   `json:"tx_bytes"`
+	AllowedIPs      string  `json:"allowed_ips"`
 	Expires         *string `json:"expires,omitempty"`
 }
 
@@ -175,6 +175,33 @@ func (s *Service) Uninstall() error {
 	return err
 }
 
+// TransferTotals returns total RX and TX bytes across all peers by parsing
+// `wg show all dump`, which exposes exact byte counters.
+func (s *Service) TransferTotals() (int64, int64, error) {
+	out, err := exec.Command("wg", "show", "all", "dump").CombinedOutput()
+	if err != nil {
+		return 0, 0, err
+	}
+	var rxTotal, txTotal int64
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		// Peer lines have at least 9 columns, indexes:
+		// 0: iface, 1: public-key, 2: preshared-key, 3: endpoint,
+		// 4: allowed-ips, 5: latest-handshake, 6: rx, 7: tx, 8: keepalive
+		if len(f) >= 9 {
+			rx, _ := strconv.ParseInt(f[6], 10, 64)
+			tx, _ := strconv.ParseInt(f[7], 10, 64)
+			rxTotal += rx
+			txTotal += tx
+		}
+	}
+	return rxTotal, txTotal, nil
+}
+
 // PeerStats parses `wg show` output and maps peers to client names & expiration.
 // Falls back gracefully if wg is not available.
 func (s *Service) PeerStats() ([]PeerStat, error) {
@@ -318,10 +345,14 @@ func humanToBytes(s string) int64 {
 	val, _ := parseFloat(valStr)
 	mult := float64(1)
 	switch strings.ToUpper(unit) {
-	case "B": mult = 1
-	case "KIB": mult = 1024
-	case "MIB": mult = 1024 * 1024
-	case "GIB": mult = 1024 * 1024 * 1024
+	case "B":
+		mult = 1
+	case "KIB":
+		mult = 1024
+	case "MIB":
+		mult = 1024 * 1024
+	case "GIB":
+		mult = 1024 * 1024 * 1024
 	}
 	return int64(val * mult)
 }
@@ -335,7 +366,9 @@ func parseAgoToSeconds(s string) int {
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		fields := strings.Fields(p)
-		if len(fields) < 2 { continue }
+		if len(fields) < 2 {
+			continue
+		}
 		valStr := fields[0]
 		unit := fields[1]
 		v := 0
