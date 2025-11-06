@@ -138,7 +138,7 @@ body {
   width: 132px;
   height: auto;
   display: block;
-  margin: 0 auto 1.1rem;
+  margin: 5px auto 5px; /* enforce visual 5px top and bottom space around the logo */
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.14));
 }
 
