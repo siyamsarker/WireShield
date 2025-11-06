@@ -163,8 +163,9 @@ WireShield/
   │  └─ static/
   │     ├─ app.css
   │     ├─ copy.js
-  │     ├─ theme.js
-  │     └─ favicon.svg
+  │     ├─ logo.svg
+  │     └─ icons/
+  │        └─ favicon.svg
   └─ 🔧 wireguard/                      # Thin wrapper calling Bash script functions
     └─ service.go
 ```
