@@ -21,6 +21,29 @@ type Service struct {
 
 func NewService(scriptPath string) *Service { return &Service{ScriptPath: scriptPath} }
 
+// bashSource builds a robust bash snippet that sources the managing script from
+// the first existing candidate path. This makes the dashboard resilient to
+// environment mismatches or moved scripts.
+func (s *Service) bashSource() string {
+	candidates := []string{
+		s.ScriptPath,
+		"/usr/local/bin/wireshield.sh",
+		"/root/wireshield.sh",
+		"/home/ubuntu/wireshield.sh",
+	}
+	parts := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		if c == "" { // skip empty
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("source '%s' 2>/dev/null", c))
+	}
+	// Try command -v as a last resort
+	parts = append(parts, "p=$(command -v wireshield.sh 2>/dev/null); [ -n \"$p\" ] && source \"$p\" 2>/dev/null")
+	// Join with ORs and add a friendly error if nothing could be sourced
+	return fmt.Sprintf("(%s) || { echo 'wireshield.sh not found - set WIRE_SHIELD_SCRIPT or install to /usr/local/bin/wireshield.sh' >&2; exit 127; }", strings.Join(parts, " || "))
+}
+
 func (s *Service) runBash(command string) ([]byte, error) {
 	cmd := exec.Command("bash", "-lc", command)
 	var out, errb bytes.Buffer
@@ -34,7 +57,7 @@ func (s *Service) runBash(command string) ([]byte, error) {
 }
 
 func (s *Service) ListClients() ([]Client, error) {
-	cmd := fmt.Sprintf("source '%s'; ws_list_clients_json", s.ScriptPath)
+	cmd := fmt.Sprintf("%s; ws_list_clients_json", s.bashSource())
 	b, err := s.runBash(cmd)
 	if err != nil {
 		return nil, err
@@ -51,7 +74,7 @@ func (s *Service) AddClient(name string, days int) (map[string]any, error) {
 	if days > 0 {
 		opt = fmt.Sprintf(" --days %d", days)
 	}
-	cmd := fmt.Sprintf("source '%s'; ws_add_client --name %q%s", s.ScriptPath, name, opt)
+	cmd := fmt.Sprintf("%s; ws_add_client --name %q%s", s.bashSource(), name, opt)
 	b, err := s.runBash(cmd)
 	if err != nil {
 		return nil, err
@@ -64,13 +87,13 @@ func (s *Service) AddClient(name string, days int) (map[string]any, error) {
 }
 
 func (s *Service) RevokeClient(name string) error {
-	cmd := fmt.Sprintf("source '%s'; ws_revoke_client %q", s.ScriptPath, name)
+	cmd := fmt.Sprintf("%s; ws_revoke_client %q", s.bashSource(), name)
 	_, err := s.runBash(cmd)
 	return err
 }
 
 func (s *Service) GetClientConfig(name string) (string, error) {
-	cmd := fmt.Sprintf("source '%s'; ws_get_client_config %q", s.ScriptPath, name)
+	cmd := fmt.Sprintf("%s; ws_get_client_config %q", s.bashSource(), name)
 	b, err := s.runBash(cmd)
 	if err != nil {
 		return "", err
@@ -82,7 +105,7 @@ func (s *Service) GetClientConfig(name string) (string, error) {
 }
 
 func (s *Service) CheckExpired() ([]string, error) {
-	cmd := fmt.Sprintf("source '%s'; ws_check_expired_json", s.ScriptPath)
+	cmd := fmt.Sprintf("%s; ws_check_expired_json", s.bashSource())
 	b, err := s.runBash(cmd)
 	if err != nil {
 		return nil, err
@@ -113,12 +136,12 @@ func (s *Service) IsRunning() bool {
 }
 
 func (s *Service) Restart() error {
-	_, err := s.runBash(fmt.Sprintf("source '%s'; restartWireGuard", s.ScriptPath))
+	_, err := s.runBash(fmt.Sprintf("%s; restartWireGuard", s.bashSource()))
 	return err
 }
 
 func (s *Service) Backup() (string, error) {
-	b, err := s.runBash(fmt.Sprintf("source '%s'; backupConfigs", s.ScriptPath))
+	b, err := s.runBash(fmt.Sprintf("%s; backupConfigs", s.bashSource()))
 	if err != nil {
 		return "", err
 	}

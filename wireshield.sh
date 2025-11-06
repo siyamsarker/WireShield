@@ -1162,16 +1162,15 @@ function _ws_install_dashboard_inline() {
 	fi
 	
 	# Ensure the script is in a permanent location for the dashboard to use
-	if [[ -f "/root/wireshield.sh" ]]; then
-		WS_SCRIPT_PATH="/root/wireshield.sh"
-	elif [[ -f "/usr/local/bin/wireshield.sh" ]]; then
+	# Prefer /usr/local/bin (on PATH and stable)
+	if [[ -f "/usr/local/bin/wireshield.sh" ]]; then
 		WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"
-	else
-		# Copy current script to /root/wireshield.sh if not already there
-		echo "Installing wireshield.sh to /root/wireshield.sh for dashboard access..."
-		cp "$CURRENT_SCRIPT" /root/wireshield.sh
-		chmod +x /root/wireshield.sh
+	elif [[ -f "/root/wireshield.sh" ]]; then
 		WS_SCRIPT_PATH="/root/wireshield.sh"
+	else
+		echo "Installing wireshield.sh to /usr/local/bin/wireshield.sh for dashboard access..."
+		install -m 0755 "$CURRENT_SCRIPT" /usr/local/bin/wireshield.sh
+		WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"
 	fi
 	
 	# Verify the script exists
