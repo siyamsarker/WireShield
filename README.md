@@ -74,14 +74,12 @@ WireShield supports these distributions out of the box:
 | ⛰️ Rocky Linux | ≥ 8 | Full support |
 | 🟠 Ubuntu | ≥ 18.04 (Bionic) | Full support |
 
-## 🚀 Quick start (no clone needed)
+## 🚀 Quick start (one-liner)
 
-**Step 1:** Download and run the script as root:
+Install or upgrade to the latest tagged release (checksum-verified):
 
 ```bash
-wget https://raw.githubusercontent.com/siyamsarker/WireShield/master/wireshield.sh -O wireshield.sh
-chmod +x wireshield.sh
-sudo ./wireshield.sh
+curl -fsSL https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/install.sh | sudo bash
 ```
 
 **Step 2:** Answer a few questions (or press Enter for defaults):
@@ -625,19 +623,13 @@ The installer now automatically copies the script to `/root/wireshield.sh` durin
 
 ### 🔄 Upgrade
 
-- **Core** (bash installer/CLI): re-download `wireshield.sh` (or pull latest from git) and run it again; settings are preserved in `/etc/wireguard/params` and the interface config.
-- **Dashboard**:
-  - Recommended: re-run `./wireshield.sh` and accept the dashboard prompt; it will rebuild and redeploy the binary and restart the service.
-  - Ops one-liner (production servers):
+- Preferred: re-run the installer one-liner — it's idempotent and moves you to the latest release:
 
-    ```bash
-    sudo su -
-    wget -O /tmp/upgrade.sh https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/upgrade.sh
-    chmod +x /tmp/upgrade.sh
-    /tmp/upgrade.sh
-    ```
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/install.sh | sudo bash
+  ```
 
-    This performs a safe in-place upgrade of the full project: pulls latest code, upgrades the CLI script (`/root/wireshield.sh` and `/usr/local/bin/wireshield.sh`), rebuilds `/usr/local/bin/wireshield-dashboard`, updates `WIRE_SHIELD_SCRIPT` in systemd if needed, and restarts the service.
+- Legacy path: `scripts/upgrade.sh` still exists but is deprecated in favor of the release-based installer.
 
 ## 🗑️ Uninstall
 
