@@ -1164,25 +1164,54 @@ function _ws_install_dashboard_inline() {
 		[[ "$CURRENT_SCRIPT" != /* ]] && CURRENT_SCRIPT="$(pwd)/$CURRENT_SCRIPT"
 	fi
 	
-	# Ensure the script is in a permanent location for the dashboard to use
-	# Prefer /usr/local/bin (on PATH and stable)
-	if [[ -f "/usr/local/bin/wireshield.sh" ]]; then
-		WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"
-	elif [[ -f "/root/wireshield.sh" ]]; then
-		WS_SCRIPT_PATH="/root/wireshield.sh"
-	else
-		echo "Installing wireshield.sh to /usr/local/bin/wireshield.sh for dashboard access..."
-		install -m 0755 "$CURRENT_SCRIPT" /usr/local/bin/wireshield.sh
-		WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"
-	fi
-	
-	# Verify the script exists
-	if [[ ! -f "$WS_SCRIPT_PATH" ]]; then
-		echo -e "${RED}Error: Could not set up script at $WS_SCRIPT_PATH${NC}"
+	# Verify we have a valid source script before proceeding
+	if [[ ! -f "$CURRENT_SCRIPT" ]]; then
+		echo -e "${RED}Error: Cannot locate current script at $CURRENT_SCRIPT${NC}"
 		return 1
 	fi
 	
-	echo "Dashboard will use script: $WS_SCRIPT_PATH"
+	# Ensure the script is in a permanent location for the dashboard to use
+	# Always install/update to /usr/local/bin and /root for redundancy
+	echo "Installing wireshield.sh to system locations for dashboard access..."
+	
+	# Install to /usr/local/bin (preferred, on PATH)
+	if install -m 0755 "$CURRENT_SCRIPT" /usr/local/bin/wireshield.sh 2>/dev/null; then
+		echo "✓ Installed to /usr/local/bin/wireshield.sh"
+		WS_SCRIPT_PATH="/usr/local/bin/wireshield.sh"
+	else
+		echo -e "${YELLOW}⚠ Could not install to /usr/local/bin, trying /root...${NC}"
+		if install -m 0755 "$CURRENT_SCRIPT" /root/wireshield.sh 2>/dev/null; then
+			echo "✓ Installed to /root/wireshield.sh"
+			WS_SCRIPT_PATH="/root/wireshield.sh"
+		else
+			echo -e "${RED}Error: Failed to install script to /usr/local/bin or /root${NC}"
+			echo -e "${RED}Check permissions and try running with sudo${NC}"
+			return 1
+		fi
+	fi
+	
+	# Also install to /root as backup if we succeeded with /usr/local/bin
+	if [[ "$WS_SCRIPT_PATH" == "/usr/local/bin/wireshield.sh" ]]; then
+		if install -m 0755 "$CURRENT_SCRIPT" /root/wireshield.sh 2>/dev/null; then
+			echo "✓ Backup copy installed to /root/wireshield.sh"
+		fi
+	fi
+	
+	# Verify the primary script path exists and is executable
+	if [[ ! -f "$WS_SCRIPT_PATH" ]]; then
+		echo -e "${RED}Error: Script not found at $WS_SCRIPT_PATH after installation${NC}"
+		return 1
+	fi
+	
+	if [[ ! -x "$WS_SCRIPT_PATH" ]]; then
+		echo -e "${YELLOW}⚠ Script is not executable, fixing permissions...${NC}"
+		chmod +x "$WS_SCRIPT_PATH" || {
+			echo -e "${RED}Error: Could not make script executable${NC}"
+			return 1
+		}
+	fi
+	
+	echo -e "${GREEN}✓ Dashboard will use script: $WS_SCRIPT_PATH${NC}"
 
 	cat > "$SERVICE_FILE" <<UNIT
 [Unit]

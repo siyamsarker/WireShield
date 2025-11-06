@@ -84,12 +84,25 @@ fi
 echo -e "${YELLOW}Step 5: Upgrading CLI script (wireshield.sh)...${NC}"
 # Source of truth: repo copy in $INSTALL_DIR
 if [ -f "$INSTALL_DIR/wireshield.sh" ]; then
-    cp "$INSTALL_DIR/wireshield.sh" /root/wireshield.sh
-    chmod +x /root/wireshield.sh
-    echo -e "${GREEN}✓ CLI script installed at /root/wireshield.sh${NC}"
-    # Optional convenience path for admins
-    cp "$INSTALL_DIR/wireshield.sh" /usr/local/bin/wireshield.sh 2>/dev/null || true
-    chmod +x /usr/local/bin/wireshield.sh 2>/dev/null || true
+    # Install to /usr/local/bin first (preferred, on PATH)
+    if install -m 0755 "$INSTALL_DIR/wireshield.sh" /usr/local/bin/wireshield.sh 2>/dev/null; then
+        echo -e "${GREEN}✓ CLI script installed at /usr/local/bin/wireshield.sh${NC}"
+    else
+        echo -e "${YELLOW}⚠ Could not install to /usr/local/bin${NC}"
+    fi
+    
+    # Also install to /root as backup
+    if install -m 0755 "$INSTALL_DIR/wireshield.sh" /root/wireshield.sh 2>/dev/null; then
+        echo -e "${GREEN}✓ CLI script backup installed at /root/wireshield.sh${NC}"
+    else
+        echo -e "${YELLOW}⚠ Could not install to /root${NC}"
+    fi
+    
+    # Verify at least one succeeded
+    if [ ! -f "/usr/local/bin/wireshield.sh" ] && [ ! -f "/root/wireshield.sh" ]; then
+        echo -e "${RED}Error: Failed to install wireshield.sh to any location${NC}"
+        exit 1
+    fi
 else
     echo -e "${RED}Error: repo copy of wireshield.sh not found at $INSTALL_DIR/wireshield.sh${NC}"
     exit 1
@@ -103,6 +116,13 @@ echo -e "${GREEN}✓ Dashboard binary built and installed at /usr/local/bin/wire
 
 echo -e "${YELLOW}Step 7: Ensuring systemd service is configured...${NC}"
 SERVICE_FILE="/etc/systemd/system/wireshield-dashboard.service"
+
+# Determine which script path to use in systemd
+SCRIPT_PATH="/usr/local/bin/wireshield.sh"
+if [ ! -f "$SCRIPT_PATH" ]; then
+    SCRIPT_PATH="/root/wireshield.sh"
+fi
+
 if [ ! -f "$SERVICE_FILE" ]; then
     echo -e "${YELLOW}Creating systemd service...${NC}"
     cat > "$SERVICE_FILE" <<EOF
@@ -114,7 +134,7 @@ After=network.target
 Type=simple
 User=root
 Group=root
-Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh
+Environment=WIRE_SHIELD_SCRIPT=$SCRIPT_PATH
 ExecStart=/usr/local/bin/wireshield-dashboard -config /etc/wireshield/dashboard-config.json -listen 127.0.0.1:51821
 Restart=on-failure
 RestartSec=5s
@@ -127,12 +147,17 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 EOF
+    echo -e "${GREEN}✓ Systemd service created with WIRE_SHIELD_SCRIPT=$SCRIPT_PATH${NC}"
 else
-    # Ensure environment variable is present and points to /root/wireshield.sh
+    # Ensure environment variable is present and points to correct location
     if ! grep -q "Environment=WIRE_SHIELD_SCRIPT" "$SERVICE_FILE"; then
-        sed -i '/\[Service\]/a Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh' "$SERVICE_FILE"
+        echo -e "${YELLOW}Adding WIRE_SHIELD_SCRIPT to existing service...${NC}"
+        sed -i '/\[Service\]/a Environment=WIRE_SHIELD_SCRIPT='"$SCRIPT_PATH" "$SERVICE_FILE"
+        echo -e "${GREEN}✓ Added WIRE_SHIELD_SCRIPT=$SCRIPT_PATH${NC}"
     else
-        sed -i 's|Environment=WIRE_SHIELD_SCRIPT=.*|Environment=WIRE_SHIELD_SCRIPT=/root/wireshield.sh|' "$SERVICE_FILE"
+        echo -e "${YELLOW}Updating WIRE_SHIELD_SCRIPT in existing service...${NC}"
+        sed -i 's|Environment=WIRE_SHIELD_SCRIPT=.*|Environment=WIRE_SHIELD_SCRIPT='"$SCRIPT_PATH"'|' "$SERVICE_FILE"
+        echo -e "${GREEN}✓ Updated WIRE_SHIELD_SCRIPT=$SCRIPT_PATH${NC}"
     fi
 fi
 
@@ -154,10 +179,20 @@ else
 fi
 
 # Confirm script accessibility for dashboard
+SCRIPT_FOUND=0
+if [ -f "/usr/local/bin/wireshield.sh" ] && [ -x "/usr/local/bin/wireshield.sh" ]; then
+    echo -e "${GREEN}✓ CLI script is accessible at /usr/local/bin/wireshield.sh${NC}"
+    SCRIPT_FOUND=1
+fi
+
 if [ -f "/root/wireshield.sh" ] && [ -x "/root/wireshield.sh" ]; then
-    echo -e "${GREEN}✓ CLI script is accessible at /root/wireshield.sh${NC}"
-else
-    echo -e "${RED}✗ CLI script not found or not executable at /root/wireshield.sh${NC}"
+    echo -e "${GREEN}✓ CLI script backup at /root/wireshield.sh${NC}"
+    SCRIPT_FOUND=1
+fi
+
+if [ $SCRIPT_FOUND -eq 0 ]; then
+    echo -e "${RED}✗ CLI script not found or not executable${NC}"
+    echo -e "${YELLOW}Dashboard may not be able to execute WireGuard operations${NC}"
 fi
 
 # Determine dashboard bind
