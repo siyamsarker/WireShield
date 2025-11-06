@@ -1,0 +1,48 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+project_name: wireshield
+
+builds:
+  - id: wireshield-dashboard
+    main: ./cmd/wireshield-dashboard/main.go
+    binary: wireshield-dashboard
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - id: dashboard-archive
+    builds: [wireshield-dashboard]
+    format: tar.gz
+    name_template: "{{ .ProjectName }}-dashboard_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - dashboard/wireshield-dashboard.service
+      - wireshield.sh
+
+checksum:
+  name_template: "{{ .ProjectName }}_checksums_{{ .Version }}.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^chore:'
+      - '^docs:'
+      - '^test:'
+
+release:
+  draft: false
+  prerelease: auto
+  mode: replace
+
+announce:
+  skip: true
