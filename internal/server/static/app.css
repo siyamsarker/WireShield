@@ -135,10 +135,11 @@ body {
 }
 
 .login-header img {
-  width: 144px !important;
-  height: 144px !important;
-  margin-bottom: 1.25rem !important;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.12));
+  width: 132px;
+  height: auto;
+  display: block;
+  margin: 0 auto 1.1rem;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.14));
 }
 
 .login-header h1 {
