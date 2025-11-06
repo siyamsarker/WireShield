@@ -6,6 +6,9 @@
       <stop offset="100%" stop-color="#0ea5e9" />
     </linearGradient>
   </defs>
-  <path fill="url(#grad)" d="M60 8l36 12v30c0 22-15 42-36 48-21-6-36-26-36-48V20l36-12z"/>
-  <path d="M38 44l10 28 12-18 12 18 10-28" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Lift artwork by 5 units to reduce bottom whitespace without clipping (top min y stays at 3) -->
+  <g transform="translate(0,-5)">
+    <path fill="url(#grad)" d="M60 8l36 12v30c0 22-15 42-36 48-21-6-36-26-36-48V20l36-12z"/>
+    <path d="M38 44l10 28 12-18 12 18 10-28" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>
