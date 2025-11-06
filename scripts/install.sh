@@ -29,10 +29,17 @@ require_root() {
 
 fetch_latest() {
   info "Resolving latest release..."
-  curl -fsSL "$API" >"${TMP_DIR}/latest.json" || { error "Failed to query releases"; exit 1; }
-  VERSION=$(jq -r .tag_name <"${TMP_DIR}/latest.json")
-  if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then error "No version found"; exit 1; fi
-  success "Latest version: ${VERSION}"
+  if curl -fsSL "$API" >"${TMP_DIR}/latest.json"; then
+    VERSION=$(jq -r .tag_name <"${TMP_DIR}/latest.json" 2>/dev/null || true)
+  else
+    VERSION=""
+  fi
+  if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
+    warn "No GitHub release found (or API unavailable). Falling back to source install."
+    VERSION="source"
+  else
+    success "Latest version: ${VERSION}"
+  fi
 }
 
 select_archive() {
@@ -90,16 +97,38 @@ EOF
   success "Service installed"
 }
 
+build_from_source() {
+  info "Building from source (master branch)..."
+  # Install minimal deps
+  if ! command -v git >/dev/null 2>&1; then apt-get update -y && apt-get install -y git || true; fi
+  if ! command -v go >/dev/null 2>&1; then
+    warn "Go not found; attempting to install lightweight Go toolchain"
+    GO_URL="https://go.dev/dl/go1.22.6.linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz"
+    curl -fsSL "$GO_URL" -o "${TMP_DIR}/go.tgz" && tar -C /usr/local -xzf "${TMP_DIR}/go.tgz"
+    export PATH=/usr/local/go/bin:$PATH
+  fi
+  WORKDIR="${TMP_DIR}/src"
+  git clone --depth=1 https://github.com/${REPO}.git "$WORKDIR"
+  (cd "$WORKDIR" && CGO_ENABLED=0 go build -o wireshield-dashboard ./cmd/wireshield-dashboard)
+  install -m 0755 "$WORKDIR/wireshield.sh" "${INSTALL_BIN}/wireshield.sh"
+  install -m 0755 "$WORKDIR/wireshield.sh" "/root/wireshield.sh"
+  install -m 0755 "$WORKDIR/wireshield-dashboard" "${INSTALL_BIN}/wireshield-dashboard"
+}
+
 main() {
   require_root
   mkdir -p "$TMP_DIR"
   fetch_latest
-  select_archive
-  info "Downloading archive ${FILE}";
-  curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${FILE}" || { error "Download failed"; exit 1; }
-  verify_checksum
-  extract_archive
-  install_files
+  if [ "$VERSION" = "source" ]; then
+    build_from_source
+  else
+    select_archive
+    info "Downloading archive ${FILE}";
+    curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${FILE}" || { error "Download failed"; exit 1; }
+    verify_checksum
+    extract_archive
+    install_files
+  fi
   setup_service
   success "WireShield installation complete (version ${VERSION})."
   echo "Upgrade: rerun this script to move to latest release."
