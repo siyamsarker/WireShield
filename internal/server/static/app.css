@@ -63,26 +63,58 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  /* Modern deep aurora base */
+  background: radial-gradient(120% 150% at 20% 0%, #151a2b 0%, #0f172a 55%, #0b1020 100%);
   padding: 2rem;
   position: relative;
   overflow: hidden;
 }
 
+/* Soft animated aurora blobs */
 .login-page::before {
   content: '';
   position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-  animation: rotate 30s linear infinite;
+  inset: -20%;
+  background:
+    radial-gradient(30% 40% at 12% 20%, rgba(79, 70, 229, 0.55) 0%, transparent 60%),
+    radial-gradient(35% 45% at 85% 15%, rgba(14, 165, 233, 0.35) 0%, transparent 60%),
+    radial-gradient(30% 40% at 70% 80%, rgba(118, 75, 162, 0.45) 0%, transparent 60%);
+  filter: blur(60px) saturate(120%);
+  transform: translate3d(0,0,0);
+  animation: aurora-drift 24s ease-in-out infinite alternate;
 }
 
-@keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* Subtle dot grid overlay for depth */
+.login-page::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(transparent, rgba(255, 255, 255, 0.03));
+  background-size: 20px 20px, 100% 100%;
+  background-position: 0 0, 0 0;
+  mix-blend-mode: overlay;
+  opacity: 0.6;
+  animation: grid-float 18s linear infinite;
+}
+
+@keyframes aurora-drift {
+  0% { transform: translate3d(0%, 0%, 0) rotate(0deg); }
+  50% { transform: translate3d(2%, -1%, 0) rotate(8deg); }
+  100% { transform: translate3d(-2%, 2%, 0) rotate(-6deg); }
+}
+
+@keyframes grid-float {
+  0% { background-position: 0 0, 0 0; }
+  100% { background-position: 40px 20px, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-page::before,
+  .login-page::after {
+    animation: none !important;
+  }
 }
 
 .login-container {
