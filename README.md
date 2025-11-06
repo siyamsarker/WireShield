@@ -1,8 +1,6 @@
 <div align="center">
-
 <img src="internal/server/static/logo.svg" alt="WireShield Logo" width="120" height="120" />
-
-# WireShield
+<h1>WireShield</h1>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
