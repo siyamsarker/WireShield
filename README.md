@@ -77,6 +77,7 @@ WireShield supports these distributions out of the box:
 ```bash
 git clone https://github.com/siyamsarker/WireShield.git
 cd WireShield
+chmod +x wireshield.sh   # if you see "permission denied"
 sudo ./wireshield.sh
 ```
 
