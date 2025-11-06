@@ -8,11 +8,11 @@
 [![Platform](https://img.shields.io/badge/Platform-Linux-orange.svg)](https://www.kernel.org/)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)](https://go.dev/)
 
-**Secure, modern, one-command WireGuard VPN installer and manager for Linux**
+**Secure, modern WireGuard VPN manager**
 
-*Simple to use • Sensible defaults • Production-friendly*
+*No curl pipe | No opaque installer | Just git clone & run*
 
-[Quick Start](#-quick-start-no-clone-needed) • [Features](#-overview) • [Dashboard](#-web-dashboard-optional) • [Docs](#-table-of-contents)
+[Quick Start](#-quick-start-clone--run) • [Features](#-overview) • [Dashboard](#-web-dashboard-optional) • [Docs](#-table-of-contents)
 
 ---
 
@@ -39,7 +39,7 @@ WireShield is a **single-file bash tool** that installs and manages a [WireGuard
 
 - [✨ Overview](#-overview)
 - [🖥️ Supported platforms](#️-supported-platforms)
-- [🚀 Quick start](#-quick-start-no-clone-needed)
+- [🚀 Quick start](#-quick-start-clone--run)
 - [📦 Project structure](#-project-structure)
 - [📖 Usage](#-usage)
 - [⏰ Client expiration](#-client-expiration)
@@ -72,55 +72,7 @@ WireShield supports these distributions out of the box:
 | ⛰️ Rocky Linux | ≥ 8 | Full support |
 | 🟠 Ubuntu | ≥ 18.04 (Bionic) | Full support |
 
-## 🚀 Quick start (one-liner)
-
-Install or upgrade to the latest tagged release (checksum-verified):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/install.sh | sudo bash
-```
-
-**Step 2:** Answer a few questions (or press Enter for defaults):
-- Public IP/hostname
-- Network interface
-- WireGuard interface name (default: `wg0`)
-- Server IPs (IPv4/IPv6)
-- Port (random by default)
-- DNS resolvers
-- Client routing (full tunnel: `0.0.0.0/0,::/0`)
-
-**Step 3:** Review the summary and confirm ✅
-
-WireShield will:
-- ✅ Install WireGuard tools and dependencies
-- ✅ Configure server and enable IP forwarding
-- ✅ Set up firewall rules (iptables/firewalld)
-- ✅ Create your first client with QR code
-- ✅ Optionally install the web dashboard
-
-**Done!** 🎉 Your WireGuard server is running.
-
-### 🌐 Web Dashboard (GUI)
-
-<details>
-<summary><b>📱 Click to expand dashboard setup</b></summary>
-
-- The installer is a **unified flow** covering both CLI and GUI
-- During setup, you'll be prompted to enable the dashboard (default: **Yes**)
-- All dependencies installed automatically (including Go if needed)
-- Re-run the installer anytime to add/reinstall:
-
-```bash
-sudo ./wireshield.sh
-```
-
-The dashboard binds to `127.0.0.1:51821` by default—expose via HTTPS reverse proxy.
-
-</details>
-
-### 🔄 Alternative: clone the repo (for contributors)
-
-If you prefer a full checkout or want to contribute:
+## 🚀 Quick start (clone & run)
 
 ```bash
 git clone https://github.com/siyamsarker/WireShield.git
@@ -128,14 +80,39 @@ cd WireShield
 sudo ./wireshield.sh
 ```
 
+Answer the prompts (or accept sensible defaults):
+* Public IP / hostname
+* Network interface
+* WireGuard interface name (default: wg0)
+* Server IPv4/IPv6 ranges
+* UDP port (random if blank)
+* DNS resolvers
+* Allowed IPs for clients (default full tunnel: 0.0.0.0/0,::/0)
+
+Then review the summary and confirm ✅
+
+The script will:
+* ✅ Install WireGuard tools & dependencies
+* ✅ Configure server, enable forwarding & firewall/NAT
+* ✅ Create your first client (+ QR)
+* ✅ Optionally build & configure the web dashboard
+
+**Done!** 🎉 Your WireGuard server is running.
+
+### 🔁 Update later
+
+```bash
+cd /path/to/WireShield
+git pull --rebase
+sudo ./wireshield.sh   # access menu / (re)build dashboard
+```
+
 ## 📦 Project structure
 
 ```
 WireShield/
-├─ 📜 wireshield.sh                      # Primary Bash installer/manager (CLI + dashboard installer)
-├─ 🧰 scripts/
-│  ├─ upgrade.sh                         # One-command full upgrade (CLI + Dashboard)
-│  └─ install-dashboard.sh               # Optional helper to install the dashboard
+├─ 📜 wireshield.sh                      # Primary Bash manager (setup + client ops + optional dashboard)
+├─ 🧰 scripts/ (removed helper scripts)   # Previously contained legacy installer/upgrade helpers
 ├─ 📁 cmd/
 │  └─ wireshield-dashboard/
 │     └─ main.go                         # Dashboard binary entrypoint
@@ -175,7 +152,7 @@ WireShield/
 
 ## 📖 Usage
 
-After installation, rerun the script anytime to open the **interactive menu**:
+After initial setup, rerun the script anytime to open the **interactive menu**:
 
 ```bash
 sudo ./wireshield.sh
@@ -380,7 +357,7 @@ wg --version
 
 ### 📲 QR code not shown
 
-Ensure `qrencode` is installed (installer attempts this automatically when available).
+Ensure `qrencode` is installed (the script attempts this automatically when available).
 
 ### ⏰ Client expiration not working
 
@@ -418,7 +395,7 @@ date
 
 ### 📁 Can't find the client .conf file
 
-The installer prints the exact path after creation, e.g. `Config file: /root/user1.conf`.
+The script prints the exact path after creation, e.g. `Config file: /root/user1.conf`.
 
 - If you ran the script with `sudo` or as `root`, files are saved under `/root/`.
 - If you ran it as a non-root user (with passwordless sudo inside), files may be under your home: `/home/<user>/`.
@@ -466,15 +443,15 @@ Similar projects often choose:
 
 We follow the proven, ops-friendly **"single static binary"** approach for reliability and ease of deployment.
 
-### 📥 Install the dashboard
+### 📥 Enable the dashboard
 
-During install, you'll be prompted to install the dashboard automatically (the script will also install Go if needed and build the binary). You can also install or reinstall it later by re-running the main script and accepting the dashboard prompt:
+During the first run you'll be asked whether to enable the dashboard (will install Go if needed and build the binary). You can reinstall it later by re-running the main script and accepting the prompt:
 
 ```bash
 sudo ./wireshield.sh
 ```
 
-The installer will:
+The script will:
 - ✅ Ensure dependencies (including Go if missing)
 - ✅ Build and install `/usr/local/bin/wireshield-dashboard`
 - ✅ Create `/etc/wireshield/dashboard-config.json` with a random admin password
@@ -621,20 +598,21 @@ The installer now automatically copies the script to `/root/wireshield.sh` durin
 
 ### 🔄 Upgrade
 
-- Preferred: re-run the installer one-liner — it's idempotent and moves you to the latest release:
+Run from your cloned repository:
 
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/install.sh | sudo bash
-  ```
+```bash
+git pull --rebase
+sudo ./wireshield.sh
+```
 
-- Also supported: `scripts/upgrade.sh` remains available and supported for production servers that prefer an in-place upgrade flow. It will pull the latest code, install the CLI script to both `/usr/local/bin` and `/root`, rebuild/reinstall the dashboard binary if needed, update the systemd unit, and restart the service.
+Upgrade is now simply:
 
-  ```bash
-  sudo su -
-  wget -O /tmp/upgrade.sh https://raw.githubusercontent.com/siyamsarker/WireShield/master/scripts/upgrade.sh
-  chmod +x /tmp/upgrade.sh
-  /tmp/upgrade.sh
-  ```
+```bash
+git pull --rebase
+sudo ./wireshield.sh
+```
+
+Helper scripts (`install.sh`, `local-install.sh`, `upgrade.sh`) were removed to reduce confusion. The single entrypoint `wireshield.sh` handles initial setup, client management, optional dashboard build, and future re-runs. If you previously used the one-line curl installer, just clone the repo and continue managing with this script.
 
 ## 🗑️ Uninstall
 
