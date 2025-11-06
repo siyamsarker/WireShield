@@ -622,8 +622,14 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 
 	# Generate QR code if qrencode is installed (handy for mobile clients)
 	if command -v qrencode &>/dev/null; then
-		echo -e "${GREEN}\nHere is your client config file as a QR Code:\n${NC}"
-		qrencode -t ansiutf8 -l L <"${CLIENT_CONFIG}"
+		echo -e "${GREEN}\nHere is your client config file as a QR Code (optimized size):\n${NC}"
+		# Use a smaller module size and low margin to keep QR within a reasonable terminal footprint
+		# -t ansiutf8: colored block output compatible with most modern terminals
+		# -l M: medium error correction (balance size vs redundancy)
+		# -m 0: no extra margin
+		# -s 1: smallest module scale (qrencode will choose minimal that still renders)
+		# If scanning reliability becomes an issue, increase -s to 2 or -m to 1.
+		qrencode -t ansiutf8 -l M -m 0 -s 1 <"${CLIENT_CONFIG}"
 		echo ""
 	fi
 
@@ -1065,6 +1071,9 @@ function _ws_install_dashboard_inline() {
 	# repo root is the directory containing this script
 	REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
+	# Track whether we created a fresh dashboard config to print credentials at the very end
+	local PRINT_CREDS=0 ADMIN_USER="admin" INIT_PW=""
+
 	# Detect platform (Linux expected)
 	OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 	if [[ "$OS" != "linux" ]]; then
@@ -1138,15 +1147,9 @@ function _ws_install_dashboard_inline() {
 		local randpw
 		randpw=$(openssl rand -hex 12 2>/dev/null || head -c 12 /dev/urandom | hexdump -v -e '/1 "%02x"')
 		"$PREFIX/$BIN_NAME" -init-admin admin -init-admin-pass "$randpw" -config "$CONFIG_DIR/dashboard-config.json"
-		echo ""
-		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-		echo -e "${GREEN}Dashboard credentials:${NC}"
-		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-		echo -e "  Username: ${ORANGE}admin${NC}"
-		echo -e "  Password: ${ORANGE}${randpw}${NC}"
-		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-		echo -e "${YELLOW}⚠️  Save these credentials now! Change the password after first login.${NC}"
-		echo ""
+		# Defer printing credentials until installation completes
+		INIT_PW="$randpw"
+		PRINT_CREDS=1
 	fi
 
 	# Resolve script path for dashboard integration
@@ -1213,6 +1216,19 @@ UNIT
 	# If requested, set up Nginx reverse proxy
 	if [[ -n "$NGX_HOST" ]]; then
 		_ws_setup_nginx_reverse_proxy "$NGX_HOST" "$LISTEN_ADDR"
+	fi
+
+	# Finally, print the credentials if this was a fresh install
+	if [[ "$PRINT_CREDS" -eq 1 ]]; then
+		echo ""
+		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+		echo -e "${GREEN}Dashboard credentials:${NC}"
+		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+		echo -e "  Username: ${ORANGE}${ADMIN_USER}${NC}"
+		echo -e "  Password: ${ORANGE}${INIT_PW}${NC}"
+		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+		echo -e "${YELLOW}⚠️  Save these credentials now! Change the password after first login.${NC}"
+		echo ""
 	fi
 }
 
