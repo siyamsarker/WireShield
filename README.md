@@ -74,31 +74,55 @@ WireShield supports these distributions out of the box:
 
 ## 🚀 Quick start (clone & run)
 
+### 📋 Prerequisites
+
+- ✅ **Linux server** with systemd (Ubuntu 18.04+, Debian 10+, Fedora 32+, CentOS Stream 8+, etc.)
+- ✅ **Root access** (via `sudo` or direct root login)
+- ✅ **Internet connection** for package installation
+- ✅ **Public IP or domain** (for VPN server endpoint)
+- ✅ **UDP port** open in firewall/security group (random port chosen during install)
+
+### 🔧 Installation
+
 ```bash
+# Clone the repository
 git clone https://github.com/siyamsarker/WireShield.git
 cd WireShield
-chmod +x wireshield.sh   # if you see "permission denied"
+
+# Run the installer (requires root)
 sudo ./wireshield.sh
 ```
 
-Answer the prompts (or accept sensible defaults):
-* Public IP / hostname
-* Network interface
-* WireGuard interface name (default: wg0)
-* Server IPv4/IPv6 ranges
-* UDP port (random if blank)
-* DNS resolvers
-* Allowed IPs for clients (default full tunnel: 0.0.0.0/0,::/0)
+**What happens during installation:**
 
-Then review the summary and confirm ✅
-
-The script will:
-* ✅ Install WireGuard tools & dependencies
-* ✅ Configure server, enable forwarding & firewall/NAT
-* ✅ Create your first client (+ QR)
-* ✅ Optionally build & configure the web dashboard
+1. **System check** — Validates OS, kernel version, and virtualization environment
+2. **Interactive configuration** — Answer prompts or accept defaults:
+   * Public IP / hostname
+   * Network interface
+   * WireGuard interface name (default: wg0)
+   * Server IPv4/IPv6 ranges
+   * UDP port (random secure port suggested)
+   * DNS resolvers for clients
+   * Allowed IPs (0.0.0.0/0,::/0 for full tunnel)
+3. **Confirmation summary** — Review all settings before proceeding
+4. **Automatic installation:**
+   * ✅ Install WireGuard tools & dependencies
+   * ✅ Generate server keys (private, public, preshared)
+   * ✅ Configure firewall rules (iptables/firewalld) automatically
+   * ✅ Enable IP forwarding via sysctl
+   * ✅ Set strict file permissions (0600) on all configs
+   * ✅ Start WireGuard service (wg-quick@wg0)
+   * ✅ Create your first client config with QR code
+   * ✅ Setup automatic client expiration (cron job)
+5. **Optional dashboard** — Install web management interface
+   * Automatically installs Go compiler if needed
+   * Builds dashboard binary from source
+   * Creates systemd service
+   * Optionally configures Nginx reverse proxy
 
 **Done!** 🎉 Your WireGuard server is running.
+
+> ⚠️ **Important**: The installation script handles all permissions automatically. No manual configuration required.
 
 ### 🔁 Update later
 
@@ -311,6 +335,58 @@ sequenceDiagram
 - ✅ **CSP headers** (Content Security Policy)
 - ✅ **Localhost-only dashboard** (expose via TLS reverse proxy)
 
+### 🚀 Production deployment checklist
+
+Before deploying WireShield in production, ensure you've completed these steps:
+
+#### 📋 Pre-deployment
+
+- [ ] **Server hardening** — Follow your organization's security baseline
+- [ ] **Firewall configuration** — Ensure chosen UDP port is open in cloud provider security groups
+- [ ] **Backup strategy** — Plan for regular config backups (use menu option 8)
+- [ ] **Monitoring** — Set up health checks for `/health` endpoint if using dashboard
+- [ ] **Documentation** — Document your chosen settings (port, IP ranges, DNS)
+
+#### 🔒 Security hardening
+
+- [ ] **Change default password** — Immediately change dashboard admin password after first login
+- [ ] **TLS termination** — Configure HTTPS reverse proxy (Nginx/Traefik) for dashboard
+- [ ] **IP restrictions** — Limit dashboard access to known IPs or VPN
+- [ ] **SSH hardening** — Disable password auth, use key-based authentication only
+- [ ] **Firewall rules** — Enable UFW/firewalld and allow only necessary ports
+- [ ] **Automatic updates** — Enable unattended security updates for your OS
+
+#### ✅ Post-installation verification
+
+- [ ] **Service status** — `sudo systemctl status wg-quick@wg0` shows active
+- [ ] **Connectivity test** — Connect from a test client and verify internet access
+- [ ] **Peer handshake** — `sudo wg show` displays recent handshake times
+- [ ] **DNS resolution** — Verify clients can resolve domains (test with `nslookup google.com`)
+- [ ] **Dashboard access** — Confirm web interface loads and authentication works
+- [ ] **Client expiration** — Create test client with short expiry, verify auto-removal
+- [ ] **Backup/restore** — Test backup creation and restoration process
+
+#### 📊 Operational readiness
+
+- [ ] **Monitoring alerts** — Set up alerts for service downtime
+- [ ] **Log retention** — Configure syslog/journald retention policies
+- [ ] **Client onboarding** — Document process for adding new users
+- [ ] **Runbook** — Create operations guide for common tasks
+- [ ] **Disaster recovery** — Test full server rebuild from backups
+
+### 🔧 Automated permission handling
+
+WireShield automatically configures all required permissions during installation:
+
+- **File permissions**: All configs set to `0600` (owner read/write only)
+- **Systemd services**: Automatically enabled and started
+- **Firewall rules**: iptables/firewalld rules applied automatically
+- **IP forwarding**: Kernel parameters configured via sysctl
+- **Cron jobs**: Expiration check scheduled without manual intervention
+- **Dashboard binary**: Executable permissions set automatically
+
+**No manual permission configuration required.** The installation is fully automated.
+
 ## 🔧 Troubleshooting
 
 ### 🔌 Port and connectivity
@@ -446,24 +522,76 @@ We follow the proven, ops-friendly **"single static binary"** approach for relia
 
 ### 📥 Enable the dashboard
 
-During the first run you'll be asked whether to enable the dashboard (will install Go if needed and build the binary). You can reinstall it later by re-running the main script and accepting the prompt:
+The dashboard can be installed during initial setup or added later.
 
-```bash
-sudo ./wireshield.sh
+#### During initial installation
+
+When you first run `sudo ./wireshield.sh`, you'll be prompted:
+
+```
+Install WireShield Web Dashboard (binds to 127.0.0.1:51821)? [Y/n]:
 ```
 
-The script will:
-- ✅ Ensure dependencies (including Go if missing)
-- ✅ Build and install `/usr/local/bin/wireshield-dashboard`
-- ✅ Create `/etc/wireshield/dashboard-config.json` with a random admin password
-- ✅ Install and start `wireshield-dashboard.service`
+Answer `Y` and follow the prompts:
 
-**Notes:**
-- The systemd unit is generated by the installer at `/etc/systemd/system/wireshield-dashboard.service`; no unit file from the repository is required.
-- If your distro Go package is too old, the installer fetches a suitable tarball from go.dev and installs it under `/usr/local/go` for the build.
-- During install you can choose the dashboard bind address (default: `127.0.0.1:51821`) and optionally auto-configure an Nginx reverse proxy for a domain or IP.
+1. **Bind address** (default: `127.0.0.1:51821`) — Keep localhost for security
+2. **Nginx setup** — Choose `y` to auto-configure reverse proxy
+3. **Domain/IP** — Enter your domain (e.g., `vpn.example.com`) or server IP
 
-Then access it via your reverse proxy at `https://your-domain/` or locally `http://127.0.0.1:51821`.
+The installer will automatically:
+- ✅ Check for Go compiler (installs if missing)
+- ✅ Build dashboard binary from source
+- ✅ Create `/etc/wireshield/dashboard-config.json` with random admin password
+- ✅ Install systemd service `/etc/systemd/system/wireshield-dashboard.service`
+- ✅ Copy script to `/usr/local/bin/wireshield.sh` and `/root/wireshield.sh`
+- ✅ Start and enable dashboard service
+- ✅ Install and configure Nginx (if requested)
+- ✅ Display admin credentials
+
+#### Adding dashboard later
+
+If you skipped dashboard installation initially, you can add it anytime:
+
+```bash
+cd /path/to/WireShield
+sudo ./wireshield.sh
+# Menu will detect no dashboard and offer installation
+```
+
+Or force rebuild:
+
+```bash
+cd /path/to/WireShield
+sudo ./wireshield.sh
+# The script checks for existing dashboard and offers reinstall
+```
+
+#### Manual build (advanced)
+
+For custom builds or development:
+
+```bash
+cd /path/to/WireShield
+go build -o wireshield-dashboard ./cmd/wireshield-dashboard
+sudo mv wireshield-dashboard /usr/local/bin/
+sudo systemctl restart wireshield-dashboard
+```
+
+**First-time credentials:**
+
+After installation, the script displays:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Dashboard credentials:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Username: admin
+  Password: <random-24-char-password>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  Save these credentials now! Change the password after first login.
+```
+
+**⚠️ IMPORTANT**: Copy these credentials immediately — they won't be shown again!
 
 ### 🗺️ How to access the dashboard
 
@@ -610,7 +738,67 @@ The single entrypoint `wireshield.sh` handles initial setup, client management, 
 
 ## 🗑️ Uninstall
 
-From the menu, choose "Uninstall WireGuard". The script will stop the service, remove packages and `/etc/wireguard`, reload sysctl, remove detected client `.conf` files from `/root` and `/home`, and clean up the automatic expiration cron job and helper script.
+WireShield provides a complete, automated uninstallation process that removes all components and configurations.
+
+### 🔴 Complete removal
+
+From the interactive menu, choose option **9) Uninstall WireGuard** or run:
+
+```bash
+sudo ./wireshield.sh
+# Select option 9 from the menu
+```
+
+**What gets removed automatically:**
+
+1. **WireGuard service** — Stops and disables wg-quick service
+2. **WireGuard packages** — Removes wireguard-tools, qrencode, and related packages
+3. **Server configuration** — Deletes `/etc/wireguard` directory completely
+4. **Client configurations** — Removes all `*.conf` files from `/root` and `/home/*` directories
+5. **Firewall rules** — Cleans up iptables/firewalld rules via PostDown hooks
+6. **Kernel settings** — Removes `/etc/sysctl.d/wg.conf` (IP forwarding config)
+7. **Cron jobs** — Removes automatic client expiration cron entry
+8. **Helper scripts** — Deletes `/usr/local/bin/wireshield-check-expired`
+9. **Dashboard** (if installed):
+   * Stops and removes wireshield-dashboard systemd service
+   * Deletes dashboard binary from `/usr/local/bin`
+   * Removes dashboard config from `/etc/wireshield`
+10. **Nginx configuration** (if configured):
+    * Removes WireShield Nginx server blocks
+    * Optionally removes Nginx package (asks for confirmation)
+    * Reloads Nginx if kept
+
+### ⚠️ Important notes
+
+- **Single confirmation required** — The script asks once, then performs complete cleanup
+- **Automatic cleanup** — No manual intervention needed, all components removed
+- **Backup reminder** — You'll be prompted to backup `/etc/wireguard` if needed
+- **Client file cleanup** — All detected client `.conf` files are removed from user directories
+- **Nginx optional** — You can choose to keep Nginx if used for other services
+
+### 📦 Manual verification (optional)
+
+After uninstall, verify complete removal:
+
+```bash
+# Check WireGuard service
+sudo systemctl status wg-quick@wg0
+# Should show: "Unit wg-quick@wg0.service could not be found"
+
+# Check for remaining configs
+sudo ls /etc/wireguard
+# Should show: "ls: cannot access '/etc/wireguard': No such file or directory"
+
+# Check for client files
+find /root /home -name "*.conf" 2>/dev/null | grep -v ssh
+# Should return empty or only non-WireGuard configs
+
+# Check dashboard service
+sudo systemctl status wireshield-dashboard
+# Should show: "Unit wireshield-dashboard.service could not be found"
+```
+
+> ✅ **Clean slate guaranteed** — The uninstall process ensures your server is returned to its pre-WireShield state.
 
 ## ❓ FAQ
 
