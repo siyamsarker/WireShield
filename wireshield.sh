@@ -1750,15 +1750,18 @@ function ws_check_expired_json() {
 	echo -n ']}'
 }
 
-# Check for root, virt, OS...
-initialCheck
+# Only run the interactive menu if this script is executed directly (not sourced)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	# Check for root, virt, OS...
+	initialCheck
 
-# Check if WireGuard is already installed and load params
-if [[ -e /etc/wireguard/params ]]; then
-	source /etc/wireguard/params
-	# Ensure automatic expiration cron is configured for existing installs
-	_ws_ensure_auto_expiration >/dev/null 2>&1 || true
-	manageMenu
-else
-	installWireGuard
+	# Check if WireGuard is already installed and load params
+	if [[ -e /etc/wireguard/params ]]; then
+		source /etc/wireguard/params
+		# Ensure automatic expiration cron is configured for existing installs
+		_ws_ensure_auto_expiration >/dev/null 2>&1 || true
+		manageMenu
+	else
+		installWireGuard
+	fi
 fi
