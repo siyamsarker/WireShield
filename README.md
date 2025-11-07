@@ -2,7 +2,7 @@
 <img src="internal/server/static/logo.svg" alt="WireShield Logo" width="120" height="120" />
 <h1>WireShield</h1>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)](https://go.dev/)
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
@@ -930,7 +930,7 @@ Thank you for helping improve WireShield! 🙏
 
 ## 📄 License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [GNU GPL v3.0](LICENSE).
 
 ## 🙏 Acknowledgements
 
