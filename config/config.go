@@ -18,6 +18,7 @@ type AdminUser struct {
 type Config struct {
 	Listen     string      `json:"listen"`
 	SessionKey string      `json:"session_key"`
+	DBPath     string      `json:"db_path"`
 	Admins     []AdminUser `json:"admins"`
 }
 
@@ -25,6 +26,7 @@ func defaultConfig() *Config {
 	return &Config{
 		Listen:     "127.0.0.1:51821",
 		SessionKey: randomKey(),
+		DBPath:     "/var/lib/wireshield/database.db",
 		Admins:     []AdminUser{},
 	}
 }
@@ -56,6 +58,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.SessionKey == "" {
 		cfg.SessionKey = randomKey()
+	}
+	if cfg.DBPath == "" {
+		cfg.DBPath = "/var/lib/wireshield/database.db"
 	}
 	return cfg, nil
 }
