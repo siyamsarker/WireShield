@@ -20,6 +20,7 @@ import (
 
 	"github.com/siyamsarker/WireShield/config"
 	"github.com/siyamsarker/WireShield/internal/auth"
+	"github.com/siyamsarker/WireShield/internal/database"
 	"github.com/siyamsarker/WireShield/internal/wireguard"
 	"github.com/skip2/go-qrcode"
 )
@@ -31,14 +32,19 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 type Server struct {
-	cfg     *config.Config
-	cfgPath string
-	mux     *http.ServeMux
-	sess    *auth.Manager
-	wg      *wireguard.Service
-	tmpls   *template.Template
-	limMu   sync.Mutex
-	lim     map[string][]time.Time
+	cfg      *config.Config
+	cfgPath  string
+	mux      *http.ServeMux
+	sess     *auth.Manager
+	wg       *wireguard.Service
+	db       *database.DB
+	clients  *database.ClientRepository
+	audit    *database.AuditLogRepository
+	metrics  *database.MetricsRepository
+	settings *database.SettingsRepository
+	tmpls    *template.Template
+	limMu    sync.Mutex
+	lim      map[string][]time.Time
 	// metrics ring buffers
 	metricsMu      sync.RWMutex
 	trafficSamples []TrafficSample
@@ -62,6 +68,23 @@ type UsageSample struct {
 
 func New(cfg *config.Config, cfgPath string) *Server {
 	s := &Server{cfg: cfg, cfgPath: cfgPath, mux: http.NewServeMux(), sess: auth.New(cfg.SessionKey), lim: make(map[string][]time.Time)}
+
+	// Initialize database
+	db, err := database.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	s.db = db
+	s.clients = database.NewClientRepository(db)
+	s.audit = database.NewAuditLogRepository(db)
+	s.metrics = database.NewMetricsRepository(db)
+	s.settings = database.NewSettingsRepository(db)
+
+	// Run initial migration from file-based configs to database
+	if err := s.migrateExistingClients(); err != nil {
+		log.Printf("Warning: migration failed: %v", err)
+	}
+
 	// Resolve script path robustly: validate env var and fall back to common paths
 	envScript := os.Getenv("WIRE_SHIELD_SCRIPT")
 	candidates := []string{
@@ -123,9 +146,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/clients/check-expired", s.withAuth(s.handleCheckExpired))
 	// JSON APIs for richer UI
 	s.mux.HandleFunc("/api/clients", s.withAuth(s.handleClientsAPI))             // GET list, POST add
+	s.mux.HandleFunc("/api/clients/search", s.withAuth(s.handleSearchClients))   // GET search
 	s.mux.HandleFunc("/api/clients/revoke", s.withAuth(s.handleRevokeClientAPI)) // POST revoke
 	s.mux.HandleFunc("/api/peers", s.withAuth(s.handlePeersAPI))
 	s.mux.HandleFunc("/api/metrics", s.withAuth(s.handleMetricsAPI))
+	s.mux.HandleFunc("/api/audit-logs", s.withAuth(s.handleAuditLogsAPI))                // GET audit logs
+	s.mux.HandleFunc("/api/analytics/bandwidth", s.withAuth(s.handleAnalyticsBandwidth)) // GET bandwidth analytics
 	s.mux.HandleFunc("/status", s.withAuth(s.handleStatus))
 	s.mux.HandleFunc("/restart", s.withAuth(s.handleRestart))
 	// Backup/Restore
@@ -136,11 +162,17 @@ func (s *Server) routes() {
 	// Settings
 	s.mux.HandleFunc("/settings", s.withAuth(s.handleSettings))
 	s.mux.HandleFunc("/settings/password", s.withAuth(s.handlePassword))
+	// New pages
+	s.mux.HandleFunc("/audit-logs", s.withAuth(s.handleAuditLogsPage))
+	s.mux.HandleFunc("/analytics", s.withAuth(s.handleAnalyticsPage))
 }
 
 // sampleLoop collects traffic totals, CPU percentage and system memory usage every 5s.
 func (s *Server) sampleLoop() {
 	interval := 5 * time.Second
+	dbSaveInterval := 60 * time.Second // Save to database every minute
+	lastDBSave := time.Now()
+
 	// previous CPU counters
 	prevBusy, prevTotal := readCPUCounters()
 	for {
@@ -153,6 +185,13 @@ func (s *Server) sampleLoop() {
 		}
 		prevBusy, prevTotal = busy, total
 		memUsedBytes, memUsedPct := readMemInfo()
+
+		// Count active peers
+		activePeers := 0
+		if stats, err := s.wg.PeerStats(); err == nil {
+			activePeers = len(stats)
+		}
+
 		s.metricsMu.Lock()
 		if terr == nil {
 			s.trafficSamples = append(s.trafficSamples, TrafficSample{Ts: time.Now().UnixMilli(), Rx: rxTot, Tx: txTot})
@@ -165,6 +204,21 @@ func (s *Server) sampleLoop() {
 			s.usageSamples = s.usageSamples[len(s.usageSamples)-cap(s.usageSamples):]
 		}
 		s.metricsMu.Unlock()
+
+		// Save to database periodically
+		if time.Since(lastDBSave) >= dbSaveInterval {
+			metric := &database.SystemMetric{
+				CPUPercent:     cpuPercent,
+				MemUsedBytes:   int64(memUsedBytes),
+				MemUsedPercent: memUsedPct,
+				TotalRxBytes:   rxTot,
+				TotalTxBytes:   txTot,
+				ActivePeers:    activePeers,
+			}
+			_ = s.metrics.RecordSystemMetric(metric)
+			lastDBSave = time.Now()
+		}
+
 		elapsed := time.Since(start)
 		sleepFor := interval - elapsed
 		if sleepFor < time.Second {
@@ -367,9 +421,42 @@ func (s *Server) handleAddClient(w http.ResponseWriter, r *http.Request) {
 		}
 		res, err := s.wg.AddClient(name, days)
 		if err != nil {
+			user, _ := s.sess.CurrentUser(r)
+			s.logAudit(user, "add_client", "client", name, s.clientIP(r), fmt.Sprintf("Failed: %v", err), false)
 			s.render(w, r, "add.tmpl", map[string]any{"Error": err.Error(), "CSRF": s.sess.EnsureCSRF(w, r), "Page": "add-client", "PageTitle": "Add Client"})
 			return
 		}
+
+		// Extract public key from result and save to database
+		publicKey := ""
+		if pk, ok := res["public_key"].(string); ok {
+			publicKey = pk
+		}
+		allowedIPs := "10.7.0.0/24"
+		if ai, ok := res["allowed_ips"].(string); ok {
+			allowedIPs = ai
+		}
+
+		var expiresAt *time.Time
+		if days > 0 {
+			exp := time.Now().AddDate(0, 0, days)
+			expiresAt = &exp
+		}
+
+		// Save to database
+		dbClient := &database.Client{
+			Name:       name,
+			PublicKey:  publicKey,
+			AllowedIPs: allowedIPs,
+			ExpiresAt:  expiresAt,
+			Enabled:    true,
+		}
+		_ = s.clients.Create(dbClient)
+
+		// Audit log
+		user, _ := s.sess.CurrentUser(r)
+		s.logAudit(user, "add_client", "client", name, s.clientIP(r), fmt.Sprintf("Days: %d", days), true)
+
 		s.render(w, r, "add.tmpl", map[string]any{"Success": true, "Result": res, "CSRF": s.sess.EnsureCSRF(w, r), "Page": "add-client", "PageTitle": "Add Client"})
 		return
 	}
@@ -391,9 +478,19 @@ func (s *Server) handleRevokeClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.wg.RevokeClient(name); err != nil {
+		user, _ := s.sess.CurrentUser(r)
+		s.logAudit(user, "revoke_client", "client", name, s.clientIP(r), fmt.Sprintf("Failed: %v", err), false)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Update database
+	_ = s.clients.Revoke(name)
+
+	// Audit log
+	user, _ := s.sess.CurrentUser(r)
+	s.logAudit(user, "revoke_client", "client", name, s.clientIP(r), "Client revoked", true)
+
 	s.sess.SetFlash(w, r, "success", "Client '"+name+"' revoked")
 	http.Redirect(w, r, "/clients", http.StatusFound)
 }
@@ -891,4 +988,301 @@ func (s *Server) clearLoginAttempts(r *http.Request) {
 	s.limMu.Lock()
 	delete(s.lim, ip)
 	s.limMu.Unlock()
+}
+
+// Close gracefully shuts down the server and database
+func (s *Server) Close() error {
+	if s.db != nil {
+		return s.db.Close()
+	}
+	return nil
+}
+
+// migrateExistingClients scans /etc/wireguard configs and imports clients to database
+func (s *Server) migrateExistingClients() error {
+	// Check if migration already ran
+	migrated := s.settings.GetWithDefault("migration_completed", "false")
+	if migrated == "true" {
+		log.Println("Migration already completed, skipping...")
+		return nil
+	}
+
+	log.Println("Starting migration of existing WireGuard clients to database...")
+
+	// Get clients from WireGuard service
+	clients, err := s.wg.ListClients()
+	if err != nil {
+		return fmt.Errorf("failed to list clients: %w", err)
+	}
+
+	if len(clients) == 0 {
+		log.Println("No existing clients found to migrate")
+		_ = s.settings.Set("migration_completed", "true")
+		return nil
+	}
+
+	migrated_count := 0
+	for _, client := range clients {
+		// Check if client already exists in database
+		existing, err := s.clients.GetByName(client.Name)
+		if err != nil {
+			log.Printf("Error checking client %s: %v", client.Name, err)
+			continue
+		}
+
+		if existing != nil {
+			log.Printf("Client %s already in database, skipping", client.Name)
+			continue
+		}
+
+		// Get client config to extract public key
+		cfg, err := s.wg.GetClientConfig(client.Name)
+		if err != nil {
+			log.Printf("Warning: could not get config for %s: %v", client.Name, err)
+			continue
+		}
+
+		// Parse public key from config
+		publicKey := extractPublicKey(cfg)
+		if publicKey == "" {
+			log.Printf("Warning: could not extract public key for %s", client.Name)
+			continue
+		}
+
+		// Parse allowed IPs from config
+		allowedIPs := extractAllowedIPs(cfg)
+		if allowedIPs == "" {
+			allowedIPs = "10.7.0.0/24" // default fallback
+		}
+
+		// Convert expiration string to time
+		var expiresAt *time.Time
+		if client.Expires != nil && *client.Expires != "" {
+			if t, err := time.Parse("2006-01-02", *client.Expires); err == nil {
+				expiresAt = &t
+			}
+		}
+
+		// Create database entry
+		dbClient := &database.Client{
+			Name:       client.Name,
+			PublicKey:  publicKey,
+			AllowedIPs: allowedIPs,
+			ExpiresAt:  expiresAt,
+			Enabled:    true,
+		}
+
+		if err := s.clients.Create(dbClient); err != nil {
+			log.Printf("Error migrating client %s: %v", client.Name, err)
+			continue
+		}
+
+		migrated_count++
+		log.Printf("Migrated client: %s (ID: %d)", client.Name, dbClient.ID)
+	}
+
+	log.Printf("Migration completed: %d clients migrated", migrated_count)
+
+	// Mark migration as complete
+	_ = s.settings.Set("migration_completed", "true")
+
+	// Log migration in audit log
+	_ = s.audit.Log(&database.AuditLog{
+		Username:     "system",
+		Action:       "migration",
+		ResourceType: "clients",
+		ResourceName: fmt.Sprintf("%d_clients", migrated_count),
+		Success:      true,
+		Details:      fmt.Sprintf("Migrated %d existing clients to database", migrated_count),
+	})
+
+	return nil
+}
+
+// extractPublicKey parses PublicKey from WireGuard config
+func extractPublicKey(config string) string {
+	lines := strings.Split(config, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "PublicKey = ") || strings.HasPrefix(line, "PublicKey=") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return ""
+}
+
+// extractAllowedIPs parses AllowedIPs from WireGuard config
+func extractAllowedIPs(config string) string {
+	lines := strings.Split(config, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "AllowedIPs = ") || strings.HasPrefix(line, "AllowedIPs=") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return ""
+}
+
+// handleSearchClients provides search API for clients
+func (s *Server) handleSearchClients(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		http.Error(w, "missing search query", http.StatusBadRequest)
+		return
+	}
+
+	clients, err := s.clients.Search(query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(clients)
+}
+
+// handleAuditLogsAPI provides audit log data
+func (s *Server) handleAuditLogsAPI(w http.ResponseWriter, r *http.Request) {
+	page := 1
+	limit := 50
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 {
+			page = v
+		}
+	}
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 200 {
+			limit = v
+		}
+	}
+
+	offset := (page - 1) * limit
+	logs, err := s.audit.List(limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	total, _ := s.audit.Count()
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"logs":  logs,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	})
+}
+
+// handleAnalyticsBandwidth provides bandwidth analytics data
+func (s *Server) handleAnalyticsBandwidth(w http.ResponseWriter, r *http.Request) {
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "24h"
+	}
+
+	var duration time.Duration
+	switch period {
+	case "1h":
+		duration = time.Hour
+	case "24h":
+		duration = 24 * time.Hour
+	case "7d":
+		duration = 7 * 24 * time.Hour
+	case "30d":
+		duration = 30 * 24 * time.Hour
+	default:
+		duration = 24 * time.Hour
+	}
+
+	from := time.Now().Add(-duration)
+	to := time.Now()
+
+	metrics, err := s.metrics.GetSystemMetrics(from, to, 1000)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get top clients by bandwidth
+	clients, _ := s.clients.List(false)
+	type clientBW struct {
+		Name    string `json:"name"`
+		RxBytes int64  `json:"rx_bytes"`
+		TxBytes int64  `json:"tx_bytes"`
+		Total   int64  `json:"total"`
+	}
+	var topClients []clientBW
+	for _, c := range clients {
+		if c.TotalRxBytes > 0 || c.TotalTxBytes > 0 {
+			topClients = append(topClients, clientBW{
+				Name:    c.Name,
+				RxBytes: c.TotalRxBytes,
+				TxBytes: c.TotalTxBytes,
+				Total:   c.TotalRxBytes + c.TotalTxBytes,
+			})
+		}
+	}
+
+	// Sort by total descending (simple bubble sort for small lists)
+	for i := 0; i < len(topClients); i++ {
+		for j := i + 1; j < len(topClients); j++ {
+			if topClients[j].Total > topClients[i].Total {
+				topClients[i], topClients[j] = topClients[j], topClients[i]
+			}
+		}
+	}
+
+	// Take top 10
+	if len(topClients) > 10 {
+		topClients = topClients[:10]
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"metrics":     metrics,
+		"top_clients": topClients,
+		"period":      period,
+	})
+}
+
+// handleAuditLogsPage renders audit logs page
+func (s *Server) handleAuditLogsPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "audit_logs.tmpl", map[string]any{
+		"CSRF":      s.sess.EnsureCSRF(w, r),
+		"Page":      "audit-logs",
+		"PageTitle": "Audit Logs",
+	})
+}
+
+// handleAnalyticsPage renders analytics dashboard
+func (s *Server) handleAnalyticsPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "analytics.tmpl", map[string]any{
+		"CSRF":      s.sess.EnsureCSRF(w, r),
+		"Page":      "analytics",
+		"PageTitle": "Analytics",
+	})
+}
+
+// logAudit is a helper to log audit events
+func (s *Server) logAudit(username, action, resourceType, resourceName, ipAddress, details string, success bool) {
+	err := s.audit.Log(&database.AuditLog{
+		Username:     username,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceName: resourceName,
+		IPAddress:    ipAddress,
+		Details:      details,
+		Success:      success,
+	})
+	if err != nil {
+		log.Printf("Failed to log audit event: %v", err)
+	}
 }
