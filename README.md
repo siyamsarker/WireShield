@@ -4,15 +4,16 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
+[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)](https://go.dev/)
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
 [![Platform](https://img.shields.io/badge/Platform-Linux-orange.svg)](https://www.kernel.org/)
-[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)](https://go.dev/)
+[![GitHub Stars](https://img.shields.io/github/stars/siyamsarker/WireShield?style=social)](https://github.com/siyamsarker/WireShield)
 
-**Secure, modern WireGuard VPN manager**
+**Secure, modern WireGuard VPN manager with enterprise features**
 
 *No curl pipe | No opaque installer | Just git clone & run*
 
-[Quick Start](#-quick-start-clone--run) • [Features](#-overview) • [Dashboard](#-web-dashboard-optional) • [Docs](#-table-of-contents)
+[Quick Start](#-quick-start-clone--run) • [Features](#-overview) • [Dashboard](#-web-dashboard-optional) • [Documentation](#-table-of-contents)
 
 ---
 
@@ -142,45 +143,41 @@ sudo ./wireshield.sh   # access menu / (re)build dashboard
 
 ```
 WireShield/
-├─ 📜 wireshield.sh                      # Primary Bash manager (setup + client ops + optional dashboard)
-├─ 🧰 scripts/ (removed helper scripts)   # Previously contained legacy installer/upgrade helpers
-├─ 📁 dashboard/
-│  ├─ go.mod                              # Go module dependencies
-│  ├─ 📁 cmd/
-│  │  └─ wireshield-dashboard/
-│  │     └─ main.go                       # Dashboard binary entrypoint
-│  ├─ 📁 config/
-│  │  └─ config.go                        # JSON config load/save and helpers
-│  └─ 📁 internal/
-│     ├─ 🔐 auth/                         # Cookie sessions, CSRF, flash messages
-│     │  └─ auth.go
-│     ├─ 💾 database/                     # SQLite database layer (NEW in v2.2.0)
-│     │  ├─ schema.go                     # Database schema definition
-│     │  ├─ db.go                         # Connection management, transactions, backup
-│     │  ├─ models.go                     # Data models and ClientRepository
-│     │  └─ repositories.go               # AuditLog, Metrics, Settings repositories
-│     ├─ 🌐 server/                       # HTTP routes, templates, static assets (embedded)
-│     │  ├─ server.go                     # Main server with DB integration
-│     │  ├─ templates/
-│     │  │  ├─ layout.tmpl                # Base layout with navigation
-│     │  │  ├─ clients.tmpl               # Client list with search
-│     │  │  ├─ add_client.tmpl            # Add new client form
-│     │  │  ├─ analytics.tmpl             # Analytics dashboard (NEW)
-│     │  │  ├─ audit_logs.tmpl            # Audit log viewer (NEW)
-│     │  │  ├─ status.tmpl                # System status
-│     │  │  ├─ backup.tmpl                # Backup management
-│     │  │  ├─ login.tmpl                 # Login page
-│     │  │  ├─ password.tmpl              # Password change
-│     │  │  ├─ qr.tmpl                    # QR code display
-│     │  │  └─ uninstall.tmpl             # Uninstall wizard
-│     │  └─ static/
-│     │     ├─ app.css                    # Modern CSS styles
-│     │     ├─ copy.js                    # Copy-to-clipboard utility
-│     │     └─ theme.js                   # Theme switching
-│     └─ 🔧 wireguard/                    # Thin wrapper calling Bash script functions
-│        └─ service.go
-└─ 📁 scripts/
-   └─ install-dashboard.sh                # Dashboard installation script
+├─ 📜 wireshield.sh                      # Primary Bash manager (setup + client ops + dashboard)
+├─ � go.mod                              # Go module dependencies
+├─ 📁 cmd/
+│  └─ wireshield-dashboard/
+│     └─ main.go                          # Dashboard binary entrypoint
+├─ 📁 config/
+│  └─ config.go                           # JSON config load/save and helpers
+└─ 📁 internal/
+   ├─ 🔐 auth/                            # Cookie sessions, CSRF, flash messages
+   │  └─ auth.go
+   ├─ 💾 database/                        # SQLite database layer (v2.2.0)
+   │  ├─ schema.go                        # Database schema definition
+   │  ├─ db.go                            # Connection management, transactions, backup
+   │  ├─ models.go                        # Data models and ClientRepository
+   │  └─ repositories.go                  # AuditLog, Metrics, Settings repositories
+   ├─ 🌐 server/                          # HTTP routes, templates, static assets (embedded)
+   │  ├─ server.go                        # Main server with DB integration
+   │  ├─ templates/
+   │  │  ├─ layout.tmpl                   # Base layout with navigation
+   │  │  ├─ clients.tmpl                  # Client list with search
+   │  │  ├─ add_client.tmpl               # Add new client form
+   │  │  ├─ analytics.tmpl                # Analytics dashboard
+   │  │  ├─ audit_logs.tmpl               # Audit log viewer
+   │  │  ├─ status.tmpl                   # System status
+   │  │  ├─ backup.tmpl                   # Backup management
+   │  │  ├─ login.tmpl                    # Login page
+   │  │  ├─ password.tmpl                 # Password change
+   │  │  ├─ qr.tmpl                       # QR code display
+   │  │  └─ uninstall.tmpl                # Uninstall wizard
+   │  └─ static/
+   │     ├─ app.css                       # Modern CSS styles
+   │     ├─ copy.js                       # Copy-to-clipboard utility
+   │     └─ theme.js                      # Theme switching
+   └─ 🔧 wireguard/                       # Thin wrapper calling Bash script functions
+      └─ service.go
 ```
 
 ### 📝 Naming conventions
@@ -513,8 +510,8 @@ WireShield includes an optional, lightweight web dashboard that lets you do ever
 
 - 🔒 **Secure-by-default**: binds to `127.0.0.1:51821`; put behind your TLS reverse proxy (Nginx, Traefik)
 - 👤 **Simple auth**: local admin users with bcrypt-hashed passwords and signed session cookies
-- 🎨 **Modern UI**: minimal, responsive HTML with Pico.css + HTMX (no heavy SPA)
-- 📦 **Minimal footprint**: single Go binary, HTML templates embedded
+- 🎨 **Modern UI**: minimal, responsive design with custom CSS (no heavy frameworks)
+- 📦 **Minimal footprint**: single Go binary, HTML templates and assets embedded
 
 ### ✨ Features at a glance
 

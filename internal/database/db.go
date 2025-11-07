@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -92,8 +93,18 @@ func (db *DB) WithTransaction(fn TxFunc) error {
 
 // Backup creates a backup of the database
 func (db *DB) Backup(destPath string) error {
-	// Use SQLite backup API through a custom query
-	backupSQL := fmt.Sprintf("VACUUM INTO '%s'", destPath)
+	// Validate path to prevent injection
+	if destPath == "" || strings.Contains(destPath, "'") || strings.Contains(destPath, ";") {
+		return fmt.Errorf("invalid backup path")
+	}
+
+	// Ensure destination directory exists
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("failed to create backup directory: %w", err)
+	}
+
+	// Use SQLite VACUUM INTO command for atomic backup
+	backupSQL := fmt.Sprintf("VACUUM INTO '%s'", filepath.Clean(destPath))
 	_, err := db.Exec(backupSQL)
 	return err
 }
