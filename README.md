@@ -32,7 +32,13 @@ WireShield is a **single-file bash tool** that installs and manages a [WireGuard
 - ⏰ **Client expiration**: Set optional expiration dates for temporary access
 - 🤖 **Automatic removal** of expired clients via cron
 - 📲 **QR codes** for mobile onboarding
-- 🎨 **Optional Web Dashboard** (modern Go + HTML UI)
+- 🎨 **Modern Web Dashboard** with enterprise features:
+  - 📊 **Analytics & Charts**: Real-time bandwidth visualization with Chart.js
+  - 🔍 **Advanced Search**: Instant client search and filtering
+  - 📝 **Audit Logs**: Complete audit trail of all administrative actions
+  - 📈 **Performance Metrics**: CPU, memory, and network usage monitoring
+  - 💾 **SQLite Database**: Persistent storage for clients, logs, and metrics
+  - 🎯 **Modern UI**: Clean, responsive design inspired by enterprise security products
 
 
 ## 📑 Table of contents
@@ -138,34 +144,43 @@ sudo ./wireshield.sh   # access menu / (re)build dashboard
 WireShield/
 ├─ 📜 wireshield.sh                      # Primary Bash manager (setup + client ops + optional dashboard)
 ├─ 🧰 scripts/ (removed helper scripts)   # Previously contained legacy installer/upgrade helpers
-├─ 📁 cmd/
-│  └─ wireshield-dashboard/
-│     └─ main.go                         # Dashboard binary entrypoint
-├─ 📁 config/
-│  └─ config.go                          # JSON config load/save and helpers
-└─ 📁 internal/
-  ├─ 🔐 auth/                           # Cookie sessions, CSRF, flash messages
-  │  └─ auth.go
-  ├─ 🌐 server/                         # HTTP routes, templates, static assets (embedded)
-  │  ├─ server.go
-  │  ├─ templates/
-  │  │  ├─ dashboard.tmpl               # New dashboard home (stats, quick actions, recent clients)
-  │  │  ├─ clients.tmpl
-  │  │  ├─ add.tmpl
-  │  │  ├─ status.tmpl
-  │  │  ├─ backup.tmpl
-  │  │  ├─ login.tmpl
-  │  │  ├─ password.tmpl
-  │  │  ├─ qr.tmpl
-  │  │  └─ uninstall.tmpl
-  │  └─ static/
-  │     ├─ app.css
-  │     ├─ copy.js
-  │     ├─ logo.svg
-  │     └─ icons/
-  │        └─ favicon.svg
-  └─ 🔧 wireguard/                      # Thin wrapper calling Bash script functions
-    └─ service.go
+├─ 📁 dashboard/
+│  ├─ go.mod                              # Go module dependencies
+│  ├─ 📁 cmd/
+│  │  └─ wireshield-dashboard/
+│  │     └─ main.go                       # Dashboard binary entrypoint
+│  ├─ 📁 config/
+│  │  └─ config.go                        # JSON config load/save and helpers
+│  └─ 📁 internal/
+│     ├─ 🔐 auth/                         # Cookie sessions, CSRF, flash messages
+│     │  └─ auth.go
+│     ├─ 💾 database/                     # SQLite database layer (NEW in v2.2.0)
+│     │  ├─ schema.go                     # Database schema definition
+│     │  ├─ db.go                         # Connection management, transactions, backup
+│     │  ├─ models.go                     # Data models and ClientRepository
+│     │  └─ repositories.go               # AuditLog, Metrics, Settings repositories
+│     ├─ 🌐 server/                       # HTTP routes, templates, static assets (embedded)
+│     │  ├─ server.go                     # Main server with DB integration
+│     │  ├─ templates/
+│     │  │  ├─ layout.tmpl                # Base layout with navigation
+│     │  │  ├─ clients.tmpl               # Client list with search
+│     │  │  ├─ add_client.tmpl            # Add new client form
+│     │  │  ├─ analytics.tmpl             # Analytics dashboard (NEW)
+│     │  │  ├─ audit_logs.tmpl            # Audit log viewer (NEW)
+│     │  │  ├─ status.tmpl                # System status
+│     │  │  ├─ backup.tmpl                # Backup management
+│     │  │  ├─ login.tmpl                 # Login page
+│     │  │  ├─ password.tmpl              # Password change
+│     │  │  ├─ qr.tmpl                    # QR code display
+│     │  │  └─ uninstall.tmpl             # Uninstall wizard
+│     │  └─ static/
+│     │     ├─ app.css                    # Modern CSS styles
+│     │     ├─ copy.js                    # Copy-to-clipboard utility
+│     │     └─ theme.js                   # Theme switching
+│     └─ 🔧 wireguard/                    # Thin wrapper calling Bash script functions
+│        └─ service.go
+└─ 📁 scripts/
+   └─ install-dashboard.sh                # Dashboard installation script
 ```
 
 ### 📝 Naming conventions
@@ -503,12 +518,36 @@ WireShield includes an optional, lightweight web dashboard that lets you do ever
 
 ### ✨ Features at a glance
 
-- ✅ Clients list with actions (download config, view QR, revoke)
+**Client Management:**
+- ✅ Client list with real-time status and actions (download config, view QR, revoke)
+- ✅ Advanced search and filtering across all client properties
 - ✅ Dedicated QR page with PNG download and one-click "Copy config"
-- ✅ Flash messages after actions (revoke, restart, expire check)
+- ✅ Bandwidth tracking and statistics per client
+- ✅ Client expiration management and automatic cleanup
+
+**Analytics & Monitoring:**
+- ✅ Real-time bandwidth visualization with Chart.js
+- ✅ Top 10 clients by data transfer
+- ✅ System resource monitoring (CPU, memory, network)
+- ✅ Historical metrics with time-range filtering (24h, 7d, 30d)
+
+**Security & Audit:**
+- ✅ Comprehensive audit logging of all administrative actions
+- ✅ Audit log viewer with search, filtering, and CSV export
 - ✅ CSRF protection, secure cookies, strict security headers (CSP, XFO, XCTO)
 - ✅ Login rate limiting per client IP
+- ✅ Session management with automatic expiration
+
+**Data Management:**
+- ✅ SQLite database with WAL mode for optimal performance
+- ✅ Automatic migration of existing clients on first run
+- ✅ Database backup and restore functionality
+- ✅ Connection pooling and transaction support
+
+**API & Integration:**
+- ✅ RESTful API endpoints for client search, analytics, and audit logs
 - ✅ Health endpoint at `/health` returns `200 ok` for monitoring
+- ✅ JSON responses for easy integration with external tools
 
 ### 🤔 Why Go?
 
