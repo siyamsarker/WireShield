@@ -197,21 +197,21 @@ sudo ./wireshield.sh
 
 ### 📋 Menu options (CLI)
 
-```
-┌─────────────────────────────────────────────┐
-│           WireShield Management             │
-├─────────────────────────────────────────────┤
-│  1) 👤 Add a new client                     │  Create a client config (+ QR)
-│  2) 📋 List clients                         │  Show all clients with details
-│  3) 📲 Show QR for a client                 │  Display scannable QR for mobile
-│  4) ❌ Revoke existing client               │  Remove peer and its config
-│  5) 🗓️  Check expired clients               │  Remove clients past expiration
-│  6) 📊 Show server status                   │  wg show (peers, handshakes, etc.)
-│  7) 🔄 Restart WireGuard                    │  Restart wg-quick@<iface>
-│  8) 💾 Backup configuration                 │  Archive configs (safe copy)
-│  9) 🗑️  Uninstall WireGuard                 │  Clean removal of WireGuard setup
-│ 10) 🚪 Exit                                  │  Quit the manager
-└─────────────────────────────────────────────┘
+```text
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                        WireShield Management                              ║
+╠═══════════════════════════════════════════════════════════════════════════╣
+║  1) 👤 Add a new client         │ Create a client config (+ QR)           ║
+║  2) 📋 List clients              │ Show all clients with details          ║
+║  3) 📲 Show QR for a client      │ Display scannable QR for mobile        ║
+║  4) ❌ Revoke existing client    │ Remove peer and its config             ║
+║  5) 🗓️  Check expired clients    │ Remove clients past expiration         ║
+║  6) 📊 Show server status        │ wg show (peers, handshakes, etc.)      ║
+║  7) 🔄 Restart WireGuard         │ Restart wg-quick@<iface>               ║
+║  8) 💾 Backup configuration      │ Archive configs (safe copy)            ║
+║  9) 🗑️  Uninstall WireGuard      │ Clean removal of WireGuard setup       ║
+║ 10) 🚪 Exit                      │ Quit the manager                       ║
+╚═══════════════════════════════════════════════════════════════════════════╝
 ```
 
 ### 💡 Notes
