@@ -5,87 +5,116 @@ import (
 	"time"
 )
 
-// Client represents a WireGuard client configuration
+// ============================================================================
+// DATA MODELS
+// ============================================================================
+// These structs represent the database schema as Go types, enabling type-safe
+// database operations and JSON serialization for API responses.
+
+// Client represents a WireGuard VPN client with full lifecycle tracking.
+// Each client corresponds to one device/user with access to the VPN server.
 type Client struct {
-	ID            int64      `json:"id"`
-	Name          string     `json:"name"`
-	PublicKey     string     `json:"public_key"`
-	AllowedIPs    string     `json:"allowed_ips"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
-	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
-	Enabled       bool       `json:"enabled"`
-	TotalRxBytes  int64      `json:"total_rx_bytes"`
-	TotalTxBytes  int64      `json:"total_tx_bytes"`
-	LastHandshake *time.Time `json:"last_handshake,omitempty"`
-	Endpoint      string     `json:"endpoint,omitempty"`
-	Notes         string     `json:"notes,omitempty"`
+	ID            int64      `json:"id"`                       // Unique database identifier
+	Name          string     `json:"name"`                     // Human-readable name (e.g., "alice-phone")
+	PublicKey     string     `json:"public_key"`               // WireGuard public key for authentication
+	AllowedIPs    string     `json:"allowed_ips"`              // CIDR notation of allowed IP ranges
+	CreatedAt     time.Time  `json:"created_at"`               // Initial creation timestamp
+	UpdatedAt     time.Time  `json:"updated_at"`               // Last modification timestamp
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`     // Optional expiration date (nil = no expiry)
+	RevokedAt     *time.Time `json:"revoked_at,omitempty"`     // When access was revoked (nil = active)
+	Enabled       bool       `json:"enabled"`                  // Whether client can currently connect
+	TotalRxBytes  int64      `json:"total_rx_bytes"`           // Cumulative bytes downloaded
+	TotalTxBytes  int64      `json:"total_tx_bytes"`           // Cumulative bytes uploaded
+	LastHandshake *time.Time `json:"last_handshake,omitempty"` // Last successful WireGuard handshake
+	Endpoint      string     `json:"endpoint,omitempty"`       // Client's current IP:port
+	Notes         string     `json:"notes,omitempty"`          // Admin notes/comments
 }
 
-// AuditLog represents an administrative action log entry
+// AuditLog represents a recorded administrative action for compliance and debugging.
+// Provides a complete audit trail of who performed what action, when, and with what result.
 type AuditLog struct {
-	ID           int64     `json:"id"`
-	Timestamp    time.Time `json:"timestamp"`
-	Username     string    `json:"username"`
-	Action       string    `json:"action"`
-	ResourceType string    `json:"resource_type"`
-	ResourceName string    `json:"resource_name"`
-	IPAddress    string    `json:"ip_address,omitempty"`
-	UserAgent    string    `json:"user_agent,omitempty"`
-	Details      string    `json:"details,omitempty"`
-	Success      bool      `json:"success"`
+	ID           int64     `json:"id"`                   // Unique log entry identifier
+	Timestamp    time.Time `json:"timestamp"`            // When the action occurred (UTC)
+	Username     string    `json:"username"`             // Admin who performed the action
+	Action       string    `json:"action"`               // Action type (e.g., "add_client", "revoke")
+	ResourceType string    `json:"resource_type"`        // Resource category (e.g., "client", "settings")
+	ResourceName string    `json:"resource_name"`        // Specific resource identifier
+	IPAddress    string    `json:"ip_address,omitempty"` // Source IP of the action
+	UserAgent    string    `json:"user_agent,omitempty"` // Browser/client identifier
+	Details      string    `json:"details,omitempty"`    // Additional context or error messages
+	Success      bool      `json:"success"`              // Whether operation succeeded
 }
 
-// BandwidthStat represents a periodic bandwidth measurement
+// BandwidthStat captures bandwidth usage at a specific point in time.
+// Used for generating usage graphs and identifying bandwidth trends.
 type BandwidthStat struct {
-	ID        int64     `json:"id"`
-	Timestamp time.Time `json:"timestamp"`
-	ClientID  int64     `json:"client_id"`
-	RxBytes   int64     `json:"rx_bytes"`
-	TxBytes   int64     `json:"tx_bytes"`
+	ID        int64     `json:"id"`        // Unique measurement identifier
+	Timestamp time.Time `json:"timestamp"` // When measurement was taken
+	ClientID  int64     `json:"client_id"` // Reference to clients table
+	RxBytes   int64     `json:"rx_bytes"`  // Bytes received at this time
+	TxBytes   int64     `json:"tx_bytes"`  // Bytes transmitted at this time
 }
 
-// SystemMetric represents server resource usage at a point in time
+// SystemMetric captures server resource utilization for monitoring.
+// Tracks CPU, memory, network, and active connection metrics over time.
 type SystemMetric struct {
-	ID             int64     `json:"id"`
-	Timestamp      time.Time `json:"timestamp"`
-	CPUPercent     float64   `json:"cpu_percent"`
-	MemUsedBytes   int64     `json:"mem_used_bytes"`
-	MemUsedPercent float64   `json:"mem_used_percent"`
-	TotalRxBytes   int64     `json:"total_rx_bytes"`
-	TotalTxBytes   int64     `json:"total_tx_bytes"`
-	ActivePeers    int       `json:"active_peers"`
+	ID             int64     `json:"id"`               // Unique metric identifier
+	Timestamp      time.Time `json:"timestamp"`        // Measurement timestamp
+	CPUPercent     float64   `json:"cpu_percent"`      // CPU usage (0-100%)
+	MemUsedBytes   int64     `json:"mem_used_bytes"`   // Memory consumption in bytes
+	MemUsedPercent float64   `json:"mem_used_percent"` // Memory usage (0-100%)
+	TotalRxBytes   int64     `json:"total_rx_bytes"`   // Total network bytes received
+	TotalTxBytes   int64     `json:"total_tx_bytes"`   // Total network bytes transmitted
+	ActivePeers    int       `json:"active_peers"`     // Number of connected clients
 }
 
-// Setting represents a configuration key-value pair
+// Setting represents a flexible key-value configuration entry.
+// Enables runtime configuration without database schema changes.
 type Setting struct {
-	Key       string    `json:"key"`
-	Value     string    `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Key       string    `json:"key"`        // Unique setting identifier
+	Value     string    `json:"value"`      // Setting value (always string, parse as needed)
+	UpdatedAt time.Time `json:"updated_at"` // Last modification timestamp
 }
 
-// Session represents an active user session
+// Session represents an authenticated user's dashboard session.
+// Provides stateful session tracking beyond cookie-only authentication.
 type Session struct {
-	ID        string    `json:"id"`
-	Username  string    `json:"username"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	IPAddress string    `json:"ip_address,omitempty"`
-	UserAgent string    `json:"user_agent,omitempty"`
+	ID        string    `json:"id"`                   // Unique session token
+	Username  string    `json:"username"`             // Authenticated user
+	CreatedAt time.Time `json:"created_at"`           // Session start time
+	ExpiresAt time.Time `json:"expires_at"`           // Session expiration time
+	IPAddress string    `json:"ip_address,omitempty"` // IP where session originated
+	UserAgent string    `json:"user_agent,omitempty"` // Client user agent string
 }
 
-// ClientRepository handles client data operations
+// ============================================================================
+// REPOSITORY: CLIENT OPERATIONS
+// ============================================================================
+// ClientRepository provides CRUD operations and queries for VPN clients.
+// All methods use prepared statements to prevent SQL injection.
+
+// ClientRepository encapsulates all database operations for VPN clients.
 type ClientRepository struct {
-	db *DB
+	db *DB // Database connection handle
 }
 
-// NewClientRepository creates a new client repository
+// NewClientRepository initializes a new client repository with the given database.
 func NewClientRepository(db *DB) *ClientRepository {
 	return &ClientRepository{db: db}
 }
 
-// Create adds a new client
+// Create inserts a new client into the database.
+// Automatically sets creation and update timestamps.
+//
+// Parameters:
+//   - client: Client struct with name, public key, allowed IPs, and optional fields
+//
+// Returns:
+//   - error: nil on success, or database error (e.g., duplicate name)
+//
+// Side effects:
+//   - Sets client.ID to the auto-generated database ID
+//   - Sets client.CreatedAt and client.UpdatedAt to current time
 func (r *ClientRepository) Create(client *Client) error {
 	client.CreatedAt = time.Now()
 	client.UpdatedAt = time.Now()
