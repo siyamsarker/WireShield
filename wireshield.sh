@@ -392,9 +392,10 @@ function installWireGuard() {
 		exit 1
 	fi
 
-	# Display installed WireGuard version
-	echo -e "${GREEN}WireGuard tools installed successfully!${NC}"
-	wg --version 2>/dev/null || echo "WireGuard tools version: $(wg version 2>/dev/null || echo 'installed')"
+	# Display installed WireGuard version after the refresh
+	local wg_version
+	wg_version=$(wg --version 2>/dev/null || wg version 2>/dev/null || echo "installed")
+	echo -e "${GREEN}WireGuard tools installed/updated (post-upgrade):${NC} ${wg_version}"
 
 	# Ensure configuration directory exists (not always present by default)
 	mkdir /etc/wireguard >/dev/null 2>&1
