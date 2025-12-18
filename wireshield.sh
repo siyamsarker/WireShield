@@ -310,6 +310,26 @@ function installQuestions() {
 	read -n1 -r -p "Press any key to continue..."
 }
 
+function _ws_upgrade_wireguard_packages() {
+	# Best-effort upgrade to the newest WireGuard packages available for the distro.
+	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
+		apt-get update
+		apt-get install -y --only-upgrade wireguard wireguard-tools qrencode || true
+	elif [[ ${OS} == 'fedora' ]]; then
+		dnf upgrade -y wireguard-tools wireguard-dkms qrencode || true
+	elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]] || [[ ${OS} == 'oracle' ]]; then
+		if command -v dnf >/dev/null 2>&1; then
+			dnf upgrade -y wireguard-tools qrencode || true
+		else
+			yum update -y wireguard-tools qrencode || true
+		fi
+	elif [[ ${OS} == 'arch' ]]; then
+		pacman -Sy --noconfirm --needed wireguard-tools qrencode || true
+	elif [[ ${OS} == 'alpine' ]]; then
+		apk update && apk add --upgrade wireguard-tools libqrencode-tools || true
+	fi
+}
+
 function installWireGuard() {
 	# Run setup questions first (safe defaults, validated input, confirmation)
 	installQuestions
@@ -362,6 +382,9 @@ function installWireGuard() {
 		apk update
 		apk add wireguard-tools iptables libqrencode-tools
 	fi
+
+	# Ensure the newest available WireGuard packages are installed
+	_ws_upgrade_wireguard_packages
 
 	# Check if WireGuard was installed successfully
 	if ! command -v wg &>/dev/null; then
