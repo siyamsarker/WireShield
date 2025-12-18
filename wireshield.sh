@@ -505,6 +505,8 @@ function newClient() {
 	# update server config, write client configuration, and optionally show QR.
 	# IMPORTANT: Localize and reset variables to avoid cross-call leakage that
 	# can cause the function to skip prompts or behave unexpectedly.
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu at any time)${NC}"
+	echo ""
 	local CLIENT_NAME="" CLIENT_EXISTS=1
 	local DOT_IP="" DOT_EXISTS=0
 	local IPV4_EXISTS=1 IPV6_EXISTS=1
@@ -673,11 +675,13 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 
 function listClients() {
     # Print numbered list of existing clients (peers) from the server config.
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
 	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 	if [[ ${NUMBER_OF_CLIENTS} -eq 0 ]]; then
 		echo ""
 		echo "You have no existing clients!"
-		exit 1
+		return
 	fi
 
 	echo ""
@@ -705,11 +709,13 @@ function listClients() {
 function revokeClient() {
 	# Remove a client peer from the server config and delete related client
 	# configuration files so the name can be safely reused.
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
 	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 	if [[ ${NUMBER_OF_CLIENTS} == '0' ]]; then
 		echo ""
 		echo "You have no existing clients!"
-		exit 1
+		return
 	fi
 
 	echo ""
@@ -752,6 +758,8 @@ function revokeClient() {
 
 function checkExpiredClients() {
 	# Check for expired clients and remove them automatically
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
 	echo -e "${GREEN}Checking for expired clients...${NC}\n"
 	
 	# Get current date in YYYY-MM-DD format
@@ -1048,6 +1056,8 @@ function _ws_choose_client() {
 
 function showClientQR() {
     # Render a QR code for a selected client's configuration (if available).
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
 	if ! command -v qrencode &>/dev/null; then
 		echo -e "${ORANGE}qrencode is not installed; cannot render QR in terminal.${NC}"
 		echo "You can still use the .conf file on your device."
@@ -1079,12 +1089,16 @@ function showClientQR() {
 
 function showStatus() {
     # Display WireGuard runtime status via `wg show`.
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
 	echo -e "${GREEN}WireGuard status:${NC}"
 	wg show || true
 }
 
 function restartWireGuard() {
     # Restart the WireGuard interface service using the appropriate init system.
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
 	echo "Restarting WireGuard (${SERVER_WG_NIC})..."
 	if [[ ${OS} == 'alpine' ]]; then
 		rc-service "wg-quick.${SERVER_WG_NIC}" restart
@@ -1096,6 +1110,8 @@ function restartWireGuard() {
 
 function backupConfigs() {
     # Create a timestamped archive of /etc/wireguard for backup/portability.
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
 	local ts out
 	ts=$(date +%Y%m%d-%H%M%S)
 	out="/root/wireshield-backup-${ts}.tar.gz"
