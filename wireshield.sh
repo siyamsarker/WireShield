@@ -1448,6 +1448,52 @@ function backupConfigs() {
 	tar czf "${out}" /etc/wireguard 2>/dev/null && echo -e "${GREEN}Backup saved to ${out}${NC}" || echo -e "${RED}Backup failed.${NC}"
 }
 
+function viewAuditLogs() {
+    # Display audit logs menu for users to view 2FA authentication logs.
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
+	
+	local AUDIT_OPTION
+	echo "=== Audit Logs ==="
+	echo "   1) View all audit logs (last 100)"
+	echo "   2) View logs for specific user"
+	echo "   3) View audit statistics"
+	echo "   4) Export audit logs to CSV"
+	echo "   5) Back to menu"
+	read -rp "Select option [1-5]: " AUDIT_OPTION
+	
+	case "$AUDIT_OPTION" in
+		1)
+			echo ""
+			sudo /etc/wireshield/2fa/2fa-helper.sh audit-logs
+			;;
+		2)
+			echo ""
+			read -rp "Enter client/user ID: " client_id
+			if [ -n "$client_id" ]; then
+				sudo /etc/wireshield/2fa/2fa-helper.sh audit-logs-user "$client_id"
+			fi
+			;;
+		3)
+			echo ""
+			sudo /etc/wireshield/2fa/2fa-helper.sh audit-stats
+			;;
+		4)
+			echo ""
+			read -rp "Enter output file path [/tmp/wireshield_audit_logs.csv]: " output_file
+			output_file=${output_file:-/tmp/wireshield_audit_logs.csv}
+			sudo /etc/wireshield/2fa/2fa-helper.sh export-audit "$output_file"
+			echo -e "${GREEN}Audit logs exported to: ${output_file}${NC}"
+			;;
+		5)
+			return
+			;;
+		*)
+			echo "Invalid option"
+			;;
+	esac
+}
+
 function manageMenu() {
     # Main interactive loop used after installation to manage clients and server.
 	while true; do
@@ -1472,9 +1518,10 @@ function manageMenu() {
 				5 "Clean Up Expired Clients" \
 				6 "View Server Status" \
 				7 "Restart VPN Service" \
-				8 "Backup Configuration" \
-				9 "Uninstall WireShield" \
-				10 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=10
+				8 "View Audit Logs" \
+				9 "Backup Configuration" \
+				10 "Uninstall WireShield" \
+				11 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=11
 		else
 			local msg="Select a management task"
 			echo ""
@@ -1486,11 +1533,12 @@ function manageMenu() {
 			echo "   5) Clean Up Expired Clients"
 			echo "   6) View Server Status"
 			echo "   7) Restart VPN Service"
-			echo "   8) Backup Configuration"
-			echo "   9) Uninstall WireShield"
-			echo "  10) Exit"
-			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$ ]]; do
-				read -rp "Select an option [1-10]: " MENU_OPTION
+			echo "   8) View Audit Logs"
+			echo "   9) Backup Configuration"
+			echo "  10) Uninstall WireShield"
+			echo "  11) Exit"
+			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$|^11$ ]]; do
+				read -rp "Select an option [1-11]: " MENU_OPTION
 			done
 		fi
 
@@ -1510,10 +1558,12 @@ function manageMenu() {
 		7)
 			restartWireGuard ;;
 		8)
-			backupConfigs ;;
+			viewAuditLogs ;;
 		9)
-			uninstallWg ;;
+			backupConfigs ;;
 		10)
+			uninstallWg ;;
+		11)
 			exit 0 ;;
 		esac
 

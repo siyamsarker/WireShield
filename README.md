@@ -5,7 +5,6 @@
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
 [![Platform](https://img.shields.io/badge/Platform-Linux-orange.svg)](https://www.kernel.org/)
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
-[![GitHub Stars](https://img.shields.io/github/stars/siyamsarker/WireShield?style=social)](https://github.com/siyamsarker/WireShield)
 
 **Secure, production-ready WireGuard VPN manager with pre-connection 2FA and SSL/TLS support**
 
@@ -331,6 +330,170 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
 sudo sqlite3 /etc/wireshield/2fa/auth.db \
   "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 20;"
 ```
+
+### Audit Logs Management
+
+WireShield maintains comprehensive audit logs for security and compliance. View logs through the CLI menu or directly via the 2FA helper script.
+
+#### View Audit Logs via CLI Menu
+
+**Interactive menu option (easiest):**
+```bash
+sudo ./wireshield.sh
+# Select Option 8: View Audit Logs
+# Then choose:
+#   1) View all audit logs (last 100)
+#   2) View logs for specific user
+#   3) View audit statistics
+#   4) Export audit logs to CSV
+```
+
+#### View Audit Logs via Helper Script
+
+**View all audit logs (last 100 entries):**
+```bash
+sudo /etc/wireshield/2fa/2fa-helper.sh audit-logs
+```
+
+Output example:
+```
+=== WireShield Audit Logs (All Users) ===
+
+Timestamp            Client         Action               Status          IP Address
+========================================================================================
+2024-01-20 14:32:10  alice          2FA_SETUP_START      qr_generated    192.168.1.100
+2024-01-20 14:32:25  alice          2FA_SETUP_VERIFY     success         192.168.1.100
+2024-01-20 15:10:45  bob            2FA_VERIFY           success         192.168.1.101
+2024-01-20 15:11:02  bob            SESSION_VALIDATE     valid           192.168.1.101
+2024-01-20 15:15:30  alice          2FA_VERIFY           invalid_code    192.168.1.100
+2024-01-20 15:15:45  alice          2FA_VERIFY           success         192.168.1.100
+
+Total logs shown: 6
+```
+
+**View audit logs for a specific user:**
+```bash
+sudo /etc/wireshield/2fa/2fa-helper.sh audit-logs-user alice
+```
+
+Output example:
+```
+=== WireShield Audit Logs for User: alice ===
+
+Timestamp            Action               Status          IP Address
+====================================================================
+2024-01-20 14:32:10  2FA_SETUP_START      qr_generated    192.168.1.100
+2024-01-20 14:32:25  2FA_SETUP_VERIFY     success         192.168.1.100
+2024-01-20 15:15:30  2FA_VERIFY           invalid_code    192.168.1.100
+2024-01-20 15:15:45  2FA_VERIFY           success         192.168.1.100
+
+Total logs for alice: 4
+```
+
+**View audit statistics:**
+```bash
+sudo /etc/wireshield/2fa/2fa-helper.sh audit-stats
+```
+
+Output example:
+```
+=== Audit Log Statistics ===
+
+Total Audit Logs: 150
+Unique Clients: 12
+Successful 2FA Verifications: 142
+Failed Attempts: 8
+
+Actions Summary:
+  2FA_VERIFY: 95
+  UI_ACCESS: 35
+  2FA_SETUP_START: 12
+  2FA_SETUP_VERIFY: 8
+```
+
+**Export audit logs to CSV:**
+```bash
+# Export to default location
+sudo /etc/wireshield/2fa/2fa-helper.sh export-audit
+
+# Export to custom location
+sudo /etc/wireshield/2fa/2fa-helper.sh export-audit /tmp/audit-$(date +%Y%m%d).csv
+
+# Import CSV to spreadsheet or analysis tool
+scp user@server:/tmp/audit-*.csv ./
+# Open in Excel, Google Sheets, or your analysis tool
+```
+
+CSV format example:
+```
+Timestamp,Client ID,Action,Status,IP Address
+2024-01-20 14:32:10,alice,2FA_SETUP_START,qr_generated,192.168.1.100
+2024-01-20 14:32:25,alice,2FA_SETUP_VERIFY,success,192.168.1.100
+2024-01-20 15:15:30,alice,2FA_VERIFY,invalid_code,192.168.1.100
+2024-01-20 15:15:45,alice,2FA_VERIFY,success,192.168.1.100
+```
+
+#### Audit Log Actions Reference
+
+| Action | When It Occurs | Common Status Values |
+|--------|---|---|
+| `UI_ACCESS` | User loads 2FA web page | `page_loaded` |
+| `2FA_SETUP_START` | User starts 2FA setup | `qr_generated`, `error_*` |
+| `2FA_SETUP_VERIFY` | User enters setup code | `success`, `invalid_code`, `user_not_found` |
+| `2FA_VERIFY` | User enters authentication code | `success`, `invalid_code`, `user_not_initialized` |
+| `SESSION_VALIDATE` | System validates session token | `valid`, `invalid_or_expired` |
+
+#### Monitoring & Analysis
+
+**Monitor failed authentication attempts:**
+```bash
+# Failed attempts in last 24 hours
+sudo sqlite3 /etc/wireshield/2fa/auth.db \
+  "SELECT timestamp, client_id, action, status FROM audit_log \
+   WHERE status LIKE '%fail%' OR status = 'invalid_code' \
+   AND timestamp > datetime('now', '-1 day');"
+
+# Count failed attempts per user
+sudo sqlite3 /etc/wireshield/2fa/auth.db \
+  "SELECT client_id, COUNT(*) as failed_attempts FROM audit_log \
+   WHERE status = 'invalid_code' \
+   GROUP BY client_id ORDER BY failed_attempts DESC;"
+```
+
+**Detect suspicious activity:**
+```bash
+# Multiple failed attempts from same IP (potential brute force)
+sudo sqlite3 /etc/wireshield/2fa/auth.db \
+  "SELECT ip_address, COUNT(*) as attempts FROM audit_log \
+   WHERE status = 'invalid_code' \
+   AND timestamp > datetime('now', '-1 hour') \
+   GROUP BY ip_address HAVING attempts > 3;"
+
+# User activity timeline
+sudo sqlite3 /etc/wireshield/2fa/auth.db \
+  "SELECT timestamp, action, status FROM audit_log \
+   WHERE client_id = 'alice' ORDER BY timestamp DESC;"
+```
+
+**Cleanup old audit logs (optional):**
+```bash
+# Delete logs older than 90 days (saves space)
+sudo sqlite3 /etc/wireshield/2fa/auth.db \
+  "DELETE FROM audit_log WHERE timestamp < datetime('now', '-90 days');"
+
+# Check database size before/after
+du -sh /etc/wireshield/2fa/auth.db
+```
+
+#### Audit Log Best Practices
+
+1. **Regular Monitoring** — Check logs weekly for failed attempts
+2. **Backups** — Export audit logs monthly to external storage
+3. **Cleanup** — Remove logs older than 90 days to save space
+4. **Alerts** — Set up alerts for suspicious patterns (e.g., >5 failed attempts/user/day)
+5. **Retention** — Keep 12 months of audit logs for compliance
+6. **Access Control** — Only admins should access audit logs
+7. **Analysis** — Use CSV export for detailed analysis in spreadsheets/SIEM tools
 
 ### Service Management
 
