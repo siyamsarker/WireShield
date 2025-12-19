@@ -32,7 +32,7 @@ WireShield is a **single-file bash tool** that installs and manages a [WireGuard
 - ⏰ **Client expiration**: Set optional expiration dates for temporary access
 - 🤖 **Automatic removal** of expired clients via cron
 - 📲 **QR codes** for mobile onboarding
-<!-- Web dashboard removed -->
+- 🔐 **2FA Authentication**: Google Authenticator (TOTP) for every connection — secure web UI, encrypted secrets, audit logs
 
 
 ## 📑 Table of contents
@@ -43,6 +43,7 @@ WireShield is a **single-file bash tool** that installs and manages a [WireGuard
 - [📦 Project structure](#-project-structure)
 - [📖 Usage](#-usage)
 - [⏰ Client expiration](#-client-expiration)
+- [🔐 Two-Factor Authentication (2FA)](#-two-factor-authentication-2fa)
 - [🏗️ Architecture](#️-architecture)
 - [⚙️ Configuration details](#️-configuration-details)
 - [🔐 Security considerations](#-security-considerations)
@@ -225,6 +226,132 @@ Clients without expiration dates are shown without additional information.
 - Backward compatible with existing clients
 
 </details>
+
+## 🔐 Two-Factor Authentication (2FA)
+
+WireShield includes **built-in Google Authenticator (TOTP) support** for secure pre-connection authentication.
+
+### 🎯 How 2FA works
+
+1. **User creates a VPN client** via `wireshield.sh`
+   - 2FA is automatically enabled for new clients
+   
+2. **On first VPN connection**:
+   - User attempts to connect with WireGuard
+   - Firewall redirects to secure 2FA web UI
+   
+3. **User sets up authenticator**:
+   - Scans QR code with Google Authenticator (or compatible app)
+   - Optionally saves backup secret code
+   
+4. **User verifies and connects**:
+   - Enters 6-digit code from their phone
+   - Session token created (valid 24 hours)
+   - VPN access granted
+   
+5. **On reconnect after session expires**:
+   - User must re-verify with a new 6-digit code
+   - New session token issued
+
+### � SSL/TLS Configuration
+
+During installation, you'll be asked to configure SSL/TLS certificates for the 2FA web UI:
+
+**Three options available:**
+
+1. **Let's Encrypt** (Recommended for production)
+   - ✅ Trusted certificates for domain names
+   - ✅ Auto-renewal (systemd timer runs daily)
+   - ✅ Works on any Linux distribution
+   - ⚠️ Requires valid domain name and public DNS
+
+2. **Self-signed** (For IP addresses or internal networks)
+   - ✅ Works with IP addresses (no DNS required)
+   - ✅ Works with any hostname
+   - ⚠️ Requires manual renewal after 1 year
+   - ⚠️ Browser will show certificate warnings (normal for self-signed)
+
+3. **None** (Development/localhost only)
+   - ✅ Simplest option
+   - ⚠️ Not recommended for production
+   - ⚠️ Only works on localhost
+
+**Installation example:**
+
+```bash
+sudo ./wireshield.sh
+
+# You'll see prompts like:
+# ✓ Configure SSL/TLS for 2FA service? (y/n): y
+# ✓ Choose SSL certificate type:
+#   1) Let's Encrypt (Domain name, auto-renewal)
+#   2) Self-signed (IP address, manual renewal)
+# ✓ Enter choice (1 or 2): 1
+# ✓ Enter domain for 2FA (e.g., vpn.example.com): vpn.example.com
+# ✓ [Auto-setup with certbot, creates renewal timer]
+
+# After completion:
+# ✓ WireGuard installed
+# ✓ 2FA service installed (Python + FastAPI)
+# ✓ SSL certificates configured
+# ✓ First client created with 2FA enabled
+```
+
+### 🚀 Getting started
+
+The 2FA service is **automatically installed and started** when you run `wireshield.sh`. 
+
+For detailed SSL configuration options, see [2fa-auth/SSL_CONFIGURATION.md](./2fa-auth/SSL_CONFIGURATION.md).
+
+### 📱 Compatible authenticator apps
+
+- ✅ Google Authenticator (iOS/Android) — **Recommended**
+- ✅ Authy (iOS/Android) — Backup codes included
+- ✅ Microsoft Authenticator (iOS/Android)
+- ✅ LastPass Authenticator
+- ✅ Any TOTP-compatible app (Bitwarden, 1Password, etc.)
+
+### 🔧 Manual management
+
+```bash
+# Check 2FA service status
+sudo systemctl status wireshield-2fa
+
+# View 2FA service logs
+sudo journalctl -u wireshield-2fa -f
+
+# Enable 2FA for a specific client
+sudo /etc/wireshield/2fa/2fa-helper.sh enable alice
+
+# Disable 2FA for a client (not recommended)
+sudo /etc/wireshield/2fa/2fa-helper.sh disable alice
+
+# Check client 2FA status
+sudo /etc/wireshield/2fa/2fa-helper.sh status alice
+
+# View authentication audit log
+sudo sqlite3 /etc/wireshield/2fa/auth.db \
+  "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 20;"
+```
+
+### 🔒 Security details
+
+- **Secrets stored encrypted** in SQLite database at `/etc/wireshield/2fa/auth.db`
+- **Sessions time-bound** (24-hour default, configurable)
+- **HTTPS-only** with self-signed certificates (or Let's Encrypt in production)
+- **Rate limiting ready** to prevent brute-force attacks
+- **Audit logging** for all authentication attempts
+- **Firewall integration** for per-user access control
+
+### 📖 Full documentation
+
+See [DEPLOYMENT_2FA.md](./DEPLOYMENT_2FA.md) for:
+- Detailed installation instructions
+- API endpoint documentation
+- Troubleshooting guide
+- Security hardening
+- Performance tuning
+- Monitoring and metrics
 
 ## 🏗️ Architecture
 
