@@ -391,16 +391,108 @@ sqlite3 /etc/wireshield/2fa/auth.db "SELECT COUNT(*) FROM users;"
 
 #### Certificate Renewal Monitoring
 
+**How Let's Encrypt Automatic Renewal Works:**
+
+WireShield uses systemd timers for automated certificate renewal. The renewal process:
+
+1. **Daily Timer Check** - Runs daily at midnight (configurable)
+2. **Certbot Renewal** - Checks if certificates need renewal (LE only renews within 30 days of expiry)
+3. **Service Reload** - On successful renewal, reloads the 2FA service
+4. **Logging** - All renewal attempts are logged
+
+**Monitor Renewal Status:**
+
 ```bash
-# Check Let's Encrypt renewal timer
-sudo systemctl status wireshield-2fa-renewal.timer
+# Check renewal timer status
+sudo systemctl status wireshield-2fa-renew.timer
 
-# View renewal logs
-sudo journalctl -u wireshield-2fa-renewal.service --since "1 day ago"
+# See next renewal check
+sudo systemctl list-timers wireshield-2fa-renew.timer
 
-# Next renewal check time
-sudo systemctl list-timers wireshield-2fa-renewal.timer
+# View renewal logs (today)
+sudo journalctl -u wireshield-2fa-renew.service --since today
+
+# View renewal logs (last 7 days)
+sudo journalctl -u wireshield-2fa-renew.service --since "7 days ago"
+
+# View detailed renewal history
+sudo journalctl -u wireshield-2fa-renew.service -n 100
+
+# Check certificate expiry date
+sudo openssl x509 -in /etc/wireshield/2fa/cert.pem -noout -dates
+
+# Days until expiry
+sudo echo "Expires in: $((($( date -d "$(openssl x509 -in /etc/wireshield/2fa/cert.pem -noout -enddate | cut -d= -f2)" +%s) - $(date +%s) )/86400)) days"
 ```
+
+**Manual Certificate Renewal:**
+
+```bash
+# Force immediate renewal (even if not due)
+sudo certbot renew --force-renewal
+
+# Renew and reload service immediately
+sudo certbot renew --quiet --post-hook "sudo systemctl reload wireshield-2fa"
+
+# Dry run (test without actually renewing)
+sudo certbot renew --dry-run
+
+# Check renewal configuration
+sudo ls -la /etc/letsencrypt/renewal/
+
+# View Certbot configuration
+sudo cat /etc/letsencrypt/renewal/youromain.com.conf
+```
+
+**Renewal Troubleshooting:**
+
+```bash
+# Check if certbot can reach Let's Encrypt
+sudo certbot renew --dry-run
+
+# Check systemd timer is enabled
+sudo systemctl is-enabled wireshield-2fa-renew.timer
+
+# If timer not running, enable it
+sudo systemctl enable wireshield-2fa-renew.timer
+sudo systemctl start wireshield-2fa-renew.timer
+
+# View systemd timer logs
+sudo journalctl -u systemd-timer-monitor -n 50
+
+# Check firewall allows port 80/443 for renewal
+sudo ufw status                    # UFW
+sudo firewall-cmd --list-all       # Firewalld
+
+# Manual trigger (for testing)
+sudo systemctl start wireshield-2fa-renew.service
+sudo journalctl -u wireshield-2fa-renew.service -f
+```
+
+**Certificate Renewal Alerts:**
+
+```bash
+# Email alert on renewal failure (optional cron)
+# Add to crontab:
+# 0 1 * * * sudo /usr/bin/certbot renew --quiet || mail -s "Certificate renewal failed" admin@example.com
+
+# Check certificate expiry in 30 days or less
+EXPIRY=$(sudo openssl x509 -in /etc/wireshield/2fa/cert.pem -noout -enddate | cut -d= -f2)
+DAYS_LEFT=$(( ($( date -d "$EXPIRY" +%s) - $(date +%s) )/86400 ))
+if [ $DAYS_LEFT -le 30 ]; then
+  echo "Alert: Certificate expires in $DAYS_LEFT days!"
+fi
+```
+
+**Let's Encrypt Renewal Best Practices:**
+
+1. ✅ **Always use port 80/443** - Let's Encrypt needs these for validation
+2. ✅ **Keep certbot updated** - Run `sudo apt update && sudo apt upgrade certbot`
+3. ✅ **Monitor logs regularly** - Check renewal success: `sudo journalctl -u wireshield-2fa-renew.service`
+4. ✅ **Plan renewal timing** - Timer runs at midnight; avoid high-traffic times if possible
+5. ✅ **Test before critical deployment** - Use `--dry-run` first
+6. ✅ **Backup certificates** - Keep `/etc/letsencrypt/` backed up
+7. ✅ **Set up monitoring** - Alert if renewal fails 3 days before expiry
 
 #### Security Audit
 
@@ -836,17 +928,92 @@ A: No, audit logs are plaintext in the SQLite database. Secure your server files
 ### Uninstallation
 
 **Q: How to uninstall WireShield completely?**
-A:
-```bash
-# Interactive uninstall
-sudo ./wireshield.sh
-# Choose Option 7 (Uninstall)
-# Confirms removal of all configs, services, and data
+A: The uninstall process removes everything (WireGuard, 2FA service, certificates, etc.):
 
-# Manual uninstall
+**Method 1: Interactive Uninstall (Recommended)**
+```bash
+# Run the main menu
+sudo ./wireshield.sh
+
+# Choose Option 9 (Uninstall)
+# Confirms removal of all configs, services, and data
+# 
+# This removes:
+#   ✓ WireGuard kernel module and tools
+#   ✓ WireGuard configuration (/etc/wireguard)
+#   ✓ 2FA service (FastAPI, Uvicorn)
+#   ✓ 2FA database (/etc/wireshield/2fa/auth.db)
+#   ✓ SSL certificates (Let's Encrypt symlinks, self-signed certs)
+#   ✓ Auto-renewal timers and services
+#   ✓ All systemd service files
+#   ✓ Client configuration files
+#   ✓ Cron jobs for client expiration
+#   ✓ Firewall rules and sysctl settings
+```
+
+**Method 2: Manual Uninstall**
+```bash
+# Stop and disable services
 sudo systemctl stop wireshield-2fa wg-quick@wg0
+sudo systemctl stop wireshield-2fa-renew.timer wireshield-2fa-renew.service
 sudo systemctl disable wireshield-2fa wg-quick@wg0
-sudo rm -rf /etc/wireguard/ /etc/wireshield/ /etc/systemd/system/wireshield*
+sudo systemctl disable wireshield-2fa-renew.timer wireshield-2fa-renew.service
+
+# Remove configuration directories
+sudo rm -rf /etc/wireguard/           # WireGuard configs
+sudo rm -rf /etc/wireshield/          # 2FA service, database, certs
+sudo rm -f /etc/sysctl.d/wg.conf      # Kernel settings
+
+# Remove systemd services and timers
+sudo rm -f /etc/systemd/system/wireshield-2fa.service
+sudo rm -f /etc/systemd/system/wireshield-2fa-renew.timer
+sudo rm -f /etc/systemd/system/wireshield-2fa-renew.service
+sudo systemctl daemon-reload
+
+# Remove helper scripts
+sudo rm -f /usr/local/bin/wireshield-check-expired
+sudo rm -f /usr/local/bin/wireshield-renew-cert
+
+# Remove client configs from home directories
+rm -f ~/*.conf                        # From root home
+sudo find /home -maxdepth 2 -name "*.conf" -delete
+
+# Remove Let's Encrypt symlinks (if applicable)
+sudo rm -f /etc/wireshield/2fa/certs/*.pem
+
+# Remove crontab entries
+sudo crontab -l 2>/dev/null | grep -v "wireshield" | sudo crontab -
+
+# Reload sysctl
+sudo sysctl --system
+```
+
+**Q: What gets removed during uninstall?**
+A:
+| Component | Location | Removed | Notes |
+|-----------|----------|---------|-------|
+| WireGuard | `/etc/wireguard/` | ✅ Yes | All configs and parameters |
+| 2FA Service | `/etc/wireshield/2fa/` | ✅ Yes | Database, certs, configs |
+| 2FA Systemd Service | `/etc/systemd/system/wireshield-2fa.service` | ✅ Yes | Service file |
+| Let's Encrypt Auto-Renewal | `/etc/systemd/system/wireshield-2fa-renew.*` | ✅ Yes | Timer and service |
+| SSL Certificates | `/etc/letsencrypt/live/` | ❌ No | (Let's Encrypt keeps original) |
+| Client Configs | `/root/*.conf` `/home/*/*.conf` | ✅ Yes | All client configs |
+| Firewall Rules | iptables/firewalld | ✅ Yes | Cleared during service stop |
+| Cron Jobs | crontab | ✅ Yes | Expiration checker removed |
+| Python Packages | System Python | ❌ No | (Safe to keep, may be used elsewhere) |
+
+**Q: Can I reinstall after uninstalling?**
+A: Yes! Just run `sudo ./wireshield.sh` again. The uninstall is clean and doesn't prevent reinstallation.
+
+**Q: How to preserve Let's Encrypt certificates after uninstall?**
+A: Let's Encrypt certificates are stored independently:
+```bash
+# They remain in /etc/letsencrypt/live/
+# Make a backup before uninstall if needed
+sudo cp -r /etc/letsencrypt ~/letsencrypt-backup
+
+# After uninstall, they're still available for other services
+sudo ls -la /etc/letsencrypt/live/
 ```
 
 ---
@@ -915,16 +1082,120 @@ sudo rm -rf /etc/wireguard/ /etc/wireshield/ /etc/systemd/system/wireshield*
 
 ## 📝 License
 
-WireShield is released under the **GPLv3 License**. See [LICENSE](LICENSE) for details.
+WireShield is released under the **GNU General Public License v3.0 (GPLv3)**. See [LICENSE](LICENSE) for the full text.
+
+### Why GPLv3?
+
+GPLv3 is the ideal license for WireShield because:
+
+**✅ It's Right for This Project:**
+- **Open Source Heritage** — Based on WireGuard (MIT) and open-source tools (FastAPI, PyOTP, Certbot)
+- **Community-Driven** — Encourages community contributions and improvements
+- **Freedom & Copyleft** — Ensures the software remains free for all users
+- **Derivative Works** — If you modify WireShield, you must share improvements back
+- **No Patent Threats** — Explicit patent grant protects users
+
+**✅ It Aligns With Project Goals:**
+- **Security-First** — Open source allows security auditing by the community
+- **Transparency** — Source code visible and verifiable
+- **Professional Use** — Companies can use it commercially, must contribute back
+- **Long-Term Viability** — Community can fork and maintain if needed
+
+### What You Can Do (GPLv3 Permissions)
+
+✅ **Use commercially** — Deploy in production for profit
+✅ **Modify** — Change the code for your needs
+✅ **Distribute** — Share with others (including commercially)
+✅ **Private use** — Modify for internal use without sharing
+
+### What You Must Do (GPLv3 Obligations)
+
+📋 **Include license** — Provide copy of GPLv3 license
+📋 **State changes** — Document modifications to the code
+📋 **Disclose source** — If distributing (modified or not), provide source code
+📋 **Same license** — Derivatives must also use GPLv3
+
+### Common Scenarios
+
+**Scenario 1: Using WireShield as-is in production**
+```
+✅ ALLOWED
+• Deploy as your VPN solution
+• Use commercially
+• No obligation to share (unless distributing)
+```
+
+**Scenario 2: Modifying WireShield internally**
+```
+✅ ALLOWED (private use)
+• Modify code for internal needs
+• Not required to share modifications
+• Can't distribute modified version without source
+```
+
+**Scenario 3: Creating a derivative product**
+```
+⚠️ REQUIRED ACTIONS
+• If you distribute (modified or unmodified): provide source code
+• Release under GPLv3 (or compatible license)
+• Clearly mark your changes
+• Include the original license
+```
+
+**Scenario 4: Forking on GitHub**
+```
+✅ ALLOWED & ENCOURAGED
+• Create a fork for your improvements
+• Contribute back via pull requests
+• Or maintain your own version
+• Must keep GPLv3 license
+```
+
+### Is GPLv3 Right for You?
+
+**Use WireShield if:**
+✅ You're building a VPN solution for your organization
+✅ You want to contribute improvements back
+✅ You need a security-auditable codebase
+✅ You're OK with GPL terms for derivative works
+
+**Don't use WireShield if:**
+❌ You want to create proprietary closed-source software
+❌ You can't comply with GPL obligations
+❌ You need a permissive license (MIT, Apache 2.0)
+→ Consider: alternatives like simple WireGuard managers (not GPL-based)
+
+### Dependency Licenses
+
+WireShield depends on software with compatible licenses:
+
+| Dependency | License | Compatibility |
+|-----------|---------|---|
+| WireGuard | MIT | ✅ Compatible |
+| FastAPI | MIT | ✅ Compatible |
+| Python | PSF | ✅ Compatible |
+| PyOTP | MIT | ✅ Compatible |
+| SQLAlchemy | MIT | ✅ Compatible |
+| Certbot | Apache 2.0 | ✅ Compatible |
+| OpenSSL | Apache 2.0, SSLeay | ✅ Compatible |
+
+All dependencies are compatible with GPLv3.
+
+### Legal Disclaimer
+
+This is not legal advice. For detailed license interpretation:
+- Read the [LICENSE](LICENSE) file
+- Visit [gnu.org](https://www.gnu.org/licenses/gpl-3.0.html)
+- Consult a lawyer for your specific situation
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **WireGuard** team for the incredible VPN protocol
-- **FastAPI** for the modern Python web framework
-- **PyOTP** for TOTP implementation
-- **Certbot/Let's Encrypt** for free SSL certificates
+- **WireGuard** team for the incredible VPN protocol (MIT License)
+- **FastAPI** for the modern Python web framework (MIT License)
+- **PyOTP** for TOTP implementation (MIT License)
+- **Certbot/Let's Encrypt** for free SSL certificates (Apache 2.0)
 - **Our community** for contributions and feedback
 
 ---
@@ -946,6 +1217,11 @@ WireShield is released under the **GPLv3 License**. See [LICENSE](LICENSE) for d
 **Contributing:**
 - See [Contributor Guide](#contributor-guide) above
 - Pull requests welcome!
+
+**License Questions:**
+- See [License](#-license) section above
+- All dependencies are GPLv3 compatible
+- Commercial use is allowed (must provide source if distributed)
 
 ---
 
