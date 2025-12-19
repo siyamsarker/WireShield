@@ -684,7 +684,7 @@ sudo tar -czf wireshield-backup-$(date +%Y%m%d).tar.gz \
 scp wireshield-backup-*.tar.gz user@backup-server:/backups/
 
 # For menu option
-sudo ./wireshield.sh    # Choose Option 8 (Backup)
+sudo ./wireshield.sh    # Choose Option 9 (Backup)
 ```
 
 #### Restore from Backup

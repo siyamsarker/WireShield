@@ -365,6 +365,15 @@ function _ws_configure_2fa_ssl() {
 			echo -e "${RED}Error: Domain name required for Let's Encrypt${NC}"
 			return 1
 		fi
+		# Basic domain sanity: must not be an IP and must look like a hostname
+		if [[ ${2FA_DOMAIN} =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+			echo -e "${RED}Error: Let's Encrypt requires a DNS name (not an IP)${NC}"
+			return 1
+		fi
+		if [[ ! ${2FA_DOMAIN} =~ ^([a-zA-Z0-9](-?[a-zA-Z0-9])*)(\.[a-zA-Z0-9](-?[a-zA-Z0-9])*)+$ ]]; then
+			echo -e "${RED}Error: Invalid domain format for Let's Encrypt: ${2FA_DOMAIN}${NC}"
+			return 1
+		fi
 		
 		echo -e "${ORANGE}Setting up Let's Encrypt certificate for ${2FA_DOMAIN}...${NC}"
 		
@@ -429,6 +438,8 @@ EOFSERVICE
 
 				systemctl daemon-reload 2>/dev/null || true
 				systemctl enable wireshield-2fa-renew.timer 2>/dev/null || true
+				# Immediate dry-run to surface renewal issues early
+				certbot renew --dry-run --quiet 2>/dev/null || echo -e "${ORANGE}⚠ Certbot dry-run failed; check ports 80/443 and DNS for ${2FA_DOMAIN}${NC}"
 				
 				echo -e "${GREEN}✓ Let's Encrypt certificate configured${NC}"
 				echo -e "${GREEN}✓ Auto-renewal enabled${NC}"
@@ -1282,7 +1293,6 @@ function uninstallWg() {
 		rm -f /etc/systemd/system/wireshield-2fa.service 2>/dev/null || true
 		rm -f /etc/systemd/system/wireshield-2fa-renew.timer 2>/dev/null || true
 		rm -f /etc/systemd/system/wireshield-2fa-renew.service 2>/dev/null || true
-		rm -f /etc/systemd/system/wireshield-2fa-renewal.timer 2>/dev/null || true
 		systemctl daemon-reload 2>/dev/null || true
 
 		# Remove 2FA directory (database, certificates, configs)
