@@ -877,13 +877,17 @@ WireShield/
 │   │   ├── DatabaseManager            SQLite ORM wrapper
 │   │   ├── TOTPManager                TOTP/QR code generation
 │   │   ├── SessionManager             Session token management
+│   │   ├── RateLimiter                Per-IP+endpoint throttling
 │   │   └── Endpoints (5 total)        REST API endpoints
 │   │
-│   ├── requirements.txt               Python dependencies
+│   ├── requirements.txt               Pinned Python dependencies
+│   ├── .venv/                         Isolated virtual environment
 │   ├── wireshield-2fa.service         Systemd unit file
 │   ├── generate-certs.sh              SSL cert generator
 │   ├── 2fa-helper.sh                  Management CLI
-│   └── test-integration.sh            Integration tests
+│   └── tests/                         Test suite
+│       ├── test_rate_limit.py         Rate limiting tests (pytest)
+│       └── test-integration.sh        Integration tests (bash)
 │
 ├── README.md                          This file (comprehensive guide)
 └── LICENSE                            GPLv3 license
