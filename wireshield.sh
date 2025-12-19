@@ -330,6 +330,289 @@ function _ws_upgrade_wireguard_packages() {
 	fi
 }
 
+# ============================================================================
+# 2FA (Two-Factor Authentication) Management
+# ============================================================================
+
+function _ws_configure_2fa_ssl() {
+	# Prompt for SSL configuration (domain, IP, or none)
+	echo ""
+	echo -e "${ORANGE}=== WireShield 2FA SSL/TLS Configuration ===${NC}"
+	echo ""
+	echo "The 2FA web interface requires HTTPS for security."
+	echo ""
+	
+	# Ask if user wants SSL/TLS
+	read -rp "Configure SSL/TLS for 2FA service? (y/n): " -e USE_SSL
+	if [[ "${USE_SSL}" != "y" && "${USE_SSL}" != "Y" ]]; then
+		echo -e "${ORANGE}⚠ Warning: 2FA will run without SSL (only recommended for localhost)${NC}"
+		echo "2FA_SSL_ENABLED=false" >> /etc/wireshield/2fa/config.env
+		return 0
+	fi
+	
+	echo ""
+	echo "Choose SSL certificate type:"
+	echo "  1) Let's Encrypt (Domain name required, auto-renewal)"
+	echo "  2) Self-signed (IP address or any hostname, no auto-renewal)"
+	echo ""
+	read -rp "Enter choice (1 or 2): " -e SSL_TYPE
+	
+	if [[ "${SSL_TYPE}" == "1" ]]; then
+		# Let's Encrypt with domain
+		read -rp "Enter domain name for 2FA service (e.g., vpn.example.com): " -e 2FA_DOMAIN
+		
+		if [[ -z "${2FA_DOMAIN}" ]]; then
+			echo -e "${RED}Error: Domain name required for Let's Encrypt${NC}"
+			return 1
+		fi
+		
+		echo -e "${ORANGE}Setting up Let's Encrypt certificate for ${2FA_DOMAIN}...${NC}"
+		
+		# Install certbot if not present
+		if ! command -v certbot &>/dev/null; then
+			if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
+				apt-get install -y certbot 2>/dev/null || apt-get install -y python3-certbot 2>/dev/null || true
+			elif [[ ${OS} == 'fedora' ]] || [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
+				dnf install -y certbot 2>/dev/null || yum install -y certbot 2>/dev/null || true
+			elif [[ ${OS} == 'arch' ]]; then
+				pacman -S --noconfirm certbot 2>/dev/null || true
+			elif [[ ${OS} == 'alpine' ]]; then
+				apk add certbot 2>/dev/null || true
+			fi
+		fi
+		
+		# Request Let's Encrypt certificate
+		if command -v certbot &>/dev/null; then
+			certbot certonly --standalone --non-interactive --agree-tos -m "admin@${2FA_DOMAIN}" \
+				-d "${2FA_DOMAIN}" 2>/dev/null || {
+				echo -e "${ORANGE}⚠ Let's Encrypt setup incomplete. Using self-signed certificate.${NC}"
+				SSL_TYPE="2"
+			}
+		fi
+		
+		if [[ "${SSL_TYPE}" == "1" ]]; then
+			# Symlink Let's Encrypt certs
+			SSL_CERT_PATH="/etc/letsencrypt/live/${2FA_DOMAIN}/fullchain.pem"
+			SSL_KEY_PATH="/etc/letsencrypt/live/${2FA_DOMAIN}/privkey.pem"
+			
+			if [[ -f "${SSL_CERT_PATH}" ]] && [[ -f "${SSL_KEY_PATH}" ]]; then
+				ln -sf "${SSL_CERT_PATH}" /etc/wireshield/2fa/cert.pem 2>/dev/null || true
+				ln -sf "${SSL_KEY_PATH}" /etc/wireshield/2fa/key.pem 2>/dev/null || true
+				
+				# Setup auto-renewal
+				cat > /etc/systemd/system/wireshield-2fa-renew.timer << 'EOFTIMER'
+[Unit]
+Description=WireShield 2FA SSL Certificate Renewal Timer
+Requires=wireshield-2fa-renew.service
+
+[Timer]
+OnCalendar=daily
+OnBootSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOFTIMER
+
+				cat > /etc/systemd/system/wireshield-2fa-renew.service << 'EOFSERVICE'
+[Unit]
+Description=WireShield 2FA SSL Certificate Renewal
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --quiet --post-hook "systemctl reload wireshield-2fa"
+
+[Install]
+WantedBy=multi-user.target
+EOFSERVICE
+
+				systemctl daemon-reload 2>/dev/null || true
+				systemctl enable wireshield-2fa-renew.timer 2>/dev/null || true
+				
+				echo -e "${GREEN}✓ Let's Encrypt certificate configured${NC}"
+				echo -e "${GREEN}✓ Auto-renewal enabled${NC}"
+				echo "2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
+				echo "2FA_SSL_TYPE=letsencrypt" >> /etc/wireshield/2fa/config.env
+				echo "2FA_DOMAIN=${2FA_DOMAIN}" >> /etc/wireshield/2fa/config.env
+				return 0
+			fi
+		fi
+	fi
+	
+	# Self-signed certificate (for IP or localhost)
+	read -rp "Enter IP address or hostname (e.g., 127.0.0.1 or vpn.local): " -e 2FA_HOSTNAME
+	
+	if [[ -z "${2FA_HOSTNAME}" ]]; then
+		2FA_HOSTNAME="127.0.0.1"
+	fi
+	
+	echo -e "${ORANGE}Generating self-signed certificate for ${2FA_HOSTNAME}...${NC}"
+	
+	openssl req -x509 -newkey rsa:4096 \
+		-keyout /etc/wireshield/2fa/key.pem \
+		-out /etc/wireshield/2fa/cert.pem \
+		-days 365 -nodes \
+		-subj "/C=US/ST=State/L=City/O=WireShield/CN=${2FA_HOSTNAME}" 2>/dev/null || true
+	
+	chmod 600 /etc/wireshield/2fa/key.pem
+	chmod 644 /etc/wireshield/2fa/cert.pem
+	
+	echo -e "${GREEN}✓ Self-signed certificate configured${NC}"
+	echo "2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
+	echo "2FA_SSL_TYPE=self-signed" >> /etc/wireshield/2fa/config.env
+	echo "2FA_HOSTNAME=${2FA_HOSTNAME}" >> /etc/wireshield/2fa/config.env
+}
+
+function _ws_install_2fa_service() {
+	# Install Python 2FA service and dependencies
+	echo "Setting up WireShield 2FA service..."
+	
+	# Create 2FA directory and config file
+	mkdir -p /etc/wireshield/2fa
+	chmod 700 /etc/wireshield/2fa
+	cat > /etc/wireshield/2fa/config.env << 'EOF'
+# WireShield 2FA Configuration
+# Generated during installation
+2FA_SSL_ENABLED=false
+2FA_SSL_TYPE=none
+2FA_DOMAIN=
+2FA_HOSTNAME=127.0.0.1
+EOF
+	
+	# Ensure Python 3 and pip are available
+	if ! command -v python3 &>/dev/null; then
+		echo "Installing Python 3..."
+		if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
+			apt-get install -y python3 python3-pip
+		elif [[ ${OS} == 'fedora' ]] || [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]] || [[ ${OS} == 'oracle' ]]; then
+			dnf install -y python3 python3-pip || yum install -y python3 python3-pip
+		elif [[ ${OS} == 'arch' ]]; then
+			pacman -Sy --noconfirm python python-pip
+		elif [[ ${OS} == 'alpine' ]]; then
+			apk add python3 py3-pip
+		fi
+	fi
+	
+	# Check if 2FA service already exists
+	if [[ -f /etc/systemd/system/wireshield-2fa.service ]]; then
+		echo -e "${GREEN}2FA service already installed${NC}"
+		return 0
+	fi
+	
+	# Copy 2FA files from source (assumes they exist)
+	if [[ -d /opt/wireshield/2fa-auth ]]; then
+		cp /opt/wireshield/2fa-auth/* /etc/wireshield/2fa/ 2>/dev/null || true
+	fi
+	
+	# Configure SSL/TLS
+	_ws_configure_2fa_ssl
+	
+	# Install Python dependencies
+	if [[ -f /etc/wireshield/2fa/requirements.txt ]]; then
+		pip3 install -q --upgrade pip setuptools wheel 2>/dev/null || true
+		pip3 install -q -r /etc/wireshield/2fa/requirements.txt 2>/dev/null || {
+			echo -e "${ORANGE}Warning: Some Python dependencies may not have installed correctly${NC}"
+		}
+	fi
+	
+	# SSL certificates already configured during _ws_configure_2fa_ssl
+	# Skip if they already exist
+	if [[ ! -f /etc/wireshield/2fa/cert.pem ]] || [[ ! -f /etc/wireshield/2fa/key.pem ]]; then
+		echo -e "${ORANGE}⚠ SSL certificates not found, generating self-signed...${NC}"
+		openssl req -x509 -newkey rsa:4096 \
+			-keyout /etc/wireshield/2fa/key.pem \
+			-out /etc/wireshield/2fa/cert.pem \
+			-days 365 -nodes \
+			-subj "/C=US/ST=State/L=City/O=WireShield/CN=wireshield-2fa" 2>/dev/null || true
+		chmod 600 /etc/wireshield/2fa/key.pem 2>/dev/null || true
+		chmod 644 /etc/wireshield/2fa/cert.pem 2>/dev/null || true
+	fi
+	
+	# Install systemd service file
+	if [[ -f /etc/wireshield/2fa/wireshield-2fa.service ]]; then
+		# Read config and create updated service file
+		source /etc/wireshield/2fa/config.env 2>/dev/null || true
+		
+		cat > /etc/systemd/system/wireshield-2fa.service << EOF
+[Unit]
+Description=WireShield 2FA Authentication Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/etc/wireshield/2fa
+Environment="2FA_DB_PATH=/etc/wireshield/2fa/auth.db"
+Environment="2FA_HOST=0.0.0.0"
+Environment="2FA_PORT=8443"
+Environment="2FA_SSL_ENABLED=${2FA_SSL_ENABLED:-false}"
+Environment="2FA_SSL_TYPE=${2FA_SSL_TYPE:-self-signed}"
+Environment="2FA_DOMAIN=${2FA_DOMAIN:-}"
+Environment="2FA_HOSTNAME=${2FA_HOSTNAME:-127.0.0.1}"
+ExecStart=/usr/bin/python3 /etc/wireshield/2fa/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+	else
+		# Fallback: create minimal service file
+		cat > /etc/systemd/system/wireshield-2fa.service << 'EOF'
+[Unit]
+Description=WireShield 2FA Authentication Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/etc/wireshield/2fa
+Environment="2FA_DB_PATH=/etc/wireshield/2fa/auth.db"
+Environment="2FA_HOST=0.0.0.0"
+Environment="2FA_PORT=8443"
+ExecStart=/usr/bin/python3 /etc/wireshield/2fa/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+	fi
+	
+	# Enable and start the service
+	systemctl daemon-reload 2>/dev/null || true
+	systemctl enable wireshield-2fa 2>/dev/null || true
+	systemctl start wireshield-2fa 2>/dev/null || true
+	
+	echo -e "${GREEN}2FA service installed and started${NC}"
+}
+
+function _ws_enable_2fa_for_client() {
+	# Enable 2FA for a specific client
+	local client_id="$1"
+	[[ -z "$client_id" ]] && return 1
+	
+	# Initialize client in 2FA database
+	if command -v python3 &>/dev/null && [[ -f /etc/wireshield/2fa/auth.db ]]; then
+		python3 << PYEOF 2>/dev/null || true
+import sqlite3
+try:
+	conn = sqlite3.connect('/etc/wireshield/2fa/auth.db')
+	c = conn.cursor()
+	c.execute('SELECT id FROM users WHERE client_id = ?', ('$client_id',))
+	if not c.fetchone():
+		c.execute('INSERT INTO users (client_id, enabled) VALUES (?, ?)', ('$client_id', 0))
+		conn.commit()
+	conn.close()
+except:
+	pass
+PYEOF
+	fi
+}
+
 function installWireGuard() {
 	# Run setup questions first (safe defaults, validated input, confirmation)
 	installQuestions
@@ -463,6 +746,9 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 
 	# Ensure automatic expiration cleanup at 12:00 AM daily
 	_ws_ensure_auto_expiration >/dev/null 2>&1 || true
+
+	# Initialize 2FA service
+	_ws_install_2fa_service
 
 	# Create the first client now; you can add more later from the menu
 	newClient
@@ -643,6 +929,9 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 	fi
 
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+
+	# Enable 2FA for this client
+	_ws_enable_2fa_for_client "${CLIENT_NAME}"
 
 	# Generate QR code if qrencode is installed (handy for mobile clients)
 	if command -v qrencode &>/dev/null; then

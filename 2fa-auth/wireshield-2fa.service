@@ -1,0 +1,34 @@
+[Unit]
+Description=WireShield 2FA Authentication Service
+Documentation=https://github.com/technonext/wireshield
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+User=root
+Group=root
+WorkingDirectory=/etc/wireshield/2fa
+Environment="2FA_DB_PATH=/etc/wireshield/2fa/auth.db"
+Environment="2FA_SSL_CERT=/etc/wireshield/2fa/cert.pem"
+Environment="2FA_SSL_KEY=/etc/wireshield/2fa/key.pem"
+Environment="2FA_HOST=127.0.0.1"
+Environment="2FA_PORT=8443"
+Environment="2FA_LOG_LEVEL=INFO"
+ExecStartPre=/bin/bash -c 'mkdir -p /etc/wireshield/2fa && chmod 700 /etc/wireshield/2fa'
+ExecStart=/usr/bin/python3 /etc/wireshield/2fa/app.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wireshield-2fa
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/wireshield/2fa
+
+[Install]
+WantedBy=multi-user.target
