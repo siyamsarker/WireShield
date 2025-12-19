@@ -801,42 +801,45 @@ WireShield/
 
 ### Architecture
 
+**Component Overview:**
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    User's Device (Client)                        │
-│                    WireGuard App (any OS)                        │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │ UDP encrypted tunnel
-                               ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                        Linux Server                              │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ WireGuard (Kernel Module)                                │   │
-│  │ ├─ Interface: wg0                                        │   │
-│  │ ├─ UDP Port: 51820 (default)                            │   │
-│  │ └─ Peers: alice, bob, charlie (with pre-shared keys)    │   │
-│  └───────────┬────────────────────────────────────────────┬┘   │
-│              │                                              │   │
-│  ┌───────────↓──────────┐                    ┌─────────────↓──┐ │
-│  │ iptables/firewalld   │                    │ FastAPI Server │ │
-│  │ ├─ Port 51820 (UDP)  │  Port 8443 (HTTPS) │ 2FA Web UI     │ │
-│  │ ├─ NAT masquerade    │◄──────────────────►│ ├─ /health     │ │
-│  │ └─ Per-user rules    │                    │ ├─ /?client_id │ │
-│  └──────────────────────┘                    │ ├─ /api/setup* │ │
-│                                              │ └─ /api/verify*│ │
-│                                              │                │ │
-│                                              │ Port: 8443     │ │
-│                                              │ SSL: LE/Self   │ │
-│                                              └────────┬───────┘ │
-│                                                       │         │
-│                                              ┌────────↓─────┐  │
-│                                              │  SQLite DB   │  │
-│                                              │ ├─ users     │  │
-│                                              │ ├─ sessions  │  │
-│                                              │ └─ audit_log │  │
-│                                              └──────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+User Device (Client)          Linux Server Infrastructure
+     │                                  │
+  ┌──┴──┐                        ┌─────┴──────┐
+  │ WG  │ UDP Encrypted Tunnel  │  WireGuard  │
+  │ App │◄──────────────────────►│  (wg0)     │
+  └─────┘  Port 51820 (Default)  │  51820/UDP │
+                                 └─────┬──────┘
+                                       │
+                  ┌────────────────────┼────────────────────┐
+                  │                    │                    │
+            ┌─────▼─────┐      ┌──────▼───────┐     ┌──────▼──────┐
+            │ Firewall  │      │ 2FA Service  │     │  Systemd   │
+            │ (iptables)│      │ (FastAPI)    │     │ Management │
+            │ Port 51820│      │ Port 8443    │     │ • Services │
+            │ NAT Rules │      │ SSL/TLS      │     │ • Timers   │
+            └───────────┘      │ • Setup QR   │     └────────────┘
+                               │ • Verify 2FA │
+                               │ • Sessions   │
+                               └──────┬───────┘
+                                      │
+                              ┌───────▼────────┐
+                              │  SQLite DB     │
+                              │ • users        │
+                              │ • sessions     │
+                              │ • audit_log    │
+                              └────────────────┘
 ```
+
+**Data Flow:**
+
+1. User connects WireGuard app → UDP Port 51820
+2. Firewall intercepts → Redirects to HTTPS 2FA UI
+3. User scans QR code → Stores secret in app
+4. User enters TOTP code → FastAPI validates
+5. Session token issued → Access granted
+6. After 24h → Must re-verify with new code
 
 ### Technology Stack
 
@@ -1185,38 +1188,59 @@ sudo ls -la /etc/letsencrypt/live/
 
 ### System Architecture
 
+**Network Topology:**
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Internet                                │
-└──────────────────────────────┬────────────────────────────────┘
-                               │ UDP Port 51820
-                               ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Firewall (iptables/firewalld)                               │
-│ • Port 51820 (UDP) - WireGuard                              │
-│ • Port 8443 (TCP) - 2FA Web UI                              │
-│ • Port 80/443 (if Let's Encrypt) - Cert renewal            │
-└─────┬───────────────────┬──────────────────────┬────────────┘
-      │                   │                      │
-      ↓                   ↓                      ↓
-  ┌─────────┐        ┌──────────┐        ┌───────────────┐
-  │ WireGuard│        │ 2FA      │        │ Systemd       │
-  │ (Kernel) │        │ Service  │        │ • wg-quick    │
-  │ ├─ wg0   │        │ (FastAPI)│        │ • 2fa service │
-  │ ├─ Peers │        │ ├─ Web UI│        │ • Auto-renewal│
-  │ └─ Routes│        │ ├─ API   │        └───────────────┘
-  └────┬─────┘        │ └─ DB    │
-       │              └────┬─────┘
-       │                   │
-       └───────┬───────────┘
-               │
-        ┌──────↓──────┐
-        │ SQLite DB   │
-        │ • users     │
-        │ • sessions  │
-        │ • audit_log │
-        └─────────────┘
+                        ┌──────────────┐
+                        │   Internet   │
+                        └──────┬───────┘
+                               │
+                        UDP Port 51820
+                               │
+                               ▼
+                  ┌────────────────────────────┐
+                  │   Linux Server             │
+                  │  (Firewall Layer)          │
+                  │ • Port 51820 (UDP)         │
+                  │ • Port 8443 (HTTPS)        │
+                  │ • Port 80/443 (LE renewal) │
+                  └──┬───┬──────────┬───────────┘
+                     │   │          │
+          ┌──────────┘   │          └──────────┐
+          │              │                     │
+      ┌───▼────┐   ┌─────▼──────┐    ┌────────▼──────┐
+      │WireGuard│   │ FastAPI    │    │ Systemd      │
+      │ Module  │   │ 2FA Server │    │ Management   │
+      │ (wg0)   │   │ Port 8443  │    │              │
+      │         │   │ HTTPS/TLS  │    │ • wg-quick   │
+      │ UDP Port│   │            │    │ • timers     │
+      │ 51820   │   │ Endpoints: │    │ • cert renew │
+      │         │   │ /health    │    └──────────────┘
+      └────┬────┘   │ /api/setup │
+           │        │ /api/verify│
+           │        │ /validate  │
+           │        └─────┬──────┘
+           │              │
+           └──────┬───────┘
+                  │
+           ┌──────▼──────────┐
+           │  SQLite DB      │
+           │  /etc/wieshield/│
+           │  • users        │
+           │  • sessions     │
+           │  • audit_log    │
+           └─────────────────┘
 ```
+
+**Security Layers:**
+
+| Layer | Component | Purpose |
+|-------|-----------|----------|
+| Network | Firewall (iptables) | Port filtering, NAT masquerading |
+| Application | FastAPI Server | 2FA authentication, session management |
+| Storage | SQLite Database | User data, session tokens, audit logs |
+| Crypto | OpenSSL/Certbot | TLS certificates, auto-renewal |
+| Process | Systemd | Service orchestration, auto-recovery |
 
 ### Security Features
 
