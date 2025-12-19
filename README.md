@@ -108,12 +108,15 @@ echo "✅ Installation complete! Check /etc/wireguard/ for configs"
 
 /etc/wireshield/2fa/
 ├── auth.db                         # SQLite database (users, sessions, audit)
-├── config.env                      # SSL/TLS configuration
+├── config.env                      # SSL/TLS and rate limiting configuration
+├── .venv/                          # Isolated Python environment with pinned dependencies
 ├── certs/
 │   ├── cert.pem                    # SSL certificate
 │   ├── key.pem                     # SSL private key
 │   └── fullchain.pem               # Full chain (Let's Encrypt only)
-├── app.py                          # FastAPI 2FA server
+├── app.py                          # FastAPI 2FA server with rate limiting
+├── requirements.txt                # Pinned Python dependencies
+├── tests/                          # Test suite (rate limiting, etc.)
 ├── 2fa-helper.sh                   # Management CLI
 └── wireshield-2fa.service          # Systemd service
 
@@ -494,6 +497,93 @@ du -sh /etc/wireshield/2fa/auth.db
 5. **Retention** — Keep 12 months of audit logs for compliance
 6. **Access Control** — Only admins should access audit logs
 7. **Analysis** — Use CSV export for detailed analysis in spreadsheets/SIEM tools
+
+### Rate Limiting & Abuse Prevention
+
+WireShield includes built-in rate limiting to prevent brute-force attacks and API abuse.
+
+#### How Rate Limiting Works
+
+- **Per-endpoint, per-IP tracking** — Each client IP is limited separately for each API endpoint
+- **Sliding window algorithm** — Requests are tracked in a time window (default: 60 seconds)
+- **Automatic blocking** — Exceeding the limit returns HTTP 429 (Too Many Requests)
+- **In-memory tracking** — No database overhead, fast response
+
+#### Default Configuration
+
+```bash
+# Current settings (in /etc/wireshield/2fa/config.env)
+2FA_RATE_LIMIT_MAX_REQUESTS=30    # Max requests per window
+2FA_RATE_LIMIT_WINDOW=60          # Window in seconds
+
+# This means:
+# • 30 requests allowed per IP per endpoint
+# • Within a 60-second sliding window
+# • Example: /api/verify limited to 30 attempts/minute per IP
+```
+
+#### Adjust Rate Limits
+
+**For stricter security (lower limits):**
+```bash
+sudo nano /etc/wireshield/2fa/config.env
+
+# Change to:
+2FA_RATE_LIMIT_MAX_REQUESTS=10
+2FA_RATE_LIMIT_WINDOW=60
+
+# Restart service
+sudo systemctl restart wireshield-2fa
+```
+
+**For high-traffic environments (higher limits):**
+```bash
+sudo nano /etc/wireshield/2fa/config.env
+
+# Change to:
+2FA_RATE_LIMIT_MAX_REQUESTS=100
+2FA_RATE_LIMIT_WINDOW=60
+
+# Restart service
+sudo systemctl restart wireshield-2fa
+```
+
+#### Monitor Rate Limit Events
+
+```bash
+# View recent rate limit blocks (HTTP 429 responses)
+sudo journalctl -u wireshield-2fa | grep "429"
+
+# Count rate limit hits today
+sudo journalctl -u wireshield-2fa --since today | grep -c "Too many requests"
+
+# See which IPs are being rate limited
+sudo journalctl -u wireshield-2fa --since today | grep "Too many requests" | awk '{print $NF}'
+```
+
+#### Rate Limiting Best Practices
+
+1. **Monitor logs** — Watch for legitimate users hitting limits
+2. **Adjust for your use case** — Lower for sensitive deployments, higher for large teams
+3. **Document limits** — Inform users about retry delays
+4. **Layer defenses** — Combine with firewall rules (fail2ban) for IP-level blocking
+5. **Test changes** — Use `curl` or test scripts to verify limits work as expected
+
+#### Testing Rate Limits
+
+```bash
+# Test rate limiting with curl (run on client machine)
+for i in {1..35}; do
+  curl -X POST https://your-domain:8443/api/verify \
+    -d "client_id=test&code=123456" \
+    -w "\nStatus: %{http_code}\n"
+  sleep 0.5
+done
+
+# Expected output:
+# First 30 requests: 401 (Unauthorized - invalid code)
+# Requests 31-35: 429 (Too Many Requests)
+```
 
 ### Service Management
 
@@ -1254,7 +1344,7 @@ sudo ls -la /etc/letsencrypt/live/
 | Database Encryption | At-rest (via filesystem permissions) | ✅ |
 | Firewall Integration | Per-user iptables rules | ✅ |
 | Audit Logging | Every auth attempt logged | ✅ |
-| Rate Limiting | Ready for implementation | 🔄 |
+| Rate Limiting | Per-IP+endpoint sliding window (30 req/60s default) | ✅ |
 | Key Rotation | Supported via manual reset | ✅ |
 
 ### Hardening
