@@ -904,13 +904,13 @@ EOF
 }
 
 function uninstallWg() {
-	# Uninstall WireGuard and remove configuration. Single confirmation,
+	# Uninstall WireShield and remove configuration. Single confirmation,
 	# then performs a best-effort cleanup of client config files under /root and /home.
 	echo ""
-	echo -e "\n${RED}WARNING: This will uninstall WireGuard and remove all the configuration files!${NC}"
-	echo -e "${ORANGE}Please backup the /etc/wireguard directory if you want to keep your configuration files.\n${NC}"
-	read -rp "Do you really want to remove WireGuard? [y/n]: " -e REMOVE
-	REMOVE=${REMOVE:-n}
+	echo -e "\n${RED}Warning:${NC} You are about to uninstall WireShield and remove all configuration files."
+	echo -e "${ORANGE}Before proceeding, back up /etc/wireguard if you wish to keep your settings.${NC}\n"
+	read -rp "Proceed with removing WireShield? [y/N]: " -e REMOVE
+	REMOVE=${REMOVE:-N}
 	if [[ $REMOVE == 'y' ]]; then
 		# Collect client names before removing /etc/wireguard
 		CLIENT_NAMES=()
@@ -1010,8 +1010,8 @@ function uninstallWg() {
 
 function _ws_header() {
     # Draw a simple header for the interactive menu.
-	echo -e "${GREEN}Welcome to WireShield ✨${NC}"
-	echo "Repository: https://github.com/siyamsarker/WireShield"
+	echo -e "${GREEN}WireShield — Modern VPN Management${NC}"
+	echo "Project: https://github.com/siyamsarker/WireShield"
 	echo ""
 }
 
@@ -1019,13 +1019,13 @@ function _ws_summary() {
     # Show a concise summary of interface, endpoint, peer count, and service status.
 	local peers
 	peers=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || echo 0)
-	echo "Interface : ${SERVER_WG_NIC}"
-	echo "Endpoint  : ${SERVER_PUB_IP}:${SERVER_PORT}"
-	echo "Clients   : ${peers}"
+	echo "Interface  : ${SERVER_WG_NIC}"
+	echo "Endpoint   : ${SERVER_PUB_IP}:${SERVER_PORT}"
+	echo "Clients    : ${peers}"
 	if [[ ${OS} == 'alpine' ]]; then
-		rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status && echo "Status    : running" || echo "Status    : not running"
+		rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status && echo "Service    : Active" || echo "Service    : Inactive"
 	else
-		systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" && echo "Status    : running" || echo "Status    : not running"
+		systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" && echo "Service    : Active" || echo "Service    : Inactive"
 	fi
 	echo ""
 }
