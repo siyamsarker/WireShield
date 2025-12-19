@@ -1,6 +1,11 @@
 # Build artifacts
 /wireshield-dashboard
 /wireshield-dashboard.exe
+/.venv
+/2fa-auth/.venv
+__pycache__/
+.pytest_cache/
+*.pyc
 **/*.log
 **/*.tmp
 .DS_Store

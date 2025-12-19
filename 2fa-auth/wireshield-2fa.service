@@ -9,14 +9,17 @@ Type=notify
 User=root
 Group=root
 WorkingDirectory=/etc/wireshield/2fa
+EnvironmentFile=-/etc/wireshield/2fa/config.env
 Environment="2FA_DB_PATH=/etc/wireshield/2fa/auth.db"
 Environment="2FA_SSL_CERT=/etc/wireshield/2fa/cert.pem"
 Environment="2FA_SSL_KEY=/etc/wireshield/2fa/key.pem"
 Environment="2FA_HOST=127.0.0.1"
 Environment="2FA_PORT=8443"
 Environment="2FA_LOG_LEVEL=INFO"
+Environment="2FA_RATE_LIMIT_MAX_REQUESTS=30"
+Environment="2FA_RATE_LIMIT_WINDOW=60"
 ExecStartPre=/bin/bash -c 'mkdir -p /etc/wireshield/2fa && chmod 700 /etc/wireshield/2fa'
-ExecStart=/usr/bin/python3 /etc/wireshield/2fa/app.py
+ExecStart=/etc/wireshield/2fa/.venv/bin/python /etc/wireshield/2fa/app.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

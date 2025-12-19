@@ -478,6 +478,8 @@ EOFSERVICE
 function _ws_install_2fa_service() {
 	# Install Python 2FA service and dependencies
 	echo "Setting up WireShield 2FA service..."
+
+	local VENV_PATH="/etc/wireshield/2fa/.venv"
 	
 	# Create 2FA directory and config file
 	mkdir -p /etc/wireshield/2fa
@@ -485,6 +487,12 @@ function _ws_install_2fa_service() {
 	cat > /etc/wireshield/2fa/config.env << 'EOF'
 # WireShield 2FA Configuration
 # Generated during installation
+2FA_DB_PATH=/etc/wireshield/2fa/auth.db
+2FA_HOST=0.0.0.0
+2FA_PORT=8443
+2FA_LOG_LEVEL=INFO
+2FA_RATE_LIMIT_MAX_REQUESTS=30
+2FA_RATE_LIMIT_WINDOW=60
 2FA_SSL_ENABLED=false
 2FA_SSL_TYPE=none
 2FA_DOMAIN=
@@ -519,10 +527,11 @@ EOF
 	# Configure SSL/TLS
 	_ws_configure_2fa_ssl
 	
-	# Install Python dependencies
+	# Install Python dependencies into a dedicated virtual environment
+	python3 -m venv "${VENV_PATH}" 2>/dev/null || true
 	if [[ -f /etc/wireshield/2fa/requirements.txt ]]; then
-		pip3 install -q --upgrade pip setuptools wheel 2>/dev/null || true
-		pip3 install -q -r /etc/wireshield/2fa/requirements.txt 2>/dev/null || {
+		"${VENV_PATH}/bin/pip" install -q --upgrade pip setuptools wheel 2>/dev/null || true
+		"${VENV_PATH}/bin/pip" install -q -r /etc/wireshield/2fa/requirements.txt 2>/dev/null || {
 			echo -e "${ORANGE}Warning: Some Python dependencies may not have installed correctly${NC}"
 		}
 	fi
@@ -555,6 +564,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/etc/wireshield/2fa
+EnvironmentFile=-/etc/wireshield/2fa/config.env
 Environment="2FA_DB_PATH=/etc/wireshield/2fa/auth.db"
 Environment="2FA_HOST=0.0.0.0"
 Environment="2FA_PORT=8443"
@@ -562,7 +572,9 @@ Environment="2FA_SSL_ENABLED=${2FA_SSL_ENABLED:-false}"
 Environment="2FA_SSL_TYPE=${2FA_SSL_TYPE:-self-signed}"
 Environment="2FA_DOMAIN=${2FA_DOMAIN:-}"
 Environment="2FA_HOSTNAME=${2FA_HOSTNAME:-127.0.0.1}"
-ExecStart=/usr/bin/python3 /etc/wireshield/2fa/app.py
+Environment="2FA_RATE_LIMIT_MAX_REQUESTS=${2FA_RATE_LIMIT_MAX_REQUESTS:-30}"
+Environment="2FA_RATE_LIMIT_WINDOW=${2FA_RATE_LIMIT_WINDOW:-60}"
+ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/app.py
 Restart=on-failure
 RestartSec=5
 
@@ -571,7 +583,7 @@ WantedBy=multi-user.target
 EOF
 	else
 		# Fallback: create minimal service file
-		cat > /etc/systemd/system/wireshield-2fa.service << 'EOF'
+		cat > /etc/systemd/system/wireshield-2fa.service << EOF
 [Unit]
 Description=WireShield 2FA Authentication Service
 After=network-online.target
@@ -581,10 +593,13 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/etc/wireshield/2fa
+EnvironmentFile=-/etc/wireshield/2fa/config.env
 Environment="2FA_DB_PATH=/etc/wireshield/2fa/auth.db"
 Environment="2FA_HOST=0.0.0.0"
 Environment="2FA_PORT=8443"
-ExecStart=/usr/bin/python3 /etc/wireshield/2fa/app.py
+Environment="2FA_RATE_LIMIT_MAX_REQUESTS=30"
+Environment="2FA_RATE_LIMIT_WINDOW=60"
+ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/app.py
 Restart=on-failure
 RestartSec=5
 
