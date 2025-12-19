@@ -1127,27 +1127,36 @@ function manageMenu() {
 
 		local MENU_OPTION
 		if command -v whiptail &>/dev/null; then
-			MENU_OPTION=$(whiptail --title "WireShield" --menu "Choose an action" 20 72 10 \
-				1 "Add a new client" \
-				2 "List clients" \
-				3 "Show QR for a client" \
-				4 "Revoke a client" \
-				5 "Check expired clients" \
-				6 "Show server status" \
-				7 "Restart WireShield" \
-				8 "Backup configuration" \
+			# Center the prompt text within the specified width (approximate centering)
+			local MENU_HEIGHT=20 MENU_WIDTH=72 MENU_CHOICES=10
+			local _prompt="Select a management task"
+			local _pad=$(( (MENU_WIDTH - ${#_prompt}) / 2 ))
+			((_pad<0)) && _pad=0
+			local _prompt_centered
+			_prompt_centered=$(printf "%*s%s" "${_pad}" "" "${_prompt}")
+			MENU_OPTION=$(whiptail --title "WireShield — Main Menu" --menu "${_prompt_centered}" ${MENU_HEIGHT} ${MENU_WIDTH} ${MENU_CHOICES} \
+				1 "Create Client" \
+				2 "List Clients" \
+				3 "Display Client QR" \
+				4 "Revoke Client Access" \
+				5 "Clean Up Expired Clients" \
+				6 "View Server Status" \
+				7 "Restart VPN Service" \
+				8 "Backup Configuration" \
 				9 "Uninstall WireShield" \
 				10 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=10
 		else
-			echo "What do you want to do?"
-			echo "   1) Add a new client"
-			echo "   2) List clients"
-			echo "   3) Show QR for a client"
-			echo "   4) Revoke existing client"
-			echo "   5) Check expired clients"
-			echo "   6) Show server status"
-			echo "   7) Restart WireShield"
-			echo "   8) Backup configuration"
+			local msg="Select a management task"
+			echo ""
+			echo "================ ${msg} ================"
+			echo "   1) Create Client"
+			echo "   2) List Clients"
+			echo "   3) Display Client QR"
+			echo "   4) Revoke Client Access"
+			echo "   5) Clean Up Expired Clients"
+			echo "   6) View Server Status"
+			echo "   7) Restart VPN Service"
+			echo "   8) Backup Configuration"
 			echo "   9) Uninstall WireShield"
 			echo "  10) Exit"
 			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$ ]]; do
