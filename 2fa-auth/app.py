@@ -12,11 +12,14 @@ import hashlib
 import hmac
 import secrets
 import logging
+import asyncio
+import time
+from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException, Form, Request, Response
+from fastapi import FastAPI, HTTPException, Form, Request, Response, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +45,8 @@ TFA_DOMAIN = os.getenv("2FA_DOMAIN", "")
 TFA_HOSTNAME = os.getenv("2FA_HOSTNAME", "127.0.0.1")
 SECRET_KEY = os.getenv("2FA_SECRET_KEY", "")  # Must be set in production
 SESSION_TIMEOUT_MINUTES = int(os.getenv("2FA_SESSION_TIMEOUT", "1440"))  # 24h default
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("2FA_RATE_LIMIT_MAX_REQUESTS", "30"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("2FA_RATE_LIMIT_WINDOW", "60"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
@@ -162,6 +167,44 @@ app.add_middleware(
 )
 
 # ============================================================================
+# ============================================================================
+# Rate Limiting (simple sliding window by client IP + path)
+# ============================================================================
+class RateLimiter:
+    """Minimal in-memory rate limiter to throttle abusive bursts."""
+
+    def __init__(self, max_requests: int, window_seconds: int):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._hits = defaultdict(deque)
+        self._lock = asyncio.Lock()
+
+    async def __call__(self, request: Request):
+        # Combine client IP and path so limits are per-endpoint per-client.
+        client_ip = request.client.host if request and request.client else "unknown"
+        key = f"{client_ip}:{request.url.path if request else 'unknown'}"
+        now = time.time()
+
+        async with self._lock:
+            bucket = self._hits[key]
+            # Drop entries outside the window.
+            cutoff = now - self.window_seconds
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+
+            if len(bucket) >= self.max_requests:
+                raise HTTPException(status_code=429, detail="Too many requests, slow down")
+
+            bucket.append(now)
+
+
+rate_limiter = RateLimiter(
+    max_requests=RATE_LIMIT_MAX_REQUESTS,
+    window_seconds=RATE_LIMIT_WINDOW_SECONDS,
+)
+
+
+# ============================================================================
 # Routes: Health & Info
 # ============================================================================
 @app.get("/health", tags=["health"])
@@ -184,7 +227,11 @@ async def root(client_id: Optional[str] = None, request: Request = None):
     return get_2fa_ui_html(client_id)
 
 @app.post("/api/setup-start", tags=["2fa-setup"])
-async def setup_start(client_id: str = Form(...), request: Request = None):
+async def setup_start(
+    client_id: str = Form(...),
+    request: Request = None,
+    rate_limit: None = Depends(rate_limiter),
+):
     """Start 2FA setup: generate TOTP secret and QR code."""
     ip_address = request.client.host if request else "unknown"
     
@@ -240,7 +287,8 @@ async def setup_start(client_id: str = Form(...), request: Request = None):
 async def setup_verify(
     client_id: str = Form(...),
     code: str = Form(...),
-    request: Request = None
+    request: Request = None,
+    rate_limit: None = Depends(rate_limiter),
 ):
     """Verify TOTP code and complete 2FA setup."""
     ip_address = request.client.host if request else "unknown"
@@ -294,7 +342,8 @@ async def setup_verify(
 async def verify_code(
     client_id: str = Form(...),
     code: str = Form(...),
-    request: Request = None
+    request: Request = None,
+    rate_limit: None = Depends(rate_limiter),
 ):
     """Verify TOTP code on reconnection."""
     ip_address = request.client.host if request else "unknown"
@@ -346,7 +395,8 @@ async def verify_code(
 async def validate_session(
     client_id: str = Form(...),
     session_token: str = Form(...),
-    request: Request = None
+    request: Request = None,
+    rate_limit: None = Depends(rate_limiter),
 ):
     """Validate active session token."""
     ip_address = request.client.host if request else "unknown"
