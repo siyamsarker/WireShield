@@ -1193,12 +1193,18 @@ EOF
 }
 
 function uninstallWg() {
-	# Uninstall WireShield and remove configuration. Single confirmation,
-	# then performs a best-effort cleanup of client config files under /root and /home.
+	# Complete uninstall of WireShield including WireGuard, 2FA service, and all related configs
 	echo ""
-	echo -e "\n${RED}Warning:${NC} You are about to uninstall WireShield and remove all configuration files."
-	echo -e "${ORANGE}Before proceeding, back up /etc/wireguard if you wish to keep your settings.${NC}\n"
-	read -rp "Proceed with removing WireShield? [y/N]: " -e REMOVE
+	echo -e "\n${RED}⚠ Warning:${NC} You are about to uninstall WireShield completely."
+	echo -e "${ORANGE}This will remove:${NC}"
+	echo "  • WireGuard and all VPN configurations"
+	echo "  • 2FA service (FastAPI, database, certificates)"
+	echo "  • SSL certificates (Let's Encrypt symlinks, self-signed certs)"
+	echo "  • Auto-renewal timers and services"
+	echo "  • All client configurations"
+	echo ""
+	echo -e "${ORANGE}Back up /etc/wireguard and /etc/wireshield if you wish to keep settings.${NC}\n"
+	read -rp "Proceed with complete removal? [y/N]: " -e REMOVE
 	REMOVE=${REMOVE:-N}
 	if [[ $REMOVE == 'y' ]]; then
 		# Collect client names before removing /etc/wireguard
@@ -1214,54 +1220,84 @@ function uninstallWg() {
 
 		checkOS
 
+		echo -e "${ORANGE}Removing WireGuard services...${NC}"
+		
 		if [[ ${OS} == 'alpine' ]]; then
-			rc-service "wg-quick.${SERVER_WG_NIC}" stop
-			rc-update del "wg-quick.${SERVER_WG_NIC}"
-			unlink "/etc/init.d/wg-quick.${SERVER_WG_NIC}"
-			rc-update del sysctl
+			rc-service "wg-quick.${SERVER_WG_NIC}" stop 2>/dev/null || true
+			rc-update del "wg-quick.${SERVER_WG_NIC}" 2>/dev/null || true
+			unlink "/etc/init.d/wg-quick.${SERVER_WG_NIC}" 2>/dev/null || true
+			rc-update del sysctl 2>/dev/null || true
 		else
-			systemctl stop "wg-quick@${SERVER_WG_NIC}"
-			systemctl disable "wg-quick@${SERVER_WG_NIC}"
+			systemctl stop "wg-quick@${SERVER_WG_NIC}" 2>/dev/null || true
+			systemctl disable "wg-quick@${SERVER_WG_NIC}" 2>/dev/null || true
 		fi
 
 		if [[ ${OS} == 'ubuntu' ]]; then
-			apt-get remove -y wireguard wireguard-tools qrencode
+			apt-get remove -y wireguard wireguard-tools qrencode 2>/dev/null || true
 		elif [[ ${OS} == 'debian' ]]; then
-			apt-get remove -y wireguard wireguard-tools qrencode
+			apt-get remove -y wireguard wireguard-tools qrencode 2>/dev/null || true
 		elif [[ ${OS} == 'fedora' ]]; then
-			dnf remove -y --noautoremove wireguard-tools qrencode
+			dnf remove -y --noautoremove wireguard-tools qrencode 2>/dev/null || true
 			if [[ ${VERSION_ID} -lt 32 ]]; then
-				dnf remove -y --noautoremove wireguard-dkms
-				dnf copr disable -y jdoss/wireguard
+				dnf remove -y --noautoremove wireguard-dkms 2>/dev/null || true
+				dnf copr disable -y jdoss/wireguard 2>/dev/null || true
 			fi
 		elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
-			yum remove -y --noautoremove wireguard-tools
+			yum remove -y --noautoremove wireguard-tools 2>/dev/null || true
 			if [[ ${VERSION_ID} == 8* ]]; then
-				yum remove --noautoremove kmod-wireguard qrencode
+				yum remove --noautoremove kmod-wireguard qrencode 2>/dev/null || true
 			fi
 		elif [[ ${OS} == 'oracle' ]]; then
-			yum remove --noautoremove wireguard-tools qrencode
+			yum remove --noautoremove wireguard-tools qrencode 2>/dev/null || true
 		elif [[ ${OS} == 'arch' ]]; then
-			pacman -Rs --noconfirm wireguard-tools qrencode
+			pacman -Rs --noconfirm wireguard-tools qrencode 2>/dev/null || true
 		elif [[ ${OS} == 'alpine' ]]; then
-			(cd qrencode-4.1.1 || exit && make uninstall)
-			rm -rf qrencode-* || exit
-			apk del wireguard-tools libqrencode libqrencode-tools
+			(cd qrencode-4.1.1 2>/dev/null && make uninstall 2>/dev/null) || true
+			rm -rf qrencode-* 2>/dev/null || true
+			apk del wireguard-tools libqrencode libqrencode-tools 2>/dev/null || true
 		fi
 
-		# Remove server configuration directory
-		rm -rf /etc/wireguard
-		rm -f /etc/sysctl.d/wg.conf
+		echo -e "${ORANGE}Removing WireGuard configuration...${NC}"
+		rm -rf /etc/wireguard 2>/dev/null || true
+		rm -f /etc/sysctl.d/wg.conf 2>/dev/null || true
 
 		# Remove automatic expiration cron job and helper script
-		# Delete helper if present
-		rm -f /usr/local/bin/wireshield-check-expired
+		echo -e "${ORANGE}Removing client expiration service...${NC}"
+		rm -f /usr/local/bin/wireshield-check-expired 2>/dev/null || true
 		# Remove crontab entry if present (ignore errors when crontab unset)
 		if crontab -l 2>/dev/null | grep -q "wireshield-check-expired"; then
 			crontab -l 2>/dev/null | sed '/wireshield-check-expired/d' | crontab - 2>/dev/null || true
 		fi
 
-		# Remove client config files from user home directories (canonical and simplified names)
+		# Remove 2FA service and related services
+		echo -e "${ORANGE}Removing 2FA services...${NC}"
+		systemctl stop wireshield-2fa 2>/dev/null || true
+		systemctl disable wireshield-2fa 2>/dev/null || true
+		systemctl stop wireshield-2fa-renew.timer 2>/dev/null || true
+		systemctl disable wireshield-2fa-renew.timer 2>/dev/null || true
+		systemctl stop wireshield-2fa-renew.service 2>/dev/null || true
+		systemctl disable wireshield-2fa-renew.service 2>/dev/null || true
+
+		# Remove systemd service files
+		rm -f /etc/systemd/system/wireshield-2fa.service 2>/dev/null || true
+		rm -f /etc/systemd/system/wireshield-2fa-renew.timer 2>/dev/null || true
+		rm -f /etc/systemd/system/wireshield-2fa-renew.service 2>/dev/null || true
+		rm -f /etc/systemd/system/wireshield-2fa-renewal.timer 2>/dev/null || true
+		systemctl daemon-reload 2>/dev/null || true
+
+		# Remove 2FA directory (database, certificates, configs)
+		echo -e "${ORANGE}Removing 2FA configuration and database...${NC}"
+		rm -rf /etc/wireshield 2>/dev/null || true
+
+		# Remove Let's Encrypt symlinks if they exist
+		rm -f /usr/local/bin/wireshield-renew-cert 2>/dev/null || true
+
+		# Remove Python packages installed for 2FA (optional, only if user confirms)
+		# Keep commented as removing python3 might break other services
+		# apt-get remove -y python3-fastapi python3-uvicorn python3-pyotp 2>/dev/null || true
+
+		# Remove client config files from user home directories
+		echo -e "${ORANGE}Removing client configurations...${NC}"
 		SEARCH_DIRS=(/root /home)
 		for cname in "${CLIENT_NAMES[@]}"; do
 			for base in "${SEARCH_DIRS[@]}"; do
@@ -1272,23 +1308,28 @@ function uninstallWg() {
 		done
 
 		if [[ ${OS} == 'alpine' ]]; then
-			rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status &>/dev/null
+			rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status &>/dev/null 2>&1
 		else
 			# Reload sysctl
-			sysctl --system
+			sysctl --system 2>/dev/null || true
 
 			# Check if WireGuard is running
-			systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}"
+			systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" 2>/dev/null || true
 		fi
 		WG_RUNNING=$?
 
 		if [[ ${WG_RUNNING} -eq 0 ]]; then
-			echo "WireGuard failed to uninstall properly."
+			echo -e "${RED}✗ WireGuard service still running. Manual cleanup may be needed.${NC}"
 			exit 1
 		else
-			echo "WireGuard uninstalled successfully."
-			echo "All detected client .conf files have been removed from /root and /home."
-			echo "Removed WireShield cron job and helper script for auto-expiration."
+			echo ""
+			echo -e "${GREEN}✓ WireGuard uninstalled successfully${NC}"
+			echo -e "${GREEN}✓ 2FA service removed completely${NC}"
+			echo -e "${GREEN}✓ SSL certificates and auto-renewal cleaned up${NC}"
+			echo -e "${GREEN}✓ All client configurations removed${NC}"
+			echo -e "${GREEN}✓ All systemd services and timers removed${NC}"
+			echo ""
+			echo -e "${ORANGE}Note:${NC} Python packages remain installed (safe, may be used by other services)"
 			exit 0
 		fi
 	else
