@@ -14,8 +14,6 @@
 
 ## 📑 Quick Navigation
 
-<div align="center">
-
 | Section | Purpose | Time |
 |---------|---------|------|
 | **[🚀 Getting Started](#getting-started)** | Fresh installation guide | 5 min |
@@ -23,8 +21,6 @@
 | **[🔧 DevOps Guide](#devops-guide)** | Deploy, configure, manage | 20 min |
 | **[💻 Contributor Guide](#contributor-guide)** | Architecture & development | 15 min |
 | **[❓ FAQ & Troubleshooting](#faq--troubleshooting)** | Common questions & fixes | - |
-
-</div>
 
 ---
 
@@ -44,14 +40,14 @@ WireShield is a **production-grade WireGuard VPN manager** combining simplicity 
 
 <table>
 <tr>
-  <td align="center" width="50%">
+  <td width="50%">
     <h3>🔐 Security Features</h3>
     • Pre-connection 2FA<br/>
     • Rate limiting<br/>
     • Audit logging<br/>
     • TLS/SSL encryption
   </td>
-  <td align="center" width="50%">
+  <td width="50%">
     <h3>🚀 Easy Deployment</h3>
     • One-command setup<br/>
     • Auto-configuration<br/>
@@ -60,14 +56,14 @@ WireShield is a **production-grade WireGuard VPN manager** combining simplicity 
   </td>
 </tr>
 <tr>
-  <td align="center" width="50%">
+  <td width="50%">
     <h3>📱 User-Friendly</h3>
     • QR code setup<br/>
     • Responsive UI<br/>
     • Clear audit trails<br/>
     • 24h sessions
   </td>
-  <td align="center" width="50%">
+  <td width="50%">
     <h3>🔄 Auto-Renewal</h3>
     • Let's Encrypt support<br/>
     • Self-signed certs<br/>
@@ -78,8 +74,6 @@ WireShield is a **production-grade WireGuard VPN manager** combining simplicity 
 </table>
 
 ### Key Statistics
-
-<div align="center">
 
 | Metric | Value | Status |
 |--------|-------|--------|
@@ -93,8 +87,6 @@ WireShield is a **production-grade WireGuard VPN manager** combining simplicity 
 | **2FA Verification** | <1 second | ⚡ Quick |
 | **Rate Limiting** | Per-IP/endpoint | ✅ Built-in |
 | **Auto-Renewal** | Let's Encrypt support | ✅ Active |
-
-</div>
 
 ---
 
@@ -1555,10 +1547,6 @@ This is not legal advice. For detailed license interpretation:
 
 ---
 
-<div align="center">
-
 **Made with ❤️ for secure, simple VPN deployments**
 
 [⭐ Star on GitHub](https://github.com/siyamsarker/WireShield) • [🔗 Report Issue](https://github.com/siyamsarker/WireShield/issues) • [💬 Discussions](https://github.com/siyamsarker/WireShield/discussions)
-
-</div>
