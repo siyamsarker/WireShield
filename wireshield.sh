@@ -503,13 +503,13 @@ EOF
 	if ! command -v python3 &>/dev/null; then
 		echo "Installing Python 3..."
 		if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
-			apt-get install -y python3 python3-pip
+			apt-get install -y python3 python3-pip python3-venv
 		elif [[ ${OS} == 'fedora' ]] || [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]] || [[ ${OS} == 'oracle' ]]; then
-			dnf install -y python3 python3-pip || yum install -y python3 python3-pip
+			dnf install -y python3 python3-pip python3-venv || yum install -y python3 python3-pip python3-venv
 		elif [[ ${OS} == 'arch' ]]; then
 			pacman -Sy --noconfirm python python-pip
 		elif [[ ${OS} == 'alpine' ]]; then
-			apk add python3 py3-pip
+			apk add python3 py3-pip py3-venv
 		fi
 	fi
 	
