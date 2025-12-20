@@ -26,7 +26,7 @@
 # Repository
 #   https://github.com/siyamsarker/WireShield
 #
-# Version: 2.2.0
+# Version: 2.3.0
 # ============================================================================
 
 RED='\033[0;31m'
@@ -199,7 +199,7 @@ function installQuestions() {
 		echo -e "${ORANGE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 		echo -e "${GREEN}▓▒░${NC} Secure WireGuard VPN Installer & Manager ${GREEN}░▒▓${NC}"
 		echo ""
-		echo -e "Version ${GREEN}2.2.0${NC} • Made with ${RED}❤️${NC}  by ${GREEN}Siyam Sarker${NC}"
+		echo -e "Version ${GREEN}2.3.0${NC} • Made with ${RED}❤️${NC}  by ${GREEN}Siyam Sarker${NC}"
 		echo -e "📦 ${GREEN}https://github.com/siyamsarker/WireShield${NC}"
 		echo ""
 		echo -e "${ORANGE}Quick Setup: Answer a few questions and get started in under 2 minutes!${NC}"
@@ -212,7 +212,7 @@ function installQuestions() {
 		echo -e "${ORANGE}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
 		echo ""
 		echo -e "${ORANGE}Tip:${NC} Use arrow keys to navigate. Press ${GREEN}Ctrl+C${NC} to exit at any time."
-		echo -e "${GREEN}WireShield v2.2.0${NC} – Professional WireGuard VPN Management"
+		echo -e "${GREEN}WireShield v2.3.0${NC} – Professional WireGuard VPN Management"
 		echo ""
 
 		# Detect public IPv4 or IPv6 address and pre-fill for the user
