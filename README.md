@@ -1,3 +1,5 @@
+<div align="center">
+
 # WireShield
 
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
@@ -7,6 +9,8 @@
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 
 **Secure, production-ready WireGuard VPN manager with pre-connection 2FA and SSL/TLS support**
+
+</div>
 
 > *Deploy a complete VPN infrastructure with Google Authenticator authentication in minutes — CLI-driven, battle-tested, zero manual configuration*
 
