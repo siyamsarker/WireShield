@@ -452,19 +452,19 @@ EOFSERVICE
 	fi
 	
 	# Self-signed certificate (for IP or localhost)
-	read -rp "Enter IP address or hostname (e.g., 127.0.0.1 or vpn.local): " -e 2FA_HOSTNAME
+	read -rp "Enter IP address or hostname (e.g., 127.0.0.1 or vpn.local): " -e HOSTNAME_2FA
 	
-	if [[ -z "${2FA_HOSTNAME}" ]]; then
-		2FA_HOSTNAME="127.0.0.1"
+	if [[ -z "${HOSTNAME_2FA}" ]]; then
+		HOSTNAME_2FA="127.0.0.1"
 	fi
 	
-	echo -e "${ORANGE}Generating self-signed certificate for ${2FA_HOSTNAME}...${NC}"
+	echo -e "${ORANGE}Generating self-signed certificate for ${HOSTNAME_2FA}...${NC}"
 	
 	openssl req -x509 -newkey rsa:4096 \
 		-keyout /etc/wireshield/2fa/key.pem \
 		-out /etc/wireshield/2fa/cert.pem \
 		-days 365 -nodes \
-		-subj "/C=US/ST=State/L=City/O=WireShield/CN=${2FA_HOSTNAME}" 2>/dev/null || true
+		-subj "/C=US/ST=State/L=City/O=WireShield/CN=${HOSTNAME_2FA}" 2>/dev/null || true
 	
 	chmod 600 /etc/wireshield/2fa/key.pem
 	chmod 644 /etc/wireshield/2fa/cert.pem
@@ -472,7 +472,7 @@ EOFSERVICE
 	echo -e "${GREEN}✓ Self-signed certificate configured${NC}"
 	echo "2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
 	echo "2FA_SSL_TYPE=self-signed" >> /etc/wireshield/2fa/config.env
-	echo "2FA_HOSTNAME=${2FA_HOSTNAME}" >> /etc/wireshield/2fa/config.env
+	echo "HOSTNAME_2FA=${HOSTNAME_2FA}" >> /etc/wireshield/2fa/config.env
 }
 
 function _ws_install_2fa_service() {
@@ -496,7 +496,7 @@ function _ws_install_2fa_service() {
 2FA_SSL_ENABLED=false
 2FA_SSL_TYPE=none
 2FA_DOMAIN=
-2FA_HOSTNAME=127.0.0.1
+HOSTNAME_2FA=127.0.0.1
 EOF
 	
 	# Ensure Python 3 and pip are available
@@ -571,7 +571,7 @@ Environment="2FA_PORT=8443"
 Environment="2FA_SSL_ENABLED=${2FA_SSL_ENABLED:-false}"
 Environment="2FA_SSL_TYPE=${2FA_SSL_TYPE:-self-signed}"
 Environment="2FA_DOMAIN=${2FA_DOMAIN:-}"
-Environment="2FA_HOSTNAME=${2FA_HOSTNAME:-127.0.0.1}"
+Environment="HOSTNAME_2FA=${HOSTNAME_2FA:-127.0.0.1}"
 Environment="2FA_RATE_LIMIT_MAX_REQUESTS=${2FA_RATE_LIMIT_MAX_REQUESTS:-30}"
 Environment="2FA_RATE_LIMIT_WINDOW=${2FA_RATE_LIMIT_WINDOW:-60}"
 ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/app.py
