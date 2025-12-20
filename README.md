@@ -20,11 +20,11 @@
 
 | Section | Purpose | Time |
 |---------|---------|------|
-| **[🚀 Getting Started](#getting-started)** | Fresh installation guide | 5 min |
-| **[👥 User Guide](#user-guide)** | How to connect & use VPN | 10 min |
-| **[🔧 DevOps Guide](#devops-guide)** | Deploy, configure, manage | 20 min |
-| **[💻 Contributor Guide](#contributor-guide)** | Architecture & development | 15 min |
-| **[❓ FAQ & Troubleshooting](#faq--troubleshooting)** | Common questions & fixes | - |
+| **[🚀 Getting Started](#-getting-started)** | Fresh installation guide | 5 min |
+| **[👥 User Guide](#-user-guide)** | How to connect & use VPN | 10 min |
+| **[🔧 DevOps Guide](#-devops-guide)** | Deploy, configure, manage | 20 min |
+| **[💻 Contributor Guide](#-contributor-guide)** | Architecture & development | 15 min |
+| **[❓ FAQ & Troubleshooting](#-faq--troubleshooting)** | Common questions & fixes | - |
 
 ---
 
