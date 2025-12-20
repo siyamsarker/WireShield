@@ -1,4 +1,4 @@
-# 🛡️ WireShield
+# WireShield
 
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
@@ -14,11 +14,27 @@
 
 ## 📑 Quick Navigation
 
-- **[🚀 Getting Started](#getting-started)** — Deploy in 5 minutes
-- **[👥 For Users](#user-guide)** — Connect and use the VPN
-- **[🔧 For DevOps](#devops-guide)** — Deploy, configure, monitor
-- **[💻 For Contributors](#contributor-guide)** — Architecture, development
-- **[❓ FAQ & Troubleshooting](#faq--troubleshooting)**
+<div align="center">
+
+| Section | Purpose | Time |
+|---------|---------|------|
+| **[🚀 Getting Started](#getting-started)** | Fresh installation guide | 5 min |
+| **[👥 User Guide](#user-guide)** | How to connect & use VPN | 10 min |
+| **[🔧 DevOps Guide](#devops-guide)** | Deploy, configure, manage | 20 min |
+| **[💻 Contributor Guide](#contributor-guide)** | Architecture & development | 15 min |
+| **[❓ FAQ & Troubleshooting](#faq--troubleshooting)** | Common questions & fixes | - |
+
+</div>
+
+---
+
+**⚡ Quick Start (60 seconds):**
+```bash
+git clone https://github.com/siyamsarker/WireShield.git
+cd WireShield
+sudo ./wireshield.sh
+# Follow prompts → Done!
+```
 
 ---
 
@@ -26,26 +42,59 @@
 
 WireShield is a **production-grade WireGuard VPN manager** combining simplicity with enterprise-grade security:
 
-- 🔐 **Pre-connection 2FA** — Every user authenticates with Google Authenticator before VPN access
-- 🚀 **One-command deployment** — `sudo ./wireshield.sh` handles everything
-- 🌐 **CLI-only design** — Pure automation, no web dashboard bloat
-- 🔒 **Hardened by default** — Security-first configuration, systemd hardening, firewall integration
-- 📱 **User-friendly** — QR codes, responsive UI, clear audit trails
-- 🔄 **Auto-renewal** — Let's Encrypt certificates renew automatically
-- 🏗️ **Distro-agnostic** — Works on Ubuntu, Debian, Fedora, CentOS, Alpine, Arch, and more
+<table>
+<tr>
+  <td align="center" width="50%">
+    <h3>🔐 Security Features</h3>
+    • Pre-connection 2FA<br/>
+    • Rate limiting<br/>
+    • Audit logging<br/>
+    • TLS/SSL encryption
+  </td>
+  <td align="center" width="50%">
+    <h3>🚀 Easy Deployment</h3>
+    • One-command setup<br/>
+    • Auto-configuration<br/>
+    • Multi-distro support<br/>
+    • Zero manual config
+  </td>
+</tr>
+<tr>
+  <td align="center" width="50%">
+    <h3>📱 User-Friendly</h3>
+    • QR code setup<br/>
+    • Responsive UI<br/>
+    • Clear audit trails<br/>
+    • 24h sessions
+  </td>
+  <td align="center" width="50%">
+    <h3>🔄 Auto-Renewal</h3>
+    • Let's Encrypt support<br/>
+    • Self-signed certs<br/>
+    • Automatic updates<br/>
+    • Systemd hardened
+  </td>
+</tr>
+</table>
 
 ### Key Statistics
 
-| Metric | Value |
-|--------|-------|
-| Total Code | 7,129 lines |
-| Python (FastAPI) | 1,500+ lines |
-| Bash (CLI) | 1,733 lines |
-| Supported Distros | 9+ distributions |
-| API Endpoints | 5 core endpoints |
-| Database Tables | 3 (users, sessions, audit_log) |
-| Setup Time | ~5 minutes |
-| 2FA Verification | <1 second |
+<div align="center">
+
+| Metric | Value | Status |
+|--------|-------|--------|
+| **Total Code** | 7,129 lines | ✅ Production |
+| **Python (FastAPI)** | 1,500+ lines | ✅ Tested |
+| **Bash (CLI)** | 1,733 lines | ✅ Stable |
+| **Supported Distros** | 9+ distributions | ✅ Verified |
+| **API Endpoints** | 5 core endpoints | ✅ Documented |
+| **Database Tables** | 3 (users, sessions, audit_log) | ✅ Optimized |
+| **Setup Time** | ~5 minutes | ⚡ Fast |
+| **2FA Verification** | <1 second | ⚡ Quick |
+| **Rate Limiting** | Per-IP/endpoint | ✅ Built-in |
+| **Auto-Renewal** | Let's Encrypt support | ✅ Active |
+
+</div>
 
 ---
 
