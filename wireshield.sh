@@ -660,6 +660,46 @@ EOF
 	else
 		echo -e "${ORANGE}2FA service did not start successfully. Check 'journalctl -u wireshield-2fa' for details.${NC}"
 	fi
+
+	# Post-install health check: ping /health and surface a clear status
+	if [[ -f /etc/wireshield/2fa/config.env ]]; then
+		# shellcheck disable=SC1091
+		source /etc/wireshield/2fa/config.env 2>/dev/null || true
+	fi
+
+	local _scheme _host _port _health_url _ok=0 _resp
+	_port=${2FA_PORT:-8443}
+	if [[ "${2FA_SSL_ENABLED}" == "true" || "${2FA_SSL_ENABLED}" == "1" || "${2FA_SSL_ENABLED}" == "yes" ]]; then
+		_scheme="https"
+	else
+		_scheme="http"
+	fi
+	if [[ -n "${2FA_DOMAIN}" ]]; then
+		_host="${2FA_DOMAIN}"
+	elif [[ -n "${HOSTNAME_2FA}" ]]; then
+		_host="${HOSTNAME_2FA}"
+	else
+		_host="127.0.0.1"
+	fi
+	_health_url="${_scheme}://${_host}:${_port}/health"
+
+	echo -e "${ORANGE}Checking 2FA service health at: ${_health_url}${NC}"
+	for i in {1..30}; do
+		# -s silent, -k ignore self-signed, -m timeout seconds
+		_resp=$(curl -sk -m 2 "${_health_url}" || true)
+		if echo "${_resp}" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+			_ok=1
+			break
+		fi
+		sleep 1
+	done
+
+	if [[ ${_ok} -eq 1 ]]; then
+		echo -e "${GREEN}✓ 2FA health: OK${NC}"
+	else
+		echo -e "${ORANGE}⚠ 2FA health check failed. Service may still be starting or unreachable.${NC}"
+		echo -e "${ORANGE}  Try: journalctl -u wireshield-2fa -n 60 | less${NC}"
+	fi
 }
 
 function _ws_enable_2fa_for_client() {
