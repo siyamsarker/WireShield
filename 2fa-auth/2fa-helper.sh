@@ -8,7 +8,8 @@ set -e
 LOG_FILE="/var/log/wireshield-2fa.log"
 DB_PATH="/etc/wireshield/2fa/auth.db"
 CONFIG_DIR="/etc/wireshield/clients"
-2FA_PORT=8443
+# Use a bash-safe variable name
+WS_2FA_PORT=8443
 
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
@@ -154,7 +155,7 @@ validate_session() {
     
     curl -s -k \
         -X POST \
-        https://127.0.0.1:$2FA_PORT/api/validate-session \
+        https://127.0.0.1:$WS_2FA_PORT/api/validate-session \
         -d "client_id=$client_id&session_token=$session_token" | jq .
 }
 
@@ -163,7 +164,7 @@ check_2fa_service_status() {
     systemctl status wireshield-2fa || true
     echo ""
     echo "Database: $DB_PATH ($([ -f "$DB_PATH" ] && echo "✓ exists" || echo "✗ missing"))"
-    echo "Service listening on: 127.0.0.1:$2FA_PORT"
+    echo "Service listening on: 127.0.0.1:$WS_2FA_PORT"
 }
 
 # ============================================================================

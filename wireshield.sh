@@ -363,23 +363,24 @@ function _ws_configure_2fa_ssl() {
 	
 	if [[ "${SSL_TYPE}" == "1" ]]; then
 		# Let's Encrypt with domain
-		read -rp "Enter domain name for 2FA service (e.g., vpn.example.com): " -e 2FA_DOMAIN
+		# Use bash-safe variable name internally, but still write 2FA_* keys to config.env
+		read -rp "Enter domain name for 2FA service (e.g., vpn.example.com): " -e WS_2FA_DOMAIN
 		
-		if [[ -z "${2FA_DOMAIN}" ]]; then
+		if [[ -z "${WS_2FA_DOMAIN}" ]]; then
 			echo -e "${RED}Error: Domain name required for Let's Encrypt${NC}"
 			return 1
 		fi
 		# Basic domain sanity: must not be an IP and must look like a hostname
-		if [[ ${2FA_DOMAIN} =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+		if [[ ${WS_2FA_DOMAIN} =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
 			echo -e "${RED}Error: Let's Encrypt requires a DNS name (not an IP)${NC}"
 			return 1
 		fi
-		if [[ ! ${2FA_DOMAIN} =~ ^([a-zA-Z0-9](-?[a-zA-Z0-9])*)(\.[a-zA-Z0-9](-?[a-zA-Z0-9])*)+$ ]]; then
-			echo -e "${RED}Error: Invalid domain format for Let's Encrypt: ${2FA_DOMAIN}${NC}"
+		if [[ ! ${WS_2FA_DOMAIN} =~ ^([a-zA-Z0-9](-?[a-zA-Z0-9])*)(\.[a-zA-Z0-9](-?[a-zA-Z0-9])*)+$ ]]; then
+			echo -e "${RED}Error: Invalid domain format for Let's Encrypt: ${WS_2FA_DOMAIN}${NC}"
 			return 1
 		fi
 		
-		echo -e "${ORANGE}Setting up Let's Encrypt certificate for ${2FA_DOMAIN}...${NC}"
+		echo -e "${ORANGE}Setting up Let's Encrypt certificate for ${WS_2FA_DOMAIN}...${NC}"
 		
 		# Install certbot if not present
 		if ! command -v certbot &>/dev/null; then
@@ -396,8 +397,8 @@ function _ws_configure_2fa_ssl() {
 		
 		# Request Let's Encrypt certificate
 		if command -v certbot &>/dev/null; then
-			certbot certonly --standalone --non-interactive --agree-tos -m "admin@${2FA_DOMAIN}" \
-				-d "${2FA_DOMAIN}" 2>/dev/null || {
+			certbot certonly --standalone --non-interactive --agree-tos -m "admin@${WS_2FA_DOMAIN}" \
+				-d "${WS_2FA_DOMAIN}" 2>/dev/null || {
 				echo -e "${ORANGE}⚠ Let's Encrypt setup incomplete. Using self-signed certificate.${NC}"
 				SSL_TYPE="2"
 			}
@@ -405,8 +406,8 @@ function _ws_configure_2fa_ssl() {
 		
 		if [[ "${SSL_TYPE}" == "1" ]]; then
 			# Symlink Let's Encrypt certs
-			SSL_CERT_PATH="/etc/letsencrypt/live/${2FA_DOMAIN}/fullchain.pem"
-			SSL_KEY_PATH="/etc/letsencrypt/live/${2FA_DOMAIN}/privkey.pem"
+			SSL_CERT_PATH="/etc/letsencrypt/live/${WS_2FA_DOMAIN}/fullchain.pem"
+			SSL_KEY_PATH="/etc/letsencrypt/live/${WS_2FA_DOMAIN}/privkey.pem"
 			
 			if [[ -f "${SSL_CERT_PATH}" ]] && [[ -f "${SSL_KEY_PATH}" ]]; then
 				ln -sf "${SSL_CERT_PATH}" /etc/wireshield/2fa/cert.pem 2>/dev/null || true
@@ -443,40 +444,48 @@ EOFSERVICE
 				systemctl daemon-reload 2>/dev/null || true
 				systemctl enable wireshield-2fa-renew.timer 2>/dev/null || true
 				# Immediate dry-run to surface renewal issues early
-				certbot renew --dry-run --quiet 2>/dev/null || echo -e "${ORANGE}⚠ Certbot dry-run failed; check ports 80/443 and DNS for ${2FA_DOMAIN}${NC}"
+				certbot renew --dry-run --quiet 2>/dev/null || echo -e "${ORANGE}⚠ Certbot dry-run failed; check ports 80/443 and DNS for ${WS_2FA_DOMAIN}${NC}"
 				
 				echo -e "${GREEN}✓ Let's Encrypt certificate configured${NC}"
 				echo -e "${GREEN}✓ Auto-renewal enabled${NC}"
+				# Write both WS_* and 2FA_* for compatibility
+				echo "WS_2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
+				echo "WS_2FA_SSL_TYPE=letsencrypt" >> /etc/wireshield/2fa/config.env
+				echo "WS_2FA_DOMAIN=${WS_2FA_DOMAIN}" >> /etc/wireshield/2fa/config.env
 				echo "2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
 				echo "2FA_SSL_TYPE=letsencrypt" >> /etc/wireshield/2fa/config.env
-				echo "2FA_DOMAIN=${2FA_DOMAIN}" >> /etc/wireshield/2fa/config.env
+				echo "2FA_DOMAIN=${WS_2FA_DOMAIN}" >> /etc/wireshield/2fa/config.env
 				return 0
 			fi
 		fi
 	fi
 	
 	# Self-signed certificate (for IP or localhost)
-	read -rp "Enter IP address or hostname (e.g., 127.0.0.1 or vpn.local): " -e HOSTNAME_2FA
+	read -rp "Enter IP address or hostname (e.g., 127.0.0.1 or vpn.local): " -e WS_HOSTNAME_2FA
 	
-	if [[ -z "${HOSTNAME_2FA}" ]]; then
-		HOSTNAME_2FA="127.0.0.1"
+	if [[ -z "${WS_HOSTNAME_2FA}" ]]; then
+		WS_HOSTNAME_2FA="127.0.0.1"
 	fi
 	
-	echo -e "${ORANGE}Generating self-signed certificate for ${HOSTNAME_2FA}...${NC}"
+	echo -e "${ORANGE}Generating self-signed certificate for ${WS_HOSTNAME_2FA}...${NC}"
 	
 	openssl req -x509 -newkey rsa:4096 \
 		-keyout /etc/wireshield/2fa/key.pem \
 		-out /etc/wireshield/2fa/cert.pem \
 		-days 365 -nodes \
-		-subj "/C=US/ST=State/L=City/O=WireShield/CN=${HOSTNAME_2FA}" 2>/dev/null || true
+		-subj "/C=US/ST=State/L=City/O=WireShield/CN=${WS_HOSTNAME_2FA}" 2>/dev/null || true
 	
 	chmod 600 /etc/wireshield/2fa/key.pem
 	chmod 644 /etc/wireshield/2fa/cert.pem
 	
 	echo -e "${GREEN}✓ Self-signed certificate configured${NC}"
+	# Write both WS_* and 2FA_* for compatibility
+	echo "WS_2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
+	echo "WS_2FA_SSL_TYPE=self-signed" >> /etc/wireshield/2fa/config.env
+	echo "WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA}" >> /etc/wireshield/2fa/config.env
 	echo "2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
 	echo "2FA_SSL_TYPE=self-signed" >> /etc/wireshield/2fa/config.env
-	echo "HOSTNAME_2FA=${HOSTNAME_2FA}" >> /etc/wireshield/2fa/config.env
+	echo "HOSTNAME_2FA=${WS_HOSTNAME_2FA}" >> /etc/wireshield/2fa/config.env
 }
 
 function _ws_install_2fa_service() {
@@ -493,6 +502,17 @@ function _ws_install_2fa_service() {
 	cat > /etc/wireshield/2fa/config.env << 'EOF'
 # WireShield 2FA Configuration
 # Generated during installation
+# Both WS_* (bash-safe) and 2FA_* keys are provided for compatibility.
+WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
+WS_2FA_HOST=0.0.0.0
+WS_2FA_PORT=8443
+WS_2FA_LOG_LEVEL=INFO
+WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
+WS_2FA_RATE_LIMIT_WINDOW=60
+WS_2FA_SSL_ENABLED=false
+WS_2FA_SSL_TYPE=none
+WS_2FA_DOMAIN=
+WS_HOSTNAME_2FA=127.0.0.1
 2FA_DB_PATH=/etc/wireshield/2fa/auth.db
 2FA_HOST=0.0.0.0
 2FA_PORT=8443
@@ -591,9 +611,19 @@ EOF
 		chmod 644 /etc/wireshield/2fa/cert.pem 2>/dev/null || true
 	fi
 	
+	# Verify app presence (robustness)
+	if [[ ! -f /etc/wireshield/2fa/app.py ]]; then
+		echo -e "${ORANGE}app.py missing in /etc/wireshield/2fa, attempting copy from repo...${NC}"
+		if [[ -f "${SCRIPT_DIR}/2fa-auth/app.py" ]]; then
+			cp -f "${SCRIPT_DIR}/2fa-auth/app.py" /etc/wireshield/2fa/ || true
+		fi
+	fi
+
 	# Install systemd service file
 	if [[ -f /etc/wireshield/2fa/wireshield-2fa.service ]]; then
 		# Read config and create updated service file
+		# Load WS_* values (avoid bash parsing errors with 2FA_* names)
+		# shellcheck disable=SC1091
 		source /etc/wireshield/2fa/config.env 2>/dev/null || true
 		
 		cat > /etc/systemd/system/wireshield-2fa.service << EOF
@@ -606,16 +636,17 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/etc/wireshield/2fa
-EnvironmentFile=-/etc/wireshield/2fa/config.env
-Environment="2FA_DB_PATH=/etc/wireshield/2fa/auth.db"
-Environment="2FA_HOST=0.0.0.0"
-Environment="2FA_PORT=8443"
-Environment="2FA_SSL_ENABLED=${2FA_SSL_ENABLED:-false}"
-Environment="2FA_SSL_TYPE=${2FA_SSL_TYPE:-self-signed}"
-Environment="2FA_DOMAIN=${2FA_DOMAIN:-}"
-Environment="HOSTNAME_2FA=${HOSTNAME_2FA:-127.0.0.1}"
-Environment="2FA_RATE_LIMIT_MAX_REQUESTS=${2FA_RATE_LIMIT_MAX_REQUESTS:-30}"
-Environment="2FA_RATE_LIMIT_WINDOW=${2FA_RATE_LIMIT_WINDOW:-60}"
+	EnvironmentFile=-/etc/wireshield/2fa/config.env
+	# Use WS_* variables to satisfy systemd's environment parser
+	Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
+	Environment=WS_2FA_HOST=0.0.0.0
+	Environment=WS_2FA_PORT=8443
+	Environment=WS_2FA_SSL_ENABLED=${WS_2FA_SSL_ENABLED:-false}
+	Environment=WS_2FA_SSL_TYPE=${WS_2FA_SSL_TYPE:-self-signed}
+	Environment=WS_2FA_DOMAIN=${WS_2FA_DOMAIN:-}
+	Environment=WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA:-127.0.0.1}
+	Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=${WS_2FA_RATE_LIMIT_MAX_REQUESTS:-30}
+	Environment=WS_2FA_RATE_LIMIT_WINDOW=${WS_2FA_RATE_LIMIT_WINDOW:-60}
 ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/app.py
 Restart=on-failure
 RestartSec=5
@@ -635,12 +666,12 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/etc/wireshield/2fa
-EnvironmentFile=-/etc/wireshield/2fa/config.env
-Environment="2FA_DB_PATH=/etc/wireshield/2fa/auth.db"
-Environment="2FA_HOST=0.0.0.0"
-Environment="2FA_PORT=8443"
-Environment="2FA_RATE_LIMIT_MAX_REQUESTS=30"
-Environment="2FA_RATE_LIMIT_WINDOW=60"
+	EnvironmentFile=-/etc/wireshield/2fa/config.env
+	Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
+	Environment=WS_2FA_HOST=0.0.0.0
+	Environment=WS_2FA_PORT=8443
+	Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
+	Environment=WS_2FA_RATE_LIMIT_WINDOW=60
 ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/app.py
 Restart=on-failure
 RestartSec=5
@@ -663,21 +694,22 @@ EOF
 
 	# Post-install health check: ping /health and surface a clear status
 	if [[ -f /etc/wireshield/2fa/config.env ]]; then
+		# Prefer WS_* keys to avoid bash parsing errors
 		# shellcheck disable=SC1091
 		source /etc/wireshield/2fa/config.env 2>/dev/null || true
 	fi
 
 	local _scheme _host _port _health_url _ok=0 _resp
-	_port=${2FA_PORT:-8443}
-	if [[ "${2FA_SSL_ENABLED}" == "true" || "${2FA_SSL_ENABLED}" == "1" || "${2FA_SSL_ENABLED}" == "yes" ]]; then
+	_port=${WS_2FA_PORT:-8443}
+	if [[ "${WS_2FA_SSL_ENABLED}" == "true" || "${WS_2FA_SSL_ENABLED}" == "1" || "${WS_2FA_SSL_ENABLED}" == "yes" ]]; then
 		_scheme="https"
 	else
 		_scheme="http"
 	fi
-	if [[ -n "${2FA_DOMAIN}" ]]; then
-		_host="${2FA_DOMAIN}"
-	elif [[ -n "${HOSTNAME_2FA}" ]]; then
-		_host="${HOSTNAME_2FA}"
+	if [[ -n "${WS_2FA_DOMAIN}" ]]; then
+		_host="${WS_2FA_DOMAIN}"
+	elif [[ -n "${WS_HOSTNAME_2FA}" ]]; then
+		_host="${WS_HOSTNAME_2FA}"
 	else
 		_host="127.0.0.1"
 	fi
@@ -703,24 +735,35 @@ EOF
 }
 
 function _ws_enable_2fa_for_client() {
-	# Enable 2FA for a specific client
+	# Enable 2FA for a specific client and record allocated WG IPs
 	local client_id="$1"
+	local wg_ipv4="$2"
+	local wg_ipv6="$3"
 	[[ -z "$client_id" ]] && return 1
-	
-	# Initialize client in 2FA database
+
+	# Initialize client in 2FA database with IP mapping
 	if command -v python3 &>/dev/null && [[ -f /etc/wireshield/2fa/auth.db ]]; then
 		python3 << PYEOF 2>/dev/null || true
 import sqlite3
+conn = sqlite3.connect('/etc/wireshield/2fa/auth.db')
+c = conn.cursor()
+# Ensure columns exist (migration)
 try:
-	conn = sqlite3.connect('/etc/wireshield/2fa/auth.db')
-	c = conn.cursor()
-	c.execute('SELECT id FROM users WHERE client_id = ?', ('$client_id',))
-	if not c.fetchone():
-		c.execute('INSERT INTO users (client_id, enabled) VALUES (?, ?)', ('$client_id', 0))
-		conn.commit()
-	conn.close()
-except:
+	c.execute('ALTER TABLE users ADD COLUMN wg_ipv4 TEXT')
+except Exception:
 	pass
+try:
+	c.execute('ALTER TABLE users ADD COLUMN wg_ipv6 TEXT')
+except Exception:
+	pass
+c.execute('SELECT id FROM users WHERE client_id = ?', ('$client_id',))
+row = c.fetchone()
+if not row:
+	c.execute('INSERT INTO users (client_id, enabled, wg_ipv4, wg_ipv6) VALUES (?, ?, ?, ?)', ('$client_id', 0, '$wg_ipv4', '$wg_ipv6'))
+else:
+	c.execute('UPDATE users SET wg_ipv4 = ?, wg_ipv6 = ? WHERE client_id = ?', ('$wg_ipv4', '$wg_ipv6', '$client_id'))
+conn.commit()
+conn.close()
 PYEOF
 	fi
 }
@@ -737,7 +780,7 @@ function installWireGuard() {
 	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' && ${VERSION_ID} -gt 10 ]]; then
 		apt-get update
 		# Install wireguard package which includes kernel module and tools
-		apt-get install -y wireguard iptables resolvconf qrencode
+		apt-get install -y wireguard iptables resolvconf qrencode ipset
 	elif [[ ${OS} == 'debian' ]]; then
 		# For Debian 10 Buster, use backports repository
 		if ! grep -rqs "^deb .* buster-backports" /etc/apt/; then
@@ -754,7 +797,7 @@ function installWireGuard() {
 			dnf copr enable -y jdoss/wireguard
 			dnf install -y wireguard-dkms
 		fi
-		dnf install -y wireguard-tools iptables qrencode
+		dnf install -y wireguard-tools iptables qrencode ipset
 	elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
 		# For RHEL-based systems
 		if [[ ${VERSION_ID} == 8* ]]; then
@@ -762,7 +805,7 @@ function installWireGuard() {
 			yum install -y kmod-wireguard
 			yum install -y qrencode # not available on release 9
 		fi
-		yum install -y wireguard-tools iptables
+		yum install -y wireguard-tools iptables ipset
 	elif [[ ${OS} == 'oracle' ]]; then
 		dnf install -y oraclelinux-developer-release-el8
 		dnf config-manager --disable -y ol8_developer
@@ -771,11 +814,11 @@ function installWireGuard() {
 		dnf install -y wireguard-tools qrencode iptables
 	elif [[ ${OS} == 'arch' ]]; then
 		# Arch Linux has latest WireGuard in official repositories
-		pacman -Sy --needed --noconfirm wireguard-tools qrencode
+		pacman -Sy --needed --noconfirm wireguard-tools qrencode ipset
 	elif [[ ${OS} == 'alpine' ]]; then
 		# Alpine Linux supports WireGuard natively
 		apk update
-		apk add wireguard-tools iptables libqrencode-tools
+		apk add wireguard-tools iptables libqrencode-tools ipset
 	fi
 
 	# Ensure the newest available WireGuard packages are installed
@@ -826,17 +869,31 @@ PrivateKey = ${SERVER_PRIV_KEY}" >"/etc/wireguard/${SERVER_WG_NIC}.conf"
 PostDown = firewall-cmd --zone=public --add-interface=${SERVER_WG_NIC} && firewall-cmd --remove-port ${SERVER_PORT}/udp && firewall-cmd --remove-rich-rule='rule family=ipv4 source address=${FIREWALLD_IPV4_ADDRESS}/24 masquerade' && firewall-cmd --remove-rich-rule='rule family=ipv6 source address=${FIREWALLD_IPV6_ADDRESS}/24 masquerade'" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	else
 		echo "PostUp = iptables -I INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
-PostUp = iptables -I FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
-PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
+PostUp = ipset create ws_2fa_allowed_v4 hash:ip -exist
+PostUp = ipset create ws_2fa_allowed_v6 hash:ip -exist
+PostUp = iptables -N WS_2FA_FILTER 2>/dev/null || true
+PostUp = iptables -F WS_2FA_FILTER
+PostUp = iptables -A WS_2FA_FILTER -m set --match-set ws_2fa_allowed_v4 src -j ACCEPT
+PostUp = iptables -A WS_2FA_FILTER -j DROP
+PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_FILTER
 PostUp = iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
-PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
+PostUp = ip6tables -N WS_2FA_FILTER6 2>/dev/null || true
+PostUp = ip6tables -F WS_2FA_FILTER6
+PostUp = ip6tables -A WS_2FA_FILTER6 -m set --match-set ws_2fa_allowed_v6 src -j ACCEPT
+PostUp = ip6tables -A WS_2FA_FILTER6 -j DROP
+PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_FILTER6
 PostUp = ip6tables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostDown = iptables -D INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
-PostDown = iptables -D FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
-PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
-PostDown = iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
-PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
-PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
+PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_FILTER 2>/dev/null || true
+PostDown = iptables -F WS_2FA_FILTER 2>/dev/null || true
+PostDown = iptables -X WS_2FA_FILTER 2>/dev/null || true
+PostDown = ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
+PostDown = iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true
+PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_FILTER6 2>/dev/null || true
+PostDown = ip6tables -F WS_2FA_FILTER6 2>/dev/null || true
+PostDown = ip6tables -X WS_2FA_FILTER6 2>/dev/null || true
+PostDown = ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
+PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	fi
 
 	# Enable IPv4/IPv6 forwarding on the server
@@ -1043,7 +1100,7 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
 
 	# Enable 2FA for this client
-	_ws_enable_2fa_for_client "${CLIENT_NAME}"
+	_ws_enable_2fa_for_client "${CLIENT_NAME}" "${CLIENT_WG_IPV4}" "${CLIENT_WG_IPV6}"
 
 	# Generate QR code if qrencode is installed (handy for mobile clients)
 	if command -v qrencode &>/dev/null; then
@@ -1372,6 +1429,17 @@ function uninstallWg() {
 		echo -e "${ORANGE}Removing WireGuard configuration...${NC}"
 		rm -rf /etc/wireguard 2>/dev/null || true
 		rm -f /etc/sysctl.d/wg.conf 2>/dev/null || true
+
+		# Remove 2FA gating firewall structures
+		echo -e "${ORANGE}Removing 2FA gating firewall rules...${NC}"
+		iptables -D FORWARD -j WS_2FA_FILTER 2>/dev/null || true
+		iptables -F WS_2FA_FILTER 2>/dev/null || true
+		iptables -X WS_2FA_FILTER 2>/dev/null || true
+		ip6tables -D FORWARD -j WS_2FA_FILTER6 2>/dev/null || true
+		ip6tables -F WS_2FA_FILTER6 2>/dev/null || true
+		ip6tables -X WS_2FA_FILTER6 2>/dev/null || true
+		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
+		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 
 		# Remove automatic expiration cron job and helper script
 		echo -e "${ORANGE}Removing client expiration service...${NC}"

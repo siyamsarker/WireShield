@@ -172,6 +172,14 @@ echo "✅ Installation complete! Check /etc/wireguard/ for configs"
 ~/<client_name>.conf                # Client configurations (generated)
 ```
 
+Firewall constructs (iptables path)
+```
+ws_2fa_allowed_v4   # ipset allowlist for IPv4 client WG IPs
+ws_2fa_allowed_v6   # ipset allowlist for IPv6 client WG IPs
+WS_2FA_FILTER       # iptables chain: default DROP for WG src unless in allowlist
+WS_2FA_FILTER6      # ip6tables chain: default DROP for WG src unless in allowlist
+```
+
 ---
 
 ## 👥 User Guide
@@ -630,6 +638,39 @@ done
 # Requests 31-35: 429 (Too Many Requests)
 ```
 
+### 2FA Enforcement (Firewall Gating)
+
+WireShield enforces 2FA at the firewall for the iptables path. By default, traffic sourced from the WireGuard interface is dropped unless the client’s WG IP is present in an allowlist.
+
+#### How it works
+
+- On 2FA success (`/api/setup-verify` or `/api/verify`), the 2FA service adds the client’s WG IPv4/IPv6 addresses to `ws_2fa_allowed_v4/ws_2fa_allowed_v6`.
+- The installer creates `WS_2FA_FILTER/WS_2FA_FILTER6` chains attached to `FORWARD` on the WG interface with default DROP.
+- As long as any active session exists for a client, their WG IP remains in the allowlist.
+- A background worker prunes allowlist entries for clients that have no active sessions (runs every 60 seconds).
+
+#### Verify gating status
+
+```bash
+sudo ipset list ws_2fa_allowed_v4
+sudo ipset list ws_2fa_allowed_v6
+sudo iptables -S WS_2FA_FILTER
+sudo ip6tables -S WS_2FA_FILTER6
+```
+
+#### Health check
+
+```bash
+curl -sk https://127.0.0.1:8443/health
+# Expected: {"status":"ok","service":"wireshield-2fa"}
+```
+
+#### Notes
+
+- Gating is applied in the iptables path (common on Ubuntu/Debian). If your host uses firewalld exclusively, the standard rich rules are configured; equivalent ipset-based gating for firewalld can be added in a future release.
+- Multiple sessions per client are supported; gating persists while any session is valid.
+- Default pruning interval is 60s. This can be tuned in code if you need tighter revocation.
+
 ### Service Management
 
 #### Check Service Status
@@ -685,6 +726,23 @@ sudo lsof -i :8443
 # Monitor database operations
 sqlite3 /etc/wireshield/2fa/auth.db .tables
 sqlite3 /etc/wireshield/2fa/auth.db "SELECT COUNT(*) FROM users;"
+```
+
+#### Environment configuration
+
+The 2FA service reads environment from `/etc/wireshield/2fa/config.env`.
+
+- Primary keys: `WS_2FA_*` (bash-safe, preferred in systemd unit)
+- Legacy keys: `2FA_*` (still supported for compatibility)
+
+Examples:
+
+```
+WS_2FA_PORT=8443
+WS_2FA_SSL_ENABLED=true
+WS_2FA_DOMAIN=vpn.example.com
+WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
+WS_2FA_RATE_LIMIT_WINDOW=60
 ```
 
 #### Certificate Renewal Monitoring
@@ -1291,6 +1349,16 @@ sudo crontab -l 2>/dev/null | grep -v "wireshield" | sudo crontab -
 
 # Reload sysctl
 sudo sysctl --system
+
+# Remove 2FA gating (iptables path)
+sudo iptables -D FORWARD -j WS_2FA_FILTER 2>/dev/null || true
+sudo iptables -F WS_2FA_FILTER 2>/dev/null || true
+sudo iptables -X WS_2FA_FILTER 2>/dev/null || true
+sudo ip6tables -D FORWARD -j WS_2FA_FILTER6 2>/dev/null || true
+sudo ip6tables -F WS_2FA_FILTER6 2>/dev/null || true
+sudo ip6tables -X WS_2FA_FILTER6 2>/dev/null || true
+sudo ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
+sudo ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 ```
 
 **Q: What gets removed during uninstall?**
