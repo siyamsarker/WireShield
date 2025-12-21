@@ -1,49 +1,44 @@
 #!/bin/bash
 
 # ==============================================================================
-			# Final confirmation summary with concise, modern copy for whiptail/CLI
-			SUMMARY=$(cat <<-EOT
-			WireShield install plan
-			───────────────────────
-			Public address : ${SERVER_PUB_IP}
-			Public NIC     : ${SERVER_PUB_NIC}
-			WG interface   : ${SERVER_WG_NIC}
-			WG IPv4        : ${SERVER_WG_IPV4}/24
-			WG IPv6        : ${SERVER_WG_IPV6}/64
-			WG Port        : ${SERVER_PORT}/udp
-			Client DNS     : ${CLIENT_DNS_1}, ${CLIENT_DNS_2}
-			Allowed IPs    : ${ALLOWED_IPS}
-
-			Install target: ${SERVER_PUB_IP}:${SERVER_PORT}
-			Owner         : Siyam Sarker
-			EOT
-			)
+# WireShield – Secure WireGuard VPN installer and manager
+# ------------------------------------------------------------------------------
+# Purpose
+#   Automates installation, configuration, and lifecycle management of a
+#   WireGuard VPN server, plus interactive management of client peers.
+#
+# Highlights
+#   - Cross-distro support (Debian/Ubuntu/Fedora/CentOS/Alma/Rocky/Oracle/Arch/Alpine)
+#   - Kernel-awareness: WireGuard built-in on Linux >= 5.6; installs module/tools
+#   - Safe defaults, strong key generation, least-privilege file permissions
+#   - Interactive TUI (whiptail if available) or CLI fallback
+#   - Add/List/Revoke clients; show QR; backup configs; restart; uninstall
+#
+# Usage
+#   Make executable and run as root:
 #     chmod +x ./wireshield.sh && sudo ./wireshield.sh
-			if command -v whiptail &>/dev/null; then
-				whiptail --title "Review & confirm" \
-					--yes-button "Start install" \
-					--no-button "Edit" \
-					--yesno "${SUMMARY}\nProceed with installation now?" 22 78
-				if [[ $? -eq 0 ]]; then
-					break
-				else
-					echo -e "${ORANGE}Let's adjust your inputs...${NC}\n"
-				fi
-			else
-				echo -e "\n${SUMMARY}"
-				read -rp "Proceed with installation? [Y/n]: " -e CONFIRM
-				CONFIRM=${CONFIRM:-Y}
-				if [[ ${CONFIRM} =~ ^[Yy]$ ]]; then
-					break
-				else
-					echo -e "${ORANGE}Let's adjust your inputs...${NC}\n"
-				fi
-			fi
+#
+# Security & Safety
+#   - Requires root (networking, firewall, sysctl, /etc/wireguard writes)
+#   - Writes configs to /etc/wireguard with 600 permissions
+#   - Only modifies iptables/firewalld rules for the selected interface/port
+#
+# Repository
+#   https://github.com/siyamsarker/WireShield
+#
+# Version: 2.3.0
+# ============================================================================
+
+RED='\033[0;31m'
+ORANGE='\033[0;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
 function isRoot() {
 	if [ "${EUID}" -ne 0 ]; then
 		echo "You need to run this script as root"
-		echo "Great—settings locked in. Starting WireShield setup now."
-		echo "A first client will be generated automatically at the end."
+		exit 1
+	fi
 }
 
 function checkVirt() {
@@ -274,45 +269,49 @@ function installQuestions() {
 			fi
 		done
 
-		# Final confirmation summary
+		# Final confirmation summary with concise, modern copy for whiptail/CLI
 		SUMMARY=$(cat <<-EOT
+		WireShield install plan
+		───────────────────────
 		Public address : ${SERVER_PUB_IP}
 		Public NIC     : ${SERVER_PUB_NIC}
 		WG interface   : ${SERVER_WG_NIC}
 		WG IPv4        : ${SERVER_WG_IPV4}/24
 		WG IPv6        : ${SERVER_WG_IPV6}/64
 		WG Port        : ${SERVER_PORT}/udp
-		Client DNS 1   : ${CLIENT_DNS_1}
-		Client DNS 2   : ${CLIENT_DNS_2}
+		Client DNS     : ${CLIENT_DNS_1}, ${CLIENT_DNS_2}
 		Allowed IPs    : ${ALLOWED_IPS}
 
-		Made with ❤️  by Siyam Sarker
+		Install target: ${SERVER_PUB_IP}:${SERVER_PORT}
+		Owner         : Siyam Sarker
 		EOT
 		)
 
 		if command -v whiptail &>/dev/null; then
-			whiptail --title "Confirm settings" --yesno "Please review your WireShield settings:\n\n${SUMMARY}\n\nProceed with installation?" 22 78
+			whiptail --title "Review & confirm" \
+				--yes-button "Start install" \
+				--no-button "Edit" \
+				--yesno "${SUMMARY}\nProceed with installation now?" 22 78
 			if [[ $? -eq 0 ]]; then
 				break
 			else
-				echo -e "${ORANGE}Let's update your settings...${NC}\n"
+				echo -e "${ORANGE}Let's adjust your inputs...${NC}\n"
 			fi
 		else
-			echo -e "\nPlease review your WireShield settings:\n${SUMMARY}"
+			echo -e "\n${SUMMARY}"
 			read -rp "Proceed with installation? [Y/n]: " -e CONFIRM
 			CONFIRM=${CONFIRM:-Y}
 			if [[ ${CONFIRM} =~ ^[Yy]$ ]]; then
 				break
 			else
-				echo -e "${ORANGE}Let's update your settings...${NC}\n"
+				echo -e "${ORANGE}Let's adjust your inputs...${NC}\n"
 			fi
 		fi
 	done
 
 	echo ""
-	echo "Okay, that was all I needed. We are ready to setup your WireGuard server now."
-	echo "You will be able to generate a client at the end of the installation."
-	read -n1 -r -p "Press any key to continue..."
+	echo "Great—settings locked in. Starting WireShield setup now."
+	echo "A first client will be generated automatically at the end."
 }
 
 function _ws_upgrade_wireguard_packages() {
