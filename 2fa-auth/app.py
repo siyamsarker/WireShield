@@ -441,265 +441,390 @@ def get_2fa_ui_html(client_id: str) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WireShield 2FA - Secure Authentication</title>
+    <title>WireShield 2FA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {{
+            --bg: #0b1224;
+            --card: #0f172a;
+            --card-soft: #152036;
+            --text: #e7ecf5;
+            --muted: #94a3b8;
+            --accent: #0ea5e9;
+            --accent-strong: #0284c7;
+            --success: #22c55e;
+            --error: #f43f5e;
+            --border: rgba(255, 255, 255, 0.08);
+            --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+            --radius: 16px;
+        }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+            background: radial-gradient(circle at 10% 20%, rgba(14,165,233,0.15), transparent 25%),
+                        radial-gradient(circle at 80% 0%, rgba(34,197,94,0.12), transparent 25%),
+                        linear-gradient(135deg, #0b1224 0%, #0f162b 40%, #0b1224 100%);
+            color: var(--text);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 32px;
         }}
-        .container {{
-            background: white;
+        .shell {{
+            width: min(960px, 100%);
+            background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+            border: 1px solid var(--border);
+            border-radius: calc(var(--radius) + 4px);
+            box-shadow: var(--shadow);
+            padding: 26px;
+            backdrop-filter: blur(10px);
+        }}
+        .top {{
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 18px;
+        }}
+        .brand {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .badge {{
+            width: 40px;
+            height: 40px;
             border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 500px;
-            width: 100%;
-            padding: 40px;
+            background: linear-gradient(135deg, #0ea5e9, #22c55e);
+            display: grid;
+            place-items: center;
+            font-size: 20px;
+            color: #0b1224;
+            font-weight: 700;
         }}
-        .header {{
-            text-align: center;
-            margin-bottom: 30px;
-        }}
-        .logo {{
-            font-size: 32px;
-            margin-bottom: 10px;
-        }}
-        h1 {{
-            color: #333;
-            font-size: 24px;
-            margin-bottom: 10px;
-        }}
-        .subtitle {{
-            color: #666;
-            font-size: 14px;
-        }}
-        .client-id {{
-            background: #f5f5f5;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 15px;
-            font-family: monospace;
-            font-size: 12px;
-            color: #666;
-            word-break: break-all;
-        }}
-        .section {{
-            margin-bottom: 30px;
-        }}
-        .qr-container {{
-            text-align: center;
-            margin: 20px 0;
-        }}
-        .qr-container img {{
-            max-width: 100%;
-            border: 2px solid #f0f0f0;
-            border-radius: 8px;
-            padding: 10px;
-        }}
-        .secret-code {{
-            background: #f9f9f9;
-            padding: 15px;
-            border-radius: 6px;
-            border-left: 4px solid #667eea;
-            margin: 15px 0;
-            font-family: monospace;
+        .title-block h1 {{ font-size: 20px; letter-spacing: -0.01em; }}
+        .title-block p {{ color: var(--muted); font-size: 13px; margin-top: 2px; }}
+        .meta {{
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            color: var(--muted);
             font-size: 13px;
-            word-break: break-all;
-            color: #333;
+        }}
+        .meta .dot {{ width: 6px; height: 6px; border-radius: 999px; background: var(--accent); display: inline-block; margin-right: 6px; }}
+        .grid {{
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 18px;
+        }}
+        .card {{
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+        }}
+        .card + .card {{ margin-top: 0; }}
+        .section-title {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }}
+        .section-title .pill {{
+            background: rgba(14,165,233,0.15);
+            color: var(--accent);
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            border: 1px solid rgba(14,165,233,0.25);
         }}
         .info-box {{
-            background: #e8f4f8;
-            border-left: 4px solid #2196F3;
-            padding: 15px;
-            border-radius: 6px;
-            font-size: 13px;
-            color: #0277bd;
-            margin: 15px 0;
-        }}
-        input[type="text"], input[type="password"] {{
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            background: var(--card-soft);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 16px;
             font-size: 14px;
-            margin: 10px 0;
-            transition: border-color 0.3s;
+            color: var(--muted);
+            line-height: 1.5;
         }}
-        input[type="text"]:focus, input[type="password"]:focus {{
+        .client-id {{
+            margin-top: 10px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            font-family: "SFMono-Regular", "Consolas", monospace;
+            font-size: 13px;
+            color: #d7e3f4;
+        }}
+        .steps {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
+            margin: 14px 0 6px;
+        }}
+        .step {{
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.02);
+            color: var(--muted);
+            font-size: 13px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }}
+        .step.active {{
+            background: rgba(14,165,233,0.12);
+            color: var(--text);
+            border-color: rgba(14,165,233,0.35);
+        }}
+        .step .index {{
+            width: 28px;
+            height: 28px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            display: grid;
+            place-items: center;
+            font-weight: 600;
+            color: #e2e8f0;
+        }}
+        .qr {{ text-align: center; margin-top: 12px; }}
+        .qr img {{
+            max-width: 240px;
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: #0b1224;
+            padding: 12px;
+        }}
+        .secret-code {{
+            background: #0b1224;
+            border: 1px dashed rgba(255,255,255,0.15);
+            color: #e2e8f0;
+            padding: 12px;
+            border-radius: 12px;
+            font-family: "SFMono-Regular", "Consolas", monospace;
+            font-size: 13px;
+            margin-top: 12px;
+            word-break: break-all;
+        }}
+        label {{
+            display: block;
+            color: var(--muted);
+            font-size: 13px;
+            margin-bottom: 6px;
+        }}
+        input[type="text"] {{
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.03);
+            color: var(--text);
+            font-size: 14px;
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }}
+        input[type="text"]:focus {{
+            border-color: rgba(14,165,233,0.6);
+            box-shadow: 0 0 0 3px rgba(14,165,233,0.18);
         }}
         button {{
             width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            padding: 12px 14px;
+            border-radius: 12px;
             border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+            color: #0b1224;
+            font-weight: 700;
+            letter-spacing: 0.01em;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }}
+        button:hover {{ transform: translateY(-1px); box-shadow: 0 12px 30px rgba(14,165,233,0.35); }}
+        button:active {{ transform: translateY(0); }}
+        button:disabled {{ opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }}
+        .muted {{ color: var(--muted); font-size: 13px; }}
+        .status {{
+            display: grid;
+            gap: 10px;
             margin-top: 10px;
         }}
-        button:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-        }}
-        button:active {{
-            transform: translateY(0);
-        }}
-        button:disabled {{
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }}
-        .success {{
-            background: #c8e6c9;
-            color: #2e7d32;
-            padding: 15px;
-            border-radius: 6px;
-            margin: 15px 0;
+        .alert {{
             display: none;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            border: 1px solid transparent;
         }}
-        .error {{
-            background: #ffcdd2;
-            color: #c62828;
-            padding: 15px;
-            border-radius: 6px;
-            margin: 15px 0;
+        .alert.success {{
             display: none;
+            background: rgba(34,197,94,0.12);
+            color: #bbf7d0;
+            border-color: rgba(34,197,94,0.35);
+        }}
+        .alert.error {{
+            display: none;
+            background: rgba(244,63,94,0.12);
+            color: #fecdd3;
+            border-color: rgba(244,63,94,0.35);
+        }}
+        .pill-row {{
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }}
+        .pill-row .pill {{
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+        }}
+        .success-view {{ text-align: center; padding: 10px 6px 0; }}
+        .success-view h2 {{ margin-bottom: 8px; letter-spacing: -0.01em; }}
+        .success-view p {{ color: var(--muted); margin-bottom: 16px; }}
+        .tick {{
+            width: 74px;
+            height: 74px;
+            border-radius: 22px;
+            margin: 0 auto 16px;
+            display: grid;
+            place-items: center;
+            background: radial-gradient(circle, rgba(34,197,94,0.4) 0%, rgba(34,197,94,0.08) 60%, transparent 70%);
+            color: var(--success);
+            font-size: 36px;
         }}
         .spinner {{
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
+            border: 3px solid rgba(255,255,255,0.08);
+            border-top: 3px solid var(--accent);
             border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
+            width: 18px;
+            height: 18px;
+            animation: spin 0.9s linear infinite;
             display: inline-block;
-            margin-right: 10px;
+            margin-right: 8px;
         }}
         @keyframes spin {{
             0% {{ transform: rotate(0deg); }}
             100% {{ transform: rotate(360deg); }}
         }}
-        .step-indicator {{
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 30px;
-            text-align: center;
-        }}
-        .step {{
-            flex: 1;
-            color: #999;
-            font-size: 12px;
-            position: relative;
-        }}
-        .step.active {{
-            color: #667eea;
-            font-weight: 600;
-        }}
-        .step:not(:last-child)::after {{
-            content: '';
-            position: absolute;
-            top: -15px;
-            right: -50%;
-            width: 100%;
-            height: 2px;
-            background: #ddd;
-        }}
-        .step.active::before {{
-            content: '✓';
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            background: #667eea;
-            color: white;
-            border-radius: 50%;
-            line-height: 24px;
-            margin-bottom: 5px;
+        @media (max-width: 900px) {{
+            .grid {{ grid-template-columns: 1fr; }}
+            .shell {{ padding: 20px; }}
         }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="logo">🛡️</div>
-            <h1>WireShield 2FA</h1>
-            <p class="subtitle">Secure your VPN connection</p>
-            <div class="client-id">Client: {client_id}</div>
-        </div>
-        
-        <div id="successMsg" class="success"></div>
-        <div id="errorMsg" class="error"></div>
-        
-        <div id="setupPhase">
-            <div class="step-indicator">
-                <div class="step active">1. Download App</div>
-                <div class="step">2. Scan QR</div>
-                <div class="step">3. Verify</div>
-            </div>
-            
-            <div class="section">
-                <h2 style="font-size: 16px; margin-bottom: 15px;">Step 1: Download Authenticator</h2>
-                <div class="info-box">
-                    Install <strong>Google Authenticator</strong> or any TOTP-compatible app (Authy, Microsoft Authenticator, etc.)
+    <div class="shell">
+        <div class="top">
+            <div class="brand">
+                <div class="badge">WS</div>
+                <div class="title-block">
+                    <h1>WireShield 2FA Verification</h1>
+                    <p>Pre-connection identity check for VPN access</p>
                 </div>
             </div>
-            
-            <div class="section">
-                <h2 style="font-size: 16px; margin-bottom: 15px;">Step 2: Scan QR Code</h2>
-                <button onclick="generateQR()">Generate QR Code</button>
-                <div id="qrContainer" class="qr-container" style="display: none;">
-                    <img id="qrImage" src="" alt="QR Code">
-                </div>
-                <div id="secretContainer" style="display: none;">
-                    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Or enter this code manually:</p>
-                    <div class="secret-code" id="secretCode"></div>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2 style="font-size: 16px; margin-bottom: 15px;">Step 3: Verify Code</h2>
-                <input type="text" id="verifyCode" placeholder="Enter 6-digit code from your app" maxlength="6" pattern="[0-9]{{6}}" inputmode="numeric" />
-                <button onclick="verifySetup()" id="verifyBtn">Verify & Connect</button>
+            <div class="meta">
+                <span class="dot"></span>
+                Secure channel via TLS 1.2+
             </div>
         </div>
-        
-        <div id="successPhase" style="display: none; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 20px;">✅</div>
-            <h2 style="color: #4caf50; margin-bottom: 10px;">Setup Complete!</h2>
-            <p style="color: #666; margin-bottom: 20px;">Your 2FA is now active. You can connect to VPN.</p>
-            <p style="font-size: 12px; color: #999; margin-bottom: 20px;">Session expires in 24 hours.</p>
-            <button onclick="location.reload()" style="background: #4caf50;">Close & Connect</button>
+        <div class="grid">
+            <div class="card">
+                <div class="section-title"><span class="pill">Client</span> Verification Flow</div>
+                <div class="client-id">Client ID: {client_id}</div>
+                <div class="steps">
+                    <div class="step active"><span class="index">1</span>Get authenticator</div>
+                    <div class="step active"><span class="index">2</span>Scan QR or copy code</div>
+                    <div class="step"><span class="index">3</span>Enter 6-digit TOTP</div>
+                </div>
+                <div class="info-box">Use Google Authenticator, 1Password, or any TOTP app. Codes rotate every 30 seconds and tolerate slight clock drift.</div>
+
+                <div id="setupPhase">
+                    <div class="section-title" style="margin-top:16px;"><span class="pill">Step 1</span>Generate QR</div>
+                    <button onclick="generateQR()">Generate QR Code</button>
+                    <div id="qrContainer" class="qr" style="display:none;">
+                        <img id="qrImage" src="" alt="QR code">
+                    </div>
+                    <div id="secretContainer" style="display:none;">
+                        <div class="muted" style="margin-top:10px;">Or enter this secret manually:</div>
+                        <div class="secret-code" id="secretCode"></div>
+                    </div>
+
+                    <div class="section-title" style="margin-top:20px;"><span class="pill">Step 2</span>Verify TOTP</div>
+                    <label for="verifyCode">6-digit code</label>
+                    <input type="text" id="verifyCode" placeholder="123456" maxlength="6" pattern="[0-9]{{6}}" inputmode="numeric" autocomplete="one-time-code" />
+                    <button onclick="verifySetup()" id="verifyBtn" style="margin-top:12px;">Verify and continue</button>
+
+                    <div class="status">
+                        <div id="successMsg" class="alert success"></div>
+                        <div id="errorMsg" class="alert error"></div>
+                    </div>
+                    <div class="pill-row">
+                        <div class="pill">Sessions last 24h</div>
+                        <div class="pill">No code stored server-side</div>
+                        <div class="pill">Time drift tolerant</div>
+                    </div>
+                </div>
+
+                <div id="successPhase" class="success-view" style="display:none;">
+                    <div class="tick">✓</div>
+                    <h2>2FA Verified</h2>
+                    <p>Your session token is active. You can close this window and connect your VPN client.</p>
+                    <button onclick="location.reload()" style="background: linear-gradient(135deg, var(--success), #16a34a); color:#0b1224;">Close and connect</button>
+                </div>
+            </div>
+
+            <div class="card" style="background: var(--card-soft);">
+                <div class="section-title"><span class="pill">Details</span>Connection facts</div>
+                <div class="info-box" style="margin-bottom:12px;">
+                    Keep this window open while verifying. If the code fails, wait for the next 30-second rotation and try again.
+                </div>
+                <div class="pill-row">
+                    <div class="pill">TLS enforced</div>
+                    <div class="pill">Per-IP rate limits</div>
+                    <div class="pill">No reuse after expiry</div>
+                    <div class="pill">Audit logged</div>
+                </div>
+                <div class="info-box" style="margin-top:14px;">
+                    Need help? Ensure your device clock is accurate and that your browser allows loading images (for the QR). Self-signed deployments will show a certificate warning; proceed if you trust this host.
+                </div>
+            </div>
         </div>
     </div>
-    
+
     <script>
         let setupData = {{}};
-        
+
         async function generateQR() {{
             try {{
-                document.getElementById('errorMsg').style.display = 'none';
+                const errorBox = document.getElementById('errorMsg');
+                const successBox = document.getElementById('successMsg');
+                errorBox.style.display = 'none';
+                successBox.style.display = 'none';
+
                 const formData = new FormData();
                 formData.append('client_id', '{client_id}');
-                
+
                 const response = await fetch('/api/setup-start', {{ method: 'POST', body: formData }});
                 const data = await response.json();
-                
+
                 if (data.success) {{
                     setupData = data;
                     document.getElementById('qrImage').src = data.qr_code;
                     document.getElementById('secretCode').textContent = data.secret;
                     document.getElementById('qrContainer').style.display = 'block';
                     document.getElementById('secretContainer').style.display = 'block';
+                    successBox.textContent = 'QR code generated. Scan or copy the secret to continue.';
+                    successBox.style.display = 'block';
                 }} else {{
                     showError(data.detail || 'Failed to generate QR code');
                 }}
@@ -707,52 +832,52 @@ def get_2fa_ui_html(client_id: str) -> str:
                 showError('Error: ' + e.message);
             }}
         }}
-        
+
         async function verifySetup() {{
             const code = document.getElementById('verifyCode').value;
             if (code.length !== 6 || isNaN(code)) {{
                 showError('Please enter a valid 6-digit code');
                 return;
             }}
-            
+
+            const btn = document.getElementById('verifyBtn');
+            const originalLabel = btn.innerHTML;
             try {{
-                const btn = document.getElementById('verifyBtn');
                 btn.disabled = true;
                 btn.innerHTML = '<span class="spinner"></span>Verifying...';
-                
+
                 const formData = new FormData();
                 formData.append('client_id', '{client_id}');
                 formData.append('code', code);
-                
+
                 const response = await fetch('/api/setup-verify', {{ method: 'POST', body: formData }});
                 const data = await response.json();
-                
+
                 if (data.success) {{
-                    // Save session token to localStorage for firewall integration
                     localStorage.setItem('session_token', data.session_token);
                     localStorage.setItem('client_id', '{client_id}');
-                    
+
                     document.getElementById('setupPhase').style.display = 'none';
                     document.getElementById('successPhase').style.display = 'block';
                     showSuccess('2FA verified successfully!');
                 }} else {{
                     showError(data.detail || 'Verification failed');
                     btn.disabled = false;
-                    btn.textContent = 'Verify & Connect';
+                    btn.innerHTML = originalLabel;
                 }}
             }} catch (e) {{
                 showError('Error: ' + e.message);
                 btn.disabled = false;
-                btn.textContent = 'Verify & Connect';
+                btn.innerHTML = originalLabel;
             }}
         }}
-        
+
         function showError(msg) {{
             const el = document.getElementById('errorMsg');
             el.textContent = msg;
             el.style.display = 'block';
         }}
-        
+
         function showSuccess(msg) {{
             const el = document.getElementById('successMsg');
             el.textContent = msg;
