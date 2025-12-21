@@ -233,8 +233,8 @@ def _ipset(cmd: list[str]) -> None:
 
 def ensure_ipsets():
     """Ensure ipset sets exist (created in WireGuard PostUp, but safe to re-assert)."""
-    _ipset(["ipset", "create", "ws_2fa_allowed_v4", "hash:ip", "-exist"])
-    _ipset(["ipset", "create", "ws_2fa_allowed_v6", "hash:ip", "-exist"])
+    _ipset(["ipset", "create", "ws_2fa_allowed_v4", "hash:ip", "family", "inet", "-exist"])
+    _ipset(["ipset", "create", "ws_2fa_allowed_v6", "hash:ip", "family", "inet6", "-exist"])
 
 def allow_client_by_id(client_id: str) -> None:
     conn = get_db()
