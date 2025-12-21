@@ -1218,6 +1218,22 @@ A:
 A: Check: `sudo systemctl status wireshield-2fa`
 Logs: `sudo journalctl -u wireshield-2fa -n 50`
 
+**Q: WireGuard service fails with "protocol family of set ws_2fa_allowed_v6 is IPv4"?**
+A: This was fixed in commit 9444bc6. Update your installation:
+```bash
+cd WireShield
+git pull
+sudo ./wireshield.sh  # Re-run installer
+```
+Or manually fix existing `/etc/wireguard/wg0.conf`:
+```bash
+sudo wg-quick down wg0
+# Edit PostUp lines to include 'family inet' and 'family inet6':
+# PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist
+# PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist
+sudo wg-quick up wg0
+```
+
 **Q: Can't access https://vpn.example.com:8443?**
 A: 
 1. Check port 8443 is open: `sudo lsof -i :8443`
