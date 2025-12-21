@@ -484,6 +484,8 @@ function _ws_install_2fa_service() {
 	echo "Setting up WireShield 2FA service..."
 
 	local VENV_PATH="/etc/wireshield/2fa/.venv"
+	local SCRIPT_DIR
+	SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 	
 	# Create 2FA directory and config file
 	mkdir -p /etc/wireshield/2fa
@@ -503,18 +505,37 @@ function _ws_install_2fa_service() {
 HOSTNAME_2FA=127.0.0.1
 EOF
 	
-	# Ensure Python 3 and pip are available
-	if ! command -v python3 &>/dev/null; then
-		echo "Installing Python 3..."
-		if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
-			apt-get install -y python3 python3-pip python3-venv
-		elif [[ ${OS} == 'fedora' ]] || [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]] || [[ ${OS} == 'oracle' ]]; then
-			dnf install -y python3 python3-pip python3-venv || yum install -y python3 python3-pip python3-venv
-		elif [[ ${OS} == 'arch' ]]; then
-			pacman -Sy --noconfirm python python-pip
-		elif [[ ${OS} == 'alpine' ]]; then
-			apk add python3 py3-pip py3-venv
+	# Ensure Python3, pip and venv are available (install even if python3 already exists)
+	echo "Ensuring Python3 pip/venv are installed..."
+	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
+		apt-get update -y >/dev/null 2>&1 || true
+		apt-get install -y python3 python3-pip python3-venv >/dev/null 2>&1 || true
+		# Fallback for versioned venv packages on newer Ubuntu/Debian
+		PYVER=$(python3 -V 2>/dev/null | awk '{print $2}')
+		PYMM=${PYVER%.*}
+		apt-get install -y "python${PYMM}-venv" >/dev/null 2>&1 || true
+	elif [[ ${OS} == 'fedora' ]] || [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]] || [[ ${OS} == 'oracle' ]]; then
+		if command -v dnf >/dev/null 2>&1; then
+			dnf install -y python3 python3-pip python3-venv >/dev/null 2>&1 || true
+		else
+			yum install -y python3 python3-pip python3-venv >/dev/null 2>&1 || true
 		fi
+	elif [[ ${OS} == 'arch' ]]; then
+		pacman -Sy --noconfirm python python-pip >/dev/null 2>&1 || true
+	elif [[ ${OS} == 'alpine' ]]; then
+		apk add python3 py3-pip py3-venv >/dev/null 2>&1 || true
+	fi
+
+	# Copy 2FA files from the current repository if available
+	if [[ -d "${SCRIPT_DIR}/2fa-auth" ]]; then
+		cp -f "${SCRIPT_DIR}/2fa-auth/app.py" /etc/wireshield/2fa/ 2>/dev/null || true
+		cp -f "${SCRIPT_DIR}/2fa-auth/requirements.txt" /etc/wireshield/2fa/ 2>/dev/null || true
+		cp -f "${SCRIPT_DIR}/2fa-auth/2fa-helper.sh" /etc/wireshield/2fa/ 2>/dev/null || true
+		cp -f "${SCRIPT_DIR}/2fa-auth/generate-certs.sh" /etc/wireshield/2fa/ 2>/dev/null || true
+		# Optional: bundled service file (we still write one below for consistency)
+		cp -f "${SCRIPT_DIR}/2fa-auth/wireshield-2fa.service" /etc/wireshield/2fa/ 2>/dev/null || true
+	elif [[ -d /opt/wireshield/2fa-auth ]]; then
+		cp /opt/wireshield/2fa-auth/* /etc/wireshield/2fa/ 2>/dev/null || true
 	fi
 	
 	# Check if 2FA service already exists
@@ -533,6 +554,23 @@ EOF
 	
 	# Install Python dependencies into a dedicated virtual environment
 	python3 -m venv "${VENV_PATH}" 2>/dev/null || true
+	# If venv creation failed due to missing ensurepip, try to install venv package and retry
+	if [[ ! -x "${VENV_PATH}/bin/python" ]]; then
+		echo -e "${ORANGE}Attempting to fix missing ensurepip by installing venv package...${NC}"
+		if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
+			PYVER=$(python3 -V 2>/dev/null | awk '{print $2}')
+			PYMM=${PYVER%.*}
+			apt-get install -y python3-venv "python${PYMM}-venv" >/dev/null 2>&1 || true
+		elif [[ ${OS} == 'fedora' ]] || [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]] || [[ ${OS} == 'oracle' ]]; then
+			if command -v dnf >/dev/null 2>&1; then dnf install -y python3-venv >/dev/null 2>&1 || true; else yum install -y python3-venv >/dev/null 2>&1 || true; fi
+		elif [[ ${OS} == 'arch' ]]; then
+			# venv is bundled with python on Arch; ensure pip is present
+			pacman -Sy --noconfirm python python-pip >/dev/null 2>&1 || true
+		elif [[ ${OS} == 'alpine' ]]; then
+			apk add py3-venv >/dev/null 2>&1 || true
+		fi
+		python3 -m venv "${VENV_PATH}" 2>/dev/null || true
+	fi
 	if [[ -f /etc/wireshield/2fa/requirements.txt ]]; then
 		"${VENV_PATH}/bin/pip" install -q --upgrade pip setuptools wheel 2>/dev/null || true
 		"${VENV_PATH}/bin/pip" install -q -r /etc/wireshield/2fa/requirements.txt 2>/dev/null || {
@@ -616,8 +654,12 @@ EOF
 	systemctl daemon-reload 2>/dev/null || true
 	systemctl enable wireshield-2fa 2>/dev/null || true
 	systemctl start wireshield-2fa 2>/dev/null || true
-	
-	echo -e "${GREEN}2FA service installed and started${NC}"
+
+	if systemctl is-active --quiet wireshield-2fa; then
+		echo -e "${GREEN}2FA service installed and started${NC}"
+	else
+		echo -e "${ORANGE}2FA service did not start successfully. Check 'journalctl -u wireshield-2fa' for details.${NC}"
+	fi
 }
 
 function _ws_enable_2fa_for_client() {
