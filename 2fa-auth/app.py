@@ -25,6 +25,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
+import subprocess
+import threading
 import pyotp
 import qrcode
 from io import BytesIO
@@ -33,20 +35,28 @@ import base64
 # ============================================================================
 # Configuration
 # ============================================================================
-LOG_LEVEL = os.getenv("2FA_LOG_LEVEL", "INFO")
-AUTH_DB_PATH = os.getenv("2FA_DB_PATH", "/etc/wireshield/2fa/auth.db")
-AUTH_HOST = os.getenv("2FA_HOST", "0.0.0.0")
-AUTH_PORT = int(os.getenv("2FA_PORT", "8443"))
-SSL_CERT = os.getenv("2FA_SSL_CERT", "/etc/wireshield/2fa/cert.pem")
-SSL_KEY = os.getenv("2FA_SSL_KEY", "/etc/wireshield/2fa/key.pem")
-SSL_ENABLED = os.getenv("2FA_SSL_ENABLED", "true").lower() in ("true", "1", "yes")
-SSL_TYPE = os.getenv("2FA_SSL_TYPE", "self-signed")  # self-signed, letsencrypt
-TFA_DOMAIN = os.getenv("2FA_DOMAIN", "")
-TFA_HOSTNAME = os.getenv("HOSTNAME_2FA", "127.0.0.1")
-SECRET_KEY = os.getenv("2FA_SECRET_KEY", "")  # Must be set in production
-SESSION_TIMEOUT_MINUTES = int(os.getenv("2FA_SESSION_TIMEOUT", "1440"))  # 24h default
-RATE_LIMIT_MAX_REQUESTS = int(os.getenv("2FA_RATE_LIMIT_MAX_REQUESTS", "30"))
-RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("2FA_RATE_LIMIT_WINDOW", "60"))
+def getenv_multi(default: str, *names: str) -> str:
+    """Return the first found environment value among provided names."""
+    for name in names:
+        val = os.getenv(name)
+        if val is not None and val != "":
+            return val
+    return default
+
+LOG_LEVEL = getenv_multi("INFO", "WS_2FA_LOG_LEVEL", "2FA_LOG_LEVEL")
+AUTH_DB_PATH = getenv_multi("/etc/wireshield/2fa/auth.db", "WS_2FA_DB_PATH", "2FA_DB_PATH")
+AUTH_HOST = getenv_multi("0.0.0.0", "WS_2FA_HOST", "2FA_HOST")
+AUTH_PORT = int(getenv_multi("8443", "WS_2FA_PORT", "2FA_PORT"))
+SSL_CERT = getenv_multi("/etc/wireshield/2fa/cert.pem", "WS_2FA_SSL_CERT", "2FA_SSL_CERT")
+SSL_KEY = getenv_multi("/etc/wireshield/2fa/key.pem", "WS_2FA_SSL_KEY", "2FA_SSL_KEY")
+SSL_ENABLED = getenv_multi("true", "WS_2FA_SSL_ENABLED", "2FA_SSL_ENABLED").lower() in ("true", "1", "yes")
+SSL_TYPE = getenv_multi("self-signed", "WS_2FA_SSL_TYPE", "2FA_SSL_TYPE")  # self-signed, letsencrypt
+TFA_DOMAIN = getenv_multi("", "WS_2FA_DOMAIN", "2FA_DOMAIN")
+TFA_HOSTNAME = getenv_multi("127.0.0.1", "WS_HOSTNAME_2FA", "HOSTNAME_2FA")
+SECRET_KEY = getenv_multi("", "WS_2FA_SECRET_KEY", "2FA_SECRET_KEY")  # Must be set in production
+SESSION_TIMEOUT_MINUTES = int(getenv_multi("1440", "WS_2FA_SESSION_TIMEOUT", "2FA_SESSION_TIMEOUT"))  # 24h default
+RATE_LIMIT_MAX_REQUESTS = int(getenv_multi("30", "WS_2FA_RATE_LIMIT_MAX_REQUESTS", "2FA_RATE_LIMIT_MAX_REQUESTS"))
+RATE_LIMIT_WINDOW_SECONDS = int(getenv_multi("60", "WS_2FA_RATE_LIMIT_WINDOW", "2FA_RATE_LIMIT_WINDOW"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
@@ -111,6 +121,15 @@ def init_db():
     ''')
     
     conn.commit()
+    # Migrations: add wg_ipv4/wg_ipv6 columns if missing
+    try:
+        c.execute('ALTER TABLE users ADD COLUMN wg_ipv4 TEXT')
+    except Exception:
+        pass
+    try:
+        c.execute('ALTER TABLE users ADD COLUMN wg_ipv6 TEXT')
+    except Exception:
+        pass
     conn.close()
     logger.info(f"Database initialized at {AUTH_DB_PATH}")
 
@@ -202,6 +221,77 @@ rate_limiter = RateLimiter(
     max_requests=RATE_LIMIT_MAX_REQUESTS,
     window_seconds=RATE_LIMIT_WINDOW_SECONDS,
 )
+
+# ============================================================================
+# Traffic Gating via ipset
+# ============================================================================
+def _ipset(cmd: list[str]) -> None:
+    try:
+        subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        logger.debug(f"ipset command failed: {cmd} ({e})")
+
+def ensure_ipsets():
+    """Ensure ipset sets exist (created in WireGuard PostUp, but safe to re-assert)."""
+    _ipset(["ipset", "create", "ws_2fa_allowed_v4", "hash:ip", "-exist"])
+    _ipset(["ipset", "create", "ws_2fa_allowed_v6", "hash:ip", "-exist"])
+
+def allow_client_by_id(client_id: str) -> None:
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT wg_ipv4, wg_ipv6 FROM users WHERE client_id = ?", (client_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return
+    v4 = row[0] or ""
+    v6 = row[1] or ""
+    ensure_ipsets()
+    if v4:
+        _ipset(["ipset", "add", "ws_2fa_allowed_v4", v4, "-exist"])
+    if v6:
+        _ipset(["ipset", "add", "ws_2fa_allowed_v6", v6, "-exist"])
+
+def remove_client_by_id(client_id: str) -> None:
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT wg_ipv4, wg_ipv6 FROM users WHERE client_id = ?", (client_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return
+    v4 = row[0] or ""
+    v6 = row[1] or ""
+    if v4:
+        _ipset(["ipset", "del", "ws_2fa_allowed_v4", v4])
+    if v6:
+        _ipset(["ipset", "del", "ws_2fa_allowed_v6", v6])
+
+def _sync_ipsets_from_sessions():
+    """Periodically remove clients without any active session from ipsets."""
+    while True:
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            # Active clients: with any non-expired session
+            c.execute("SELECT DISTINCT client_id FROM sessions WHERE expires_at > datetime('now')")
+            active = set(row[0] for row in c.fetchall())
+            # All users
+            c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users")
+            users = c.fetchall()
+            conn.close()
+            ensure_ipsets()
+            # Remove non-active clients from ipsets
+            for client_id, v4, v6 in users:
+                if client_id not in active:
+                    if v4:
+                        _ipset(["ipset", "del", "ws_2fa_allowed_v4", v4])
+                    if v6:
+                        _ipset(["ipset", "del", "ws_2fa_allowed_v6", v6])
+        except Exception as e:
+            logger.debug(f"ipset sync error: {e}")
+        finally:
+            time.sleep(60)
 
 
 # ============================================================================
@@ -324,6 +414,11 @@ async def setup_verify(
         conn.close()
         
         audit_log(client_id, "2FA_SETUP_VERIFY", "success", ip_address)
+        # Allow this client traffic now that session exists
+        try:
+            allow_client_by_id(client_id)
+        except Exception:
+            logger.debug("Failed to add client to ipset allowlist")
         
         return JSONResponse({
             "success": True,
@@ -377,6 +472,11 @@ async def verify_code(
         conn.close()
         
         audit_log(client_id, "2FA_VERIFY", "success", ip_address)
+        # Allow this client traffic now that session exists
+        try:
+            allow_client_by_id(client_id)
+        except Exception:
+            logger.debug("Failed to add client to ipset allowlist")
         
         return JSONResponse({
             "success": True,
@@ -898,6 +998,8 @@ if __name__ == "__main__":
         SECRET_KEY = secrets.token_urlsafe(32)
     
     init_db()
+    # Start background ipset sync thread
+    threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
     
     # Log SSL configuration
     if SSL_ENABLED:
