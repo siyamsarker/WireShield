@@ -638,6 +638,87 @@ done
 # Requests 31-35: 429 (Too Many Requests)
 ```
 
+### Captive Portal & Auto-Redirect (v2.4.0+)
+
+WireShield implements a **captive portal** that automatically redirects users to the 2FA setup page when they first connect to the VPN:
+
+#### How it works
+
+**Connection Flow:**
+1. User connects to VPN → WireGuard assigns IP (e.g., `10.66.66.2`)
+2. Firewall blocks all traffic except DNS (port 53) and 2FA service (port 8443)
+3. User tries to access any HTTP website → iptables redirects to HTTPS 2FA page
+4. Browser automatically attempts captive portal detection and shows 2FA page
+5. User completes 2FA → firewall automatically allows full internet access
+6. Session valid for 24 hours (default)
+
+#### What the firewall rules do
+
+**Before 2FA verification:**
+```
+ALLOW:  Port 53 (DNS) - needed for domain resolution
+ALLOW:  Port 8443 (HTTPS) - the 2FA service
+ALLOW:  Port 80 → redirect to 8443 (HTTP capture)
+DROP:   Everything else
+```
+
+**After 2FA verification:**
+```
+ALLOW:  All traffic (firewall whitelist activated)
+```
+
+**On disconnect or session expiry:**
+- Client IP removed from allowlist
+- Next connection requires 2FA again
+
+#### Firewall constructs created
+
+The installer automatically creates:
+- `ws_2fa_allowed_v4` - IPv4 allowlist (ipset)
+- `ws_2fa_allowed_v6` - IPv6 allowlist (ipset)
+- `WS_2FA_PORTAL` - IPv4 captive portal chain
+- `WS_2FA_PORTAL6` - IPv6 captive portal chain
+- `WS_2FA_REDIRECT` - IPv4 HTTP→HTTPS redirect (iptables NAT)
+- `WS_2FA_REDIRECT6` - IPv6 HTTP→HTTPS redirect (iptables NAT)
+
+#### Client auto-discovery
+
+The 2FA service auto-detects clients based on their WireGuard IP. No need to pass `?client_id=` manually:
+- Direct access: `https://vpn.example.com:8443/?client_id=alice`
+- Auto-discovery: `https://vpn.example.com:8443/` (discovers from IP)
+
+#### Verify captive portal status
+
+```bash
+# Check if allowlists exist and have entries
+sudo ipset list ws_2fa_allowed_v4
+sudo ipset list ws_2fa_allowed_v6
+
+# Verify DNAT redirect rules
+sudo iptables -t nat -S | grep WS_2FA_REDIRECT
+sudo ip6tables -t nat -S | grep WS_2FA_REDIRECT6
+
+# Check firewall chains
+sudo iptables -S WS_2FA_PORTAL
+sudo ip6tables -S WS_2FA_PORTAL6
+```
+
+#### Troubleshooting
+
+**Q: Browser doesn't show captive portal page automatically?**
+- Some networks/devices don't trigger captive portal detection automatically
+- Workaround: Manually open `https://vpn-server:8443/` in your browser
+
+**Q: I can't access the 2FA page even on first connection?**
+- Check if port 8443 is reachable: `telnet vpn-server 8443`
+- Verify firewall rules: `sudo iptables -S WS_2FA_PORTAL | grep 8443`
+- Check service is running: `sudo systemctl status wireshield-2fa`
+
+**Q: After 2FA, still no internet?**
+- Wait 5-10 seconds for the service to update allowlist
+- Check if you're in the allowlist: `sudo ipset list ws_2fa_allowed_v4`
+- Verify sessions table: `sqlite3 /etc/wireshield/2fa/auth.db "SELECT * FROM sessions WHERE client_id = '<YOUR_ID>';"`
+
 ### 2FA Enforcement (Firewall Gating)
 
 WireShield enforces 2FA at the firewall for the iptables path. By default, traffic sourced from the WireGuard interface is dropped unless the client’s WG IP is present in an allowlist.
@@ -1179,6 +1260,12 @@ CREATE TABLE audit_log (
 
 ### General Questions
 
+**Q: How does the auto-redirect to 2FA work?**
+A: When you connect to the VPN for the first time, the firewall blocks internet access. Any HTTP traffic is automatically redirected to the 2FA setup page (HTTPS). Your browser's captive portal detection may automatically open it. If not, manually open `https://vpn-server:8443/` in your browser. Once you complete 2FA, the firewall automatically whitelists your IP and grants full internet access.
+
+**Q: What happens when I disconnect and reconnect?**
+A: Each disconnect expires your session. When you reconnect, the firewall blocks you again until you re-verify with 2FA (unless your 24-hour session is still active). If your session is still valid within the 24-hour window, you stay whitelisted across disconnect/reconnect cycles.
+
 **Q: What if I lose my authenticator phone?**
 A: You saved your backup secret code during setup. Use it to re-add 2FA to a new phone. Administrators can also reset your account via `2fa-helper.sh disable <username>` to set up again.
 
@@ -1186,7 +1273,7 @@ A: You saved your backup secret code during setup. Use it to re-add 2FA to a new
 A: Not with the current setup—one secret per user. For multi-device setup, save the backup secret code to a secure location and restore on other devices.
 
 **Q: What happens during the 24-hour session window?**
-A: After 2FA verification, your session token is valid for 24 hours. You can disconnect/reconnect without re-verifying. After 24 hours, you must 2FA again.
+A: After 2FA verification, your session token is valid for 24 hours. You can disconnect/reconnect without re-verifying. After 24 hours, you must 2FA again. Sessions are tracked per-device/IP, so multiple devices need separate 2FA verifications.
 
 **Q: Is there a way to bypass 2FA?**
 A: No. 2FA is enforced at the firewall level before VPN access. Only admins can disable it per user via `2fa-helper.sh disable <username>`.
