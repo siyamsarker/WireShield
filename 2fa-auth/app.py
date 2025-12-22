@@ -738,9 +738,6 @@ def get_2fa_ui_html(client_id: str) -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield 2FA</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {{
             --bg: #0b1224;
@@ -758,7 +755,7 @@ def get_2fa_ui_html(client_id: str) -> str:
         }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
             background: radial-gradient(circle at 10% 20%, rgba(14,165,233,0.15), transparent 25%),
                         radial-gradient(circle at 80% 0%, rgba(34,197,94,0.12), transparent 25%),
                         linear-gradient(135deg, #0b1224 0%, #0f162b 40%, #0b1224 100%);
