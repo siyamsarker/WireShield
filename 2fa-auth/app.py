@@ -27,6 +27,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
 import subprocess
 import threading
+from starlette.middleware.gzip import GZipMiddleware
 import pyotp
 import qrcode
 from io import BytesIO
@@ -179,6 +180,9 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+# Enable gzip compression to reduce payload size for faster loads
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # HTTP to HTTPS redirect middleware (for captive portal)
 @app.middleware("http")
@@ -457,14 +461,16 @@ async def setup_start(
         # Generate QR code
         totp = pyotp.TOTP(secret)
         qr_uri = totp.provisioning_uri(name=client_id, issuer_name="WireShield VPN")
-        qr_code = qrcode.QRCode(version=1, box_size=10, border=5)
+        # Smaller QR for faster transfer while preserving scannability
+        qr_code = qrcode.QRCode(version=1, box_size=6, border=2)
         qr_code.add_data(qr_uri)
         qr_code.make(fit=True)
         
         img = qr_code.make_image(fill_color="black", back_color="white")
         img_bytes = BytesIO()
         try:
-            img.save(img_bytes, format="PNG")
+            # If Pillow backend is available, optimize PNG output
+            img.save(img_bytes, format="PNG", optimize=True)
         except TypeError:
             # PyPNG fallback (no Pillow installed) does not accept the format kwarg
             img.save(img_bytes)
