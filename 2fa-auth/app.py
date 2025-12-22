@@ -519,6 +519,11 @@ async def setup_verify(
         
         # Enable user and create session
         c.execute("UPDATE users SET enabled = 1 WHERE client_id = ?", (client_id,))
+        # Persist client's WG IP (v4/v6) for ipset allowlist
+        if ":" in ip_address:
+            c.execute("UPDATE users SET wg_ipv6 = ? WHERE client_id = ?", (ip_address, client_id))
+        else:
+            c.execute("UPDATE users SET wg_ipv4 = ? WHERE client_id = ?", (ip_address, client_id))
         
         session_token = generate_session_token()
         expires_at = datetime.utcnow() + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
@@ -576,6 +581,12 @@ async def verify_code(
         if not totp.verify(code, valid_window=1):
             audit_log(client_id, "2FA_VERIFY", "invalid_code", ip_address)
             raise HTTPException(status_code=401, detail="Invalid code")
+        
+        # Persist client's WG IP (v4/v6) for ipset allowlist
+        if ":" in ip_address:
+            c.execute("UPDATE users SET wg_ipv6 = ? WHERE client_id = ?", (ip_address, client_id))
+        else:
+            c.execute("UPDATE users SET wg_ipv4 = ? WHERE client_id = ?", (ip_address, client_id))
         
         # Create session token
         session_token = generate_session_token()
