@@ -34,6 +34,20 @@ ORANGE='\033[0;33m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
+# Detect UTF-8 capability; fall back to plain ASCII boxes when unavailable.
+USE_ASCII_BOX=0
+function _ws_init_locale() {
+	if locale -a 2>/dev/null | grep -qi 'C.UTF-8'; then
+		export LANG=C.UTF-8
+		export LC_ALL=C.UTF-8
+	elif locale -a 2>/dev/null | grep -qi 'en_US.UTF-8'; then
+		export LANG=en_US.UTF-8
+		export LC_ALL=en_US.UTF-8
+	else
+		USE_ASCII_BOX=1
+	fi
+}
+
 function isRoot() {
 	if [ "${EUID}" -ne 0 ]; then
 		echo "You need to run this script as root"
@@ -176,6 +190,40 @@ function installQuestions() {
     # Collect installation inputs with validation and a final confirmation step.
     # Uses whiptail for a modern confirmation dialog when available.
 
+	# Render the install wizard intro box with a UTF-8 or ASCII fallback.
+	_ws_print_installation_wizard_box() {
+		if [[ ${USE_ASCII_BOX:-0} -eq 1 ]]; then
+			echo "${ORANGE}============================================================${NC}"
+			echo "${ORANGE}=                  Installation Wizard                   =${NC}"
+			echo "${ORANGE}============================================================${NC}"
+			echo ""
+			echo "This setup wizard will guide you through the VPN configuration."
+			echo "Default values are optimized for most use cases."
+			echo ""
+			echo "  -> Press Enter to accept defaults"
+			echo "  -> Customize values as needed for your environment"
+			echo "  -> Press Ctrl+C at any time to exit the installer"
+			echo ""
+			echo "${ORANGE}============================================================${NC}"
+		else
+			echo -e "${ORANGE}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+			echo -e "${ORANGE}┃${NC}                       ${ORANGE}⚙  Installation Wizard${NC}                           ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+			echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┃${NC}  This setup wizard will guide you through the VPN configuration.      ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┃${NC}  Default values are optimized for most use cases.                     ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Press ${GREEN}Enter${NC} to accept defaults                                      ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Customize values as needed for your environment                   ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Press ${GREEN}Ctrl+C${NC} at any time to exit the installer                     ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
+			echo -e "${ORANGE}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+		fi
+	}
+
+		# Ensure locale is set so UTF-8 boxes render correctly; otherwise fall back to ASCII.
+		_ws_init_locale
+
 	# helper: check interface existence
 	interface_exists() {
 		ip link show dev "$1" >/dev/null 2>&1
@@ -204,18 +252,7 @@ function installQuestions() {
 		echo ""
 		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 		echo -e ""
-		echo -e "${ORANGE}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-		echo -e "${ORANGE}┃${NC}                      ${ORANGE}⚙  Installation Wizard${NC}                           ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
-		echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┃${NC}  This setup wizard will guide you through the VPN configuration.      ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┃${NC}  Default values are optimized for most use cases.                     ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Press ${GREEN}Enter${NC} to accept defaults                                      ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Customize values as needed for your environment                   ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Press ${GREEN}Ctrl+C${NC} at any time to exit the installer                     ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
-		echo -e "${ORANGE}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+		_ws_print_installation_wizard_box
 		echo ""
 
 		# Detect public IPv4 or IPv6 address and pre-fill for the user
