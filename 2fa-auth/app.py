@@ -646,87 +646,63 @@ async def success_page(client_id: Optional[str] = None):
     """Success page after 2FA verification - indicates client can now access internet."""
     return HTMLResponse("""
 <!DOCTYPE html>
-<html lang="en">
+<html lang=\"en\">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>✓ Connected - WireShield</title>
+    <meta charset=\"UTF-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+    <title>WireShield 2FA — Connected</title>
     <style>
-        * {margin: 0; padding: 0; box-sizing: border-box;}
+        :root {\n            --bg: #0b1224;\n            --card: #0f172a;\n            --card-soft: #152036;\n            --text: #e7ecf5;\n            --muted: #94a3b8;\n            --accent: #0ea5e9;\n            --success: #22c55e;\n            --border: rgba(255,255,255,0.08);\n            --radius: 16px;\n        }
+        * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+            background: radial-gradient(circle at 10% 20%, rgba(14,165,233,0.15), transparent 25%),
+                        radial-gradient(circle at 80% 0%, rgba(34,197,94,0.12), transparent 25%),
+                        linear-gradient(135deg, #0b1224 0%, #0f162b 40%, #0b1224 100%);
+            color: var(--text);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 32px;
         }
-        .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            padding: 60px 40px;
-            text-align: center;
-            max-width: 500px;
+        .shell {
+            width: min(640px, 100%);
+            background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+            border: 1px solid var(--border);
+            border-radius: calc(var(--radius) + 4px);
+            box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+            padding: 26px;
+            backdrop-filter: blur(10px);
         }
-        .success-icon {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 30px;
-            background: #22c55e;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 48px;
-        }
-        h1 {
-            color: #1f2937;
-            margin-bottom: 12px;
-            font-size: 28px;
-        }
-        p {
-            color: #6b7280;
-            margin-bottom: 10px;
-            line-height: 1.6;
-        }
-        .status {
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            color: #166534;
-            padding: 16px;
-            border-radius: 12px;
-            margin: 30px 0;
-            font-size: 14px;
-        }
-        .note {
-            font-size: 13px;
-            color: #9ca3af;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-        }
+        .top { display:flex; justify-content:space-between; gap:16px; margin-bottom:18px; }
+        .brand { display:flex; align-items:center; gap:12px; }
+        .badge { width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg, #0ea5e9, #22c55e); display:grid; place-items:center; font-size:20px; color:#0b1224; font-weight:700; }
+        .title h1 { font-size:20px; letter-spacing:-0.01em; }
+        .title p { color: var(--muted); font-size: 13px; margin-top: 2px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; text-align:center; }
+        .tick { width:74px; height:74px; border-radius:22px; margin: 0 auto 16px; display:grid; place-items:center; background: radial-gradient(circle, rgba(34,197,94,0.4) 0%, rgba(34,197,94,0.08) 60%, transparent 70%); color: var(--success); font-size:36px; }
+        .status { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.35); color: #bbf7d0; padding: 12px 14px; border-radius: 12px; margin: 16px 0; font-size: 14px; }
+        .note { font-size: 13px; color: var(--muted); margin-top: 12px; }
+        button { margin-top: 16px; width: 100%; padding: 12px 14px; border-radius: 12px; border: none; background: linear-gradient(135deg, var(--accent), #0284c7); color:#0b1224; font-weight:700; cursor:pointer; }
+        button:hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(14,165,233,0.35); }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="success-icon">✓</div>
-        <h1>Successfully Verified!</h1>
-        <p>Your 2FA authentication was successful.</p>
-        <div class="status">
-            ✓ Your VPN connection is now active<br>
-            ✓ You have full internet access<br>
-            ✓ Session valid for 24 hours
+    <div class=\"shell\">
+        <div class=\"top\">
+            <div class=\"brand\"><div class=\"badge\">WS</div><div class=\"title\"><h1>WireShield 2FA — Connected</h1><p>Session active</p></div></div>
+            <div style=\"color:#94a3b8; font-size:13px;\">Secure channel via TLS 1.2+</div>
         </div>
-        <p style="margin-top: 30px;">You can close this window and enjoy your secure VPN connection.</p>
-        <div class="note">
-            Your session will remain active until you disconnect from the VPN.
+        <div class=\"card\">
+            <div class=\"tick\">✓</div>
+            <h2 style=\"margin-bottom:8px;\">Successfully Verified</h2>
+            <p style=\"color:#cbd5e1;\">Your 2FA authentication was successful.</p>
+            <div class=\"status\">✓ VPN access enabled • ✓ Internet access • ✓ Session valid 24h</div>
+            <div class=\"note\">You can close this window and enjoy your secure VPN connection.</div>
+            <button onclick=\"window.close();\">Close</button>
         </div>
     </div>
-    <script>
-        setTimeout(function() { window.close(); }, 5000);
-    </script>
 </body>
 </html>
     """)
@@ -1020,7 +996,7 @@ def get_2fa_ui_html(client_id: str) -> str:
         }}
     </style>
 </head>
-<body>
+<body onload="onLoad()">
     <div class="shell">
         <div class="top">
             <div class="brand">
@@ -1048,7 +1024,7 @@ def get_2fa_ui_html(client_id: str) -> str:
 
                 <div id="setupPhase">
                     <div class="section-title" style="margin-top:16px;"><span class="pill">Step 1</span>Generate QR</div>
-                    <button onclick="generateQR()">Generate QR Code</button>
+                        <button onclick="generateQR()">Generate QR code</button>
                     <div id="qrContainer" class="qr" style="display:none;">
                         <img id="qrImage" src="" alt="QR code">
                     </div>
@@ -1058,7 +1034,7 @@ def get_2fa_ui_html(client_id: str) -> str:
                     </div>
 
                     <div class="section-title" style="margin-top:20px;"><span class="pill">Step 2</span>Verify TOTP</div>
-                    <label for="verifyCode">6-digit code</label>
+                    <label for="verifyCode">One-time code</label>
                     <input type="text" id="verifyCode" placeholder="123456" maxlength="6" pattern="[0-9]{{6}}" inputmode="numeric" autocomplete="one-time-code" />
                     <button onclick="verifySetup()" id="verifyBtn" style="margin-top:12px;">Verify and continue</button>
 
@@ -1101,6 +1077,12 @@ def get_2fa_ui_html(client_id: str) -> str:
 
     <script>
         let setupData = {{}};
+
+        function onLoad() {{
+            const input = document.getElementById('verifyCode');
+            input && input.focus();
+            document.addEventListener('keydown', (e) => {{ if (e.key === 'Enter') verifySetup(); }});
+        }}
 
         async function generateQR() {{
             try {{
