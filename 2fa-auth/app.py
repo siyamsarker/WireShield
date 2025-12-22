@@ -48,8 +48,8 @@ def getenv_multi(default: str, *names: str) -> str:
 LOG_LEVEL = getenv_multi("INFO", "WS_2FA_LOG_LEVEL", "2FA_LOG_LEVEL")
 AUTH_DB_PATH = getenv_multi("/etc/wireshield/2fa/auth.db", "WS_2FA_DB_PATH", "2FA_DB_PATH")
 AUTH_HOST = getenv_multi("0.0.0.0", "WS_2FA_HOST", "2FA_HOST")
-AUTH_PORT = int(getenv_multi("8443", "WS_2FA_PORT", "2FA_PORT"))
-AUTH_HTTP_PORT = int(getenv_multi("8080", "WS_2FA_HTTP_PORT", "2FA_HTTP_PORT"))
+AUTH_PORT = int(getenv_multi("443", "WS_2FA_PORT", "2FA_PORT"))
+AUTH_HTTP_PORT = int(getenv_multi("80", "WS_2FA_HTTP_PORT", "2FA_HTTP_PORT"))
 SSL_CERT = getenv_multi("/etc/wireshield/2fa/cert.pem", "WS_2FA_SSL_CERT", "2FA_SSL_CERT")
 SSL_KEY = getenv_multi("/etc/wireshield/2fa/key.pem", "WS_2FA_SSL_KEY", "2FA_SSL_KEY")
 SSL_ENABLED = getenv_multi("true", "WS_2FA_SSL_ENABLED", "2FA_SSL_ENABLED").lower() in ("true", "1", "yes")
@@ -63,9 +63,9 @@ RATE_LIMIT_WINDOW_SECONDS = int(getenv_multi("60", "WS_2FA_RATE_LIMIT_WINDOW", "
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
-    UI_BASE_URL = f"https://{TFA_DOMAIN}:8443"
+    UI_BASE_URL = f"https://{TFA_DOMAIN}"
 else:
-    UI_BASE_URL = f"https://{TFA_HOSTNAME}:8443"
+    UI_BASE_URL = f"https://{TFA_HOSTNAME}"
 
 # ============================================================================
 # Logging
@@ -186,21 +186,8 @@ async def redirect_http_to_https(request: Request, call_next):
     """Redirect HTTP requests to HTTPS."""
     # Check if request came through HTTP (not forwarded from reverse proxy)
     if request.url.scheme == "http":
-        # Build HTTPS URL, replacing port 80 with 8443
-        https_url = str(request.url)
-        https_url = https_url.replace("http://", "https://", 1)
-        # Replace :80/ with :8443/
-        if ":80/" in https_url:
-            https_url = https_url.replace(":80/", ":8443/")
-        elif https_url.count("://") == 1:
-            # No explicit port in URL, add :8443
-            parts = https_url.split("://")
-            domain_path = parts[1]
-            if "/" in domain_path:
-                domain, path = domain_path.split("/", 1)
-                https_url = f"{parts[0]}://{domain}:8443/{path}"
-            else:
-                https_url = f"{parts[0]}://{domain_path}:8443/"
+        # Build HTTPS URL (standard port 443)
+        https_url = str(request.url).replace("http://", "https://", 1)
         return Response(status_code=307, headers={"Location": https_url})
     
     response = await call_next(request)

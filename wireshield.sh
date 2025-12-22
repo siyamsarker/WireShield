@@ -504,7 +504,8 @@ function _ws_install_2fa_service() {
 # Both WS_* (bash-safe) and 2FA_* keys are provided for compatibility.
 WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
 WS_2FA_HOST=0.0.0.0
-WS_2FA_PORT=8443
+WS_2FA_PORT=443
+WS_2FA_HTTP_PORT=80
 WS_2FA_LOG_LEVEL=INFO
 WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
 WS_2FA_RATE_LIMIT_WINDOW=60
@@ -514,7 +515,8 @@ WS_2FA_DOMAIN=
 WS_HOSTNAME_2FA=127.0.0.1
 2FA_DB_PATH=/etc/wireshield/2fa/auth.db
 2FA_HOST=0.0.0.0
-2FA_PORT=8443
+2FA_PORT=443
+2FA_HTTP_PORT=80
 2FA_LOG_LEVEL=INFO
 2FA_RATE_LIMIT_MAX_REQUESTS=30
 2FA_RATE_LIMIT_WINDOW=60
@@ -639,7 +641,8 @@ WorkingDirectory=/etc/wireshield/2fa
 	# Use WS_* variables to satisfy systemd's environment parser
 	Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
 	Environment=WS_2FA_HOST=0.0.0.0
-	Environment=WS_2FA_PORT=8443
+	Environment=WS_2FA_PORT=443
+	Environment=WS_2FA_HTTP_PORT=80
 	Environment=WS_2FA_SSL_ENABLED=${WS_2FA_SSL_ENABLED:-false}
 	Environment=WS_2FA_SSL_TYPE=${WS_2FA_SSL_TYPE:-self-signed}
 	Environment=WS_2FA_DOMAIN=${WS_2FA_DOMAIN:-}
@@ -699,7 +702,7 @@ EOF
 	fi
 
 	local _scheme _host _port _health_url _ok=0 _resp
-	_port=${WS_2FA_PORT:-8443}
+	_port=${WS_2FA_PORT:-443}
 	if [[ "${WS_2FA_SSL_ENABLED}" == "true" || "${WS_2FA_SSL_ENABLED}" == "1" || "${WS_2FA_SSL_ENABLED}" == "yes" ]]; then
 		_scheme="https"
 	else
@@ -874,43 +877,29 @@ PostUp = iptables -N WS_2FA_PORTAL 2>/dev/null || true
 PostUp = iptables -F WS_2FA_PORTAL
 PostUp = iptables -A WS_2FA_PORTAL -p tcp --dport 53 -j ACCEPT
 PostUp = iptables -A WS_2FA_PORTAL -p udp --dport 53 -j ACCEPT
-PostUp = iptables -A WS_2FA_PORTAL -p tcp --dport 8443 -j ACCEPT
+PostUp = iptables -A WS_2FA_PORTAL -p tcp --dport 443 -j ACCEPT
 PostUp = iptables -A WS_2FA_PORTAL -p tcp --dport 80 -j ACCEPT
 PostUp = iptables -A WS_2FA_PORTAL -j DROP
 PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL
-PostUp = iptables -t nat -N WS_2FA_REDIRECT 2>/dev/null || true
-PostUp = iptables -t nat -F WS_2FA_REDIRECT
-PostUp = iptables -t nat -A WS_2FA_REDIRECT -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:8080
-PostUp = iptables -t nat -I PREROUTING -i ${SERVER_WG_NIC} -j WS_2FA_REDIRECT
 PostUp = iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostUp = ip6tables -N WS_2FA_PORTAL6 2>/dev/null || true
 PostUp = ip6tables -F WS_2FA_PORTAL6
 PostUp = ip6tables -A WS_2FA_PORTAL6 -p tcp --dport 53 -j ACCEPT
 PostUp = ip6tables -A WS_2FA_PORTAL6 -p udp --dport 53 -j ACCEPT
-PostUp = ip6tables -A WS_2FA_PORTAL6 -p tcp --dport 8443 -j ACCEPT
+PostUp = ip6tables -A WS_2FA_PORTAL6 -p tcp --dport 443 -j ACCEPT
 PostUp = ip6tables -A WS_2FA_PORTAL6 -p tcp --dport 80 -j ACCEPT
 PostUp = ip6tables -A WS_2FA_PORTAL6 -j DROP
 PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL6
-PostUp = ip6tables -t nat -N WS_2FA_REDIRECT6 2>/dev/null || true
-PostUp = ip6tables -t nat -F WS_2FA_REDIRECT6
-PostUp = ip6tables -t nat -A WS_2FA_REDIRECT6 -p tcp --dport 80 -j DNAT --to-destination [::1]:8080
-PostUp = ip6tables -t nat -I PREROUTING -i ${SERVER_WG_NIC} -j WS_2FA_REDIRECT6
 PostUp = ip6tables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostDown = iptables -D INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL 2>/dev/null || true
 PostDown = iptables -F WS_2FA_PORTAL 2>/dev/null || true
 PostDown = iptables -X WS_2FA_PORTAL 2>/dev/null || true
-PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -j WS_2FA_REDIRECT 2>/dev/null || true
-PostDown = iptables -t nat -F WS_2FA_REDIRECT 2>/dev/null || true
-PostDown = iptables -t nat -X WS_2FA_REDIRECT 2>/dev/null || true
 PostDown = ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true
 PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL6 2>/dev/null || true
 PostDown = ip6tables -F WS_2FA_PORTAL6 2>/dev/null || true
 PostDown = ip6tables -X WS_2FA_PORTAL6 2>/dev/null || true
-PostDown = ip6tables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -j WS_2FA_REDIRECT6 2>/dev/null || true
-PostDown = ip6tables -t nat -F WS_2FA_REDIRECT6 2>/dev/null || true
-PostDown = ip6tables -t nat -X WS_2FA_REDIRECT6 2>/dev/null || true
 PostDown = ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	fi
