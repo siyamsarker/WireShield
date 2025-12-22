@@ -663,62 +663,96 @@ async def success_page(client_id: Optional[str] = None):
     """Success page after 2FA verification - indicates client can now access internet."""
     return HTMLResponse("""
 <!DOCTYPE html>
-<html lang=\"en\">
+<html lang="en">
 <head>
-    <meta charset=\"UTF-8\">
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-    <title>WireShield 2FA — Connected</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WireShield — Connected</title>
     <style>
-        :root {\n            --bg: #0b1224;\n            --card: #0f172a;\n            --card-soft: #152036;\n            --text: #e7ecf5;\n            --muted: #94a3b8;\n            --accent: #0ea5e9;\n            --success: #22c55e;\n            --border: rgba(255,255,255,0.08);\n            --radius: 16px;\n        }
-        * { margin:0; padding:0; box-sizing:border-box; }
+        :root {
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --muted: #64748b;
+            --accent: #2563eb;
+            --success: #16a34a;
+            --border: #e2e8f0;
+            --radius: 12px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
-            background: radial-gradient(circle at 10% 20%, rgba(14,165,233,0.15), transparent 25%),
-                        radial-gradient(circle at 80% 0%, rgba(34,197,94,0.12), transparent 25%),
-                        linear-gradient(135deg, #0b1224 0%, #0f162b 40%, #0b1224 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
             color: var(--text);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 32px;
+            padding: 24px;
         }
-        .shell {
-            width: min(640px, 100%);
-            background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+        .container {
+            width: 100%;
+            max-width: 420px;
+            background: var(--card);
             border: 1px solid var(--border);
-            border-radius: calc(var(--radius) + 4px);
-            box-shadow: 0 24px 80px rgba(0,0,0,0.45);
-            padding: 26px;
-            backdrop-filter: blur(10px);
+            border-radius: var(--radius);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+            padding: 32px;
+            text-align: center;
         }
-        .top { display:flex; justify-content:space-between; gap:16px; margin-bottom:18px; }
-        .brand { display:flex; align-items:center; gap:12px; }
-        .badge { width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg, #0ea5e9, #22c55e); display:grid; place-items:center; font-size:20px; color:#0b1224; font-weight:700; }
-        .title h1 { font-size:20px; letter-spacing:-0.01em; }
-        .title p { color: var(--muted); font-size: 13px; margin-top: 2px; }
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; text-align:center; }
-        .tick { width:74px; height:74px; border-radius:22px; margin: 0 auto 16px; display:grid; place-items:center; background: radial-gradient(circle, rgba(34,197,94,0.4) 0%, rgba(34,197,94,0.08) 60%, transparent 70%); color: var(--success); font-size:36px; }
-        .status { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.35); color: #bbf7d0; padding: 12px 14px; border-radius: 12px; margin: 16px 0; font-size: 14px; }
-        .note { font-size: 13px; color: var(--muted); margin-top: 12px; }
-        button { margin-top: 16px; width: 100%; padding: 12px 14px; border-radius: 12px; border: none; background: linear-gradient(135deg, var(--accent), #0284c7); color:#0b1224; font-weight:700; cursor:pointer; }
-        button:hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(14,165,233,0.35); }
+        .icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            background: #dcfce7;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .icon svg { width: 32px; height: 32px; color: var(--success); }
+        h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+        .subtitle { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+        .status-box {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .status-item { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #166534; padding: 4px 0; }
+        .status-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .note { font-size: 13px; color: var(--muted); line-height: 1.5; }
+        .btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 24px;
+            background: var(--accent);
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn:hover { background: #1d4ed8; }
     </style>
 </head>
 <body>
-    <div class=\"shell\">
-        <div class=\"top\">
-            <div class=\"brand\"><div class=\"badge\">WS</div><div class=\"title\"><h1>WireShield 2FA — Connected</h1><p>Session active</p></div></div>
-            <div style=\"color:#94a3b8; font-size:13px;\">Secure channel via TLS 1.2+</div>
+    <div class="container">
+        <div class="icon">
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         </div>
-        <div class=\"card\">
-            <div class=\"tick\">✓</div>
-            <h2 style=\"margin-bottom:8px;\">Successfully Verified</h2>
-            <p style=\"color:#cbd5e1;\">Your 2FA authentication was successful.</p>
-            <div class=\"status\">✓ VPN access enabled • ✓ Internet access • ✓ Session valid 24h</div>
-            <div class=\"note\">You can close this window and enjoy your secure VPN connection.</div>
-            <button onclick=\"window.close();\">Close</button>
+        <h1>Verification Successful</h1>
+        <p class="subtitle">Your two-factor authentication is complete.</p>
+        <div class="status-box">
+            <div class="status-item"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> VPN connection is now active</div>
+            <div class="status-item"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Full internet access enabled</div>
+            <div class="status-item"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Session valid for 24 hours</div>
         </div>
+        <p class="note">You can close this window and continue using your secure VPN connection.</p>
+        <button class="btn" onclick="window.close();">Close Window</button>
     </div>
 </body>
 </html>
@@ -728,460 +762,455 @@ async def success_page(client_id: Optional[str] = None):
 # Web UI HTML
 # ============================================================================
 def get_2fa_ui_html(client_id: str) -> str:
-    """Return modern, responsive 2FA setup/verification UI."""
+    """Return modern, responsive 2FA setup/verification UI with light enterprise theme."""
     return HTMLResponse(f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WireShield 2FA</title>
+    <title>WireShield — 2FA Setup</title>
     <style>
         :root {{
-            --bg: #0b1224;
-            --card: #0f172a;
-            --card-soft: #152036;
-            --text: #e7ecf5;
-            --muted: #94a3b8;
-            --accent: #0ea5e9;
-            --accent-strong: #0284c7;
-            --success: #22c55e;
-            --error: #f43f5e;
-            --border: rgba(255, 255, 255, 0.08);
-            --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-            --radius: 16px;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --card-alt: #f8fafc;
+            --text: #1e293b;
+            --muted: #64748b;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --success: #16a34a;
+            --error: #dc2626;
+            --border: #e2e8f0;
+            --radius: 12px;
         }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
-            background: radial-gradient(circle at 10% 20%, rgba(14,165,233,0.15), transparent 25%),
-                        radial-gradient(circle at 80% 0%, rgba(34,197,94,0.12), transparent 25%),
-                        linear-gradient(135deg, #0b1224 0%, #0f162b 40%, #0b1224 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
             color: var(--text);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 32px;
+            padding: 24px;
         }}
-        .shell {{
-            width: min(960px, 100%);
-            background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-            border: 1px solid var(--border);
-            border-radius: calc(var(--radius) + 4px);
-            box-shadow: var(--shadow);
-            padding: 26px;
-            backdrop-filter: blur(10px);
+        .wrapper {{
+            max-width: 880px;
+            margin: 0 auto;
         }}
-        .top {{
+        .header {{
             display: flex;
             justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 18px;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
         }}
         .brand {{
             display: flex;
             align-items: center;
             gap: 12px;
         }}
-        .badge {{
-            width: 40px;
-            height: 40px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #0ea5e9, #22c55e);
-            display: grid;
-            place-items: center;
-            font-size: 20px;
-            color: #0b1224;
-            font-weight: 700;
-        }}
-        .title-block h1 {{ font-size: 20px; letter-spacing: -0.01em; }}
-        .title-block p {{ color: var(--muted); font-size: 13px; margin-top: 2px; }}
-        .meta {{
+        .logo {{
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: var(--accent);
             display: flex;
-            gap: 12px;
             align-items: center;
-            color: var(--muted);
-            font-size: 13px;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: #fff;
         }}
-        .meta .dot {{ width: 6px; height: 6px; border-radius: 999px; background: var(--accent); display: inline-block; margin-right: 6px; }}
+        .brand-text h1 {{
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+        }}
+        .brand-text p {{
+            font-size: 13px;
+            color: var(--muted);
+            margin-top: 2px;
+        }}
+        .secure-badge {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--muted);
+            background: var(--card);
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }}
+        .secure-badge svg {{ width: 14px; height: 14px; color: var(--success); }}
         .grid {{
             display: grid;
-            grid-template-columns: 1.1fr 0.9fr;
-            gap: 18px;
+            grid-template-columns: 1fr 340px;
+            gap: 20px;
         }}
         .card {{
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 22px;
+            padding: 24px;
         }}
-        .card + .card {{ margin-top: 0; }}
-        .section-title {{
+        .card-header {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }}
+        .card-header h2 {{
+            font-size: 15px;
+            font-weight: 600;
+        }}
+        .badge {{
+            font-size: 11px;
+            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #dbeafe;
+            color: var(--accent);
+        }}
+        .client-info {{
+            background: var(--card-alt);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 13px;
+            color: var(--text);
+            margin-bottom: 16px;
+        }}
+        .steps {{
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }}
+        .step {{
+            flex: 1;
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 12px;
-            font-weight: 600;
-            color: #e2e8f0;
-        }}
-        .section-title .pill {{
-            background: rgba(14,165,233,0.15);
-            color: var(--accent);
-            padding: 4px 10px;
-            border-radius: 999px;
+            padding: 10px 12px;
+            background: var(--card-alt);
+            border: 1px solid var(--border);
+            border-radius: 8px;
             font-size: 12px;
-            border: 1px solid rgba(14,165,233,0.25);
-        }}
-        .info-box {{
-            background: var(--card-soft);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 14px 16px;
-            font-size: 14px;
             color: var(--muted);
-            line-height: 1.5;
-        }}
-        .client-id {{
-            margin-top: 10px;
-            padding: 12px 14px;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid var(--border);
-            font-family: "SFMono-Regular", "Consolas", monospace;
-            font-size: 13px;
-            color: #d7e3f4;
-        }}
-        .steps {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 10px;
-            margin: 14px 0 6px;
-        }}
-        .step {{
-            padding: 12px 14px;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            background: rgba(255,255,255,0.02);
-            color: var(--muted);
-            font-size: 13px;
-            display: flex;
-            gap: 10px;
-            align-items: center;
         }}
         .step.active {{
-            background: rgba(14,165,233,0.12);
-            color: var(--text);
-            border-color: rgba(14,165,233,0.35);
+            background: #dbeafe;
+            border-color: #93c5fd;
+            color: var(--accent);
         }}
-        .step .index {{
-            width: 28px;
-            height: 28px;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.05);
-            display: grid;
-            place-items: center;
-            font-weight: 600;
-            color: #e2e8f0;
-        }}
-        .qr {{ text-align: center; margin-top: 12px; }}
-        .qr img {{
-            max-width: 240px;
-            width: 100%;
-            border-radius: 14px;
+        .step-num {{
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            background: var(--card);
             border: 1px solid var(--border);
-            background: #0b1224;
-            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 11px;
         }}
-        .secret-code {{
-            background: #0b1224;
-            border: 1px dashed rgba(255,255,255,0.15);
-            color: #e2e8f0;
-            padding: 12px;
-            border-radius: 12px;
-            font-family: "SFMono-Regular", "Consolas", monospace;
+        .step.active .step-num {{
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }}
+        .section {{
+            margin-bottom: 20px;
+        }}
+        .section-label {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
             font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 10px;
+        }}
+        .section-label .num {{
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #fff;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .btn {{
+            width: 100%;
+            padding: 11px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+        .btn-primary {{
+            background: var(--accent);
+            color: #fff;
+        }}
+        .btn-primary:hover {{ background: var(--accent-hover); }}
+        .btn-primary:disabled {{ background: #94a3b8; cursor: not-allowed; }}
+        .qr-box {{
+            display: none;
+            text-align: center;
+            margin-top: 16px;
+        }}
+        .qr-box img {{
+            width: 180px;
+            height: 180px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #fff;
+            padding: 8px;
+        }}
+        .secret-box {{
+            display: none;
             margin-top: 12px;
+            background: var(--card-alt);
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 12px;
+            color: var(--text);
             word-break: break-all;
+            text-align: center;
         }}
         label {{
             display: block;
-            color: var(--muted);
             font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
             margin-bottom: 6px;
         }}
         input[type="text"] {{
             width: 100%;
-            padding: 12px 14px;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            background: rgba(255,255,255,0.03);
-            color: var(--text);
+            padding: 10px 14px;
             font-size: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text);
             outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }}
         input[type="text"]:focus {{
-            border-color: rgba(14,165,233,0.6);
-            box-shadow: 0 0 0 3px rgba(14,165,233,0.18);
-        }}
-        button {{
-            width: 100%;
-            padding: 12px 14px;
-            border-radius: 12px;
-            border: none;
-            background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-            color: #0b1224;
-            font-weight: 700;
-            letter-spacing: 0.01em;
-            cursor: pointer;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-        }}
-        button:hover {{ transform: translateY(-1px); box-shadow: 0 12px 30px rgba(14,165,233,0.35); }}
-        button:active {{ transform: translateY(0); }}
-        button:disabled {{ opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }}
-        .muted {{ color: var(--muted); font-size: 13px; }}
-        .status {{
-            display: grid;
-            gap: 10px;
-            margin-top: 10px;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }}
         .alert {{
             display: none;
-            padding: 12px 14px;
-            border-radius: 10px;
-            font-size: 14px;
-            border: 1px solid transparent;
-        }}
-        .alert.success {{
-            display: none;
-            background: rgba(34,197,94,0.12);
-            color: #bbf7d0;
-            border-color: rgba(34,197,94,0.35);
-        }}
-        .alert.error {{
-            display: none;
-            background: rgba(244,63,94,0.12);
-            color: #fecdd3;
-            border-color: rgba(244,63,94,0.35);
-        }}
-        .pill-row {{
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
             margin-top: 12px;
         }}
-        .pill-row .pill {{
-            background: rgba(255,255,255,0.04);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 8px 12px;
-            border-radius: 999px;
-            font-size: 12px;
+        .alert-success {{
+            background: #dcfce7;
+            border: 1px solid #bbf7d0;
+            color: #166534;
         }}
-        .success-view {{ text-align: center; padding: 10px 6px 0; }}
-        .success-view h2 {{ margin-bottom: 8px; letter-spacing: -0.01em; }}
-        .success-view p {{ color: var(--muted); margin-bottom: 16px; }}
-        .tick {{
-            width: 74px;
-            height: 74px;
-            border-radius: 22px;
-            margin: 0 auto 16px;
-            display: grid;
-            place-items: center;
-            background: radial-gradient(circle, rgba(34,197,94,0.4) 0%, rgba(34,197,94,0.08) 60%, transparent 70%);
-            color: var(--success);
-            font-size: 36px;
+        .alert-error {{
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+        }}
+        .info-card {{
+            background: var(--card-alt);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }}
+        .tags {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 16px;
+        }}
+        .tag {{
+            font-size: 11px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            background: var(--card-alt);
+            border: 1px solid var(--border);
+            color: var(--muted);
         }}
         .spinner {{
-            border: 3px solid rgba(255,255,255,0.08);
-            border-top: 3px solid var(--accent);
-            border-radius: 50%;
-            width: 18px;
-            height: 18px;
-            animation: spin 0.9s linear infinite;
             display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
             margin-right: 8px;
+            vertical-align: middle;
         }}
-        @keyframes spin {{
-            0% {{ transform: rotate(0deg); }}
-            100% {{ transform: rotate(360deg); }}
-        }}
-        @media (max-width: 900px) {{
+        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+        @media (max-width: 800px) {{
             .grid {{ grid-template-columns: 1fr; }}
-            .shell {{ padding: 20px; }}
+            .header {{ flex-direction: column; align-items: flex-start; gap: 12px; }}
+            .steps {{ flex-direction: column; }}
         }}
     </style>
 </head>
-<body onload="onLoad()">
-    <div class="shell">
-        <div class="top">
+<body onload="init()">
+    <div class="wrapper">
+        <div class="header">
             <div class="brand">
-                <div class="badge">WS</div>
-                <div class="title-block">
-                    <h1>WireShield 2FA Verification</h1>
-                    <p>Pre-connection identity check for VPN access</p>
+                <div class="logo">WS</div>
+                <div class="brand-text">
+                    <h1>WireShield 2FA Setup</h1>
+                    <p>Configure two-factor authentication for VPN access</p>
                 </div>
             </div>
-            <div class="meta">
-                <span class="dot"></span>
-                Secure channel via TLS 1.2+
+            <div class="secure-badge">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                Secure TLS Connection
             </div>
         </div>
         <div class="grid">
             <div class="card">
-                <div class="section-title"><span class="pill">Client</span> Verification Flow</div>
-                <div class="client-id">Client ID: {client_id}</div>
-                <div class="steps">
-                    <div class="step active"><span class="index">1</span>Get authenticator</div>
-                    <div class="step active"><span class="index">2</span>Scan QR or copy code</div>
-                    <div class="step"><span class="index">3</span>Enter 6-digit TOTP</div>
+                <div class="card-header">
+                    <h2>Authentication Setup</h2>
+                    <span class="badge">Required</span>
                 </div>
-                <div class="info-box">Use Google Authenticator, 1Password, or any TOTP app. Codes rotate every 30 seconds and tolerate slight clock drift.</div>
+                <div class="client-info">Client ID: {client_id}</div>
+                <div class="steps">
+                    <div class="step active"><span class="step-num">1</span>Generate QR</div>
+                    <div class="step active"><span class="step-num">2</span>Scan Code</div>
+                    <div class="step"><span class="step-num">3</span>Verify</div>
+                </div>
 
                 <div id="setupPhase">
-                    <div class="section-title" style="margin-top:16px;"><span class="pill">Step 1</span>Generate QR</div>
-                        <button onclick="generateQR()">Generate QR code</button>
-                    <div id="qrContainer" class="qr" style="display:none;">
-                        <img id="qrImage" src="" alt="QR code">
-                    </div>
-                    <div id="secretContainer" style="display:none;">
-                        <div class="muted" style="margin-top:10px;">Or enter this secret manually:</div>
-                        <div class="secret-code" id="secretCode"></div>
+                    <div class="section">
+                        <div class="section-label"><span class="num">1</span>Generate QR Code</div>
+                        <button class="btn btn-primary" onclick="generateQR()">Generate QR Code</button>
+                        <div class="qr-box" id="qrBox">
+                            <img id="qrImage" src="" alt="QR Code">
+                        </div>
+                        <div class="secret-box" id="secretBox"></div>
                     </div>
 
-                    <div class="section-title" style="margin-top:20px;"><span class="pill">Step 2</span>Verify TOTP</div>
-                    <label for="verifyCode">One-time code</label>
-                    <input type="text" id="verifyCode" placeholder="123456" maxlength="6" pattern="[0-9]{{6}}" inputmode="numeric" autocomplete="one-time-code" />
-                    <button onclick="verifySetup()" id="verifyBtn" style="margin-top:12px;">Verify and continue</button>
-
-                    <div class="status">
-                        <div id="successMsg" class="alert success"></div>
-                        <div id="errorMsg" class="alert error"></div>
+                    <div class="section">
+                        <div class="section-label"><span class="num">2</span>Enter Verification Code</div>
+                        <label for="code">6-digit code from your authenticator app</label>
+                        <input type="text" id="code" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+                        <button class="btn btn-primary" id="verifyBtn" onclick="verify()" style="margin-top: 12px;">Verify &amp; Continue</button>
+                        <div id="successMsg" class="alert alert-success"></div>
+                        <div id="errorMsg" class="alert alert-error"></div>
                     </div>
-                    <div class="pill-row">
-                        <div class="pill">Sessions last 24h</div>
-                        <div class="pill">No code stored server-side</div>
-                        <div class="pill">Time drift tolerant</div>
-                    </div>
-                </div>
 
-                <div id="successPhase" class="success-view" style="display:none;">
-                    <div class="tick">✓</div>
-                    <h2>2FA Verified</h2>
-                    <p>Your session token is active. You can close this window and connect your VPN client.</p>
-                    <button onclick="location.reload()" style="background: linear-gradient(135deg, var(--success), #16a34a); color:#0b1224;">Close and connect</button>
+                    <div class="tags">
+                        <span class="tag">24h session</span>
+                        <span class="tag">No code stored server-side</span>
+                        <span class="tag">Time drift tolerant</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="card" style="background: var(--card-soft);">
-                <div class="section-title"><span class="pill">Details</span>Connection facts</div>
-                <div class="info-box" style="margin-bottom:12px;">
-                    Keep this window open while verifying. If the code fails, wait for the next 30-second rotation and try again.
+            <div class="card">
+                <div class="card-header">
+                    <h2>Setup Guide</h2>
                 </div>
-                <div class="pill-row">
-                    <div class="pill">TLS enforced</div>
-                    <div class="pill">Per-IP rate limits</div>
-                    <div class="pill">No reuse after expiry</div>
-                    <div class="pill">Audit logged</div>
+                <div class="info-card">
+                    <strong>Step 1:</strong> Click "Generate QR Code" to create your unique authentication code.
                 </div>
-                <div class="info-box" style="margin-top:14px;">
-                    Need help? Ensure your device clock is accurate and that your browser allows loading images (for the QR). Self-signed deployments will show a certificate warning; proceed if you trust this host.
+                <div class="info-card">
+                    <strong>Step 2:</strong> Open your authenticator app (Google Authenticator, 1Password, Authy, etc.) and scan the QR code.
+                </div>
+                <div class="info-card">
+                    <strong>Step 3:</strong> Enter the 6-digit code displayed in your authenticator app to complete verification.
+                </div>
+                <div class="info-card" style="background: #fef9c3; border-color: #fde047;">
+                    <strong>Note:</strong> Ensure your device clock is accurate. Codes refresh every 30 seconds.
+                </div>
+                <div class="tags">
+                    <span class="tag">TLS enforced</span>
+                    <span class="tag">Rate limited</span>
+                    <span class="tag">Audit logged</span>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        let setupData = {{}};
-
-        function onLoad() {{
-            const input = document.getElementById('verifyCode');
-            input && input.focus();
-            document.addEventListener('keydown', (e) => {{ if (e.key === 'Enter') verifySetup(); }});
+        function init() {{
+            document.getElementById('code').focus();
+            document.addEventListener('keydown', e => {{ if (e.key === 'Enter') verify(); }});
         }}
 
         async function generateQR() {{
+            hide('errorMsg'); hide('successMsg');
+            const form = new FormData();
+            form.append('client_id', '{client_id}');
             try {{
-                const errorBox = document.getElementById('errorMsg');
-                const successBox = document.getElementById('successMsg');
-                errorBox.style.display = 'none';
-                successBox.style.display = 'none';
-
-                const formData = new FormData();
-                formData.append('client_id', '{client_id}');
-
-                const response = await fetch('/api/setup-start', {{ method: 'POST', body: formData }});
-                const data = await response.json();
-
+                const res = await fetch('/api/setup-start', {{ method: 'POST', body: form }});
+                const data = await res.json();
                 if (data.success) {{
-                    setupData = data;
                     document.getElementById('qrImage').src = data.qr_code;
-                    document.getElementById('secretCode').textContent = data.secret;
-                    document.getElementById('qrContainer').style.display = 'block';
-                    document.getElementById('secretContainer').style.display = 'block';
-                    successBox.textContent = 'QR code generated. Scan or copy the secret to continue.';
-                    successBox.style.display = 'block';
+                    document.getElementById('secretBox').textContent = 'Manual entry: ' + data.secret;
+                    show('qrBox'); show('secretBox');
+                    showSuccess('QR code generated. Scan it with your authenticator app.');
                 }} else {{
                     showError(data.detail || 'Failed to generate QR code');
                 }}
             }} catch (e) {{
-                showError('Error: ' + e.message);
+                showError('Network error: ' + e.message);
             }}
         }}
 
-        async function verifySetup() {{
-            const code = document.getElementById('verifyCode').value;
-            if (code.length !== 6 || isNaN(code)) {{
-                showError('Please enter a valid 6-digit code');
-                return;
-            }}
-
+        async function verify() {{
+            const code = document.getElementById('code').value.trim();
+            if (!/^\\d{{6}}$/.test(code)) {{ showError('Enter a valid 6-digit code'); return; }}
+            hide('errorMsg'); hide('successMsg');
             const btn = document.getElementById('verifyBtn');
-            const originalLabel = btn.innerHTML;
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Verifying...';
             try {{
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spinner"></span>Verifying...';
-
-                const formData = new FormData();
-                formData.append('client_id', '{client_id}');
-                formData.append('code', code);
-
-                const response = await fetch('/api/setup-verify', {{ method: 'POST', body: formData }});
-                const data = await response.json();
-
+                const form = new FormData();
+                form.append('client_id', '{client_id}');
+                form.append('code', code);
+                const res = await fetch('/api/setup-verify', {{ method: 'POST', body: form }});
+                const data = await res.json();
                 if (data.success) {{
                     localStorage.setItem('session_token', data.session_token);
                     localStorage.setItem('client_id', '{client_id}');
-
-                    showSuccess('2FA verified successfully!');
-                    // Redirect to success page after 1.5 seconds
-                    setTimeout(function() {{
-                        window.location.href = '/success?client_id={client_id}';
-                    }}, 1500);
+                    showSuccess('Verification successful! Redirecting...');
+                    setTimeout(() => window.location.href = '/success?client_id={client_id}', 1200);
                 }} else {{
                     showError(data.detail || 'Verification failed');
                     btn.disabled = false;
-                    btn.innerHTML = originalLabel;
+                    btn.innerHTML = orig;
                 }}
             }} catch (e) {{
-                showError('Error: ' + e.message);
+                showError('Network error: ' + e.message);
                 btn.disabled = false;
-                btn.innerHTML = originalLabel;
+                btn.innerHTML = orig;
             }}
         }}
 
-        function showError(msg) {{
-            const el = document.getElementById('errorMsg');
-            el.textContent = msg;
-            el.style.display = 'block';
-        }}
-
-        function showSuccess(msg) {{
-            const el = document.getElementById('successMsg');
-            el.textContent = msg;
-            el.style.display = 'block';
-        }}
+        function show(id) {{ document.getElementById(id).style.display = 'block'; }}
+        function hide(id) {{ document.getElementById(id).style.display = 'none'; }}
+        function showError(msg) {{ const el = document.getElementById('errorMsg'); el.textContent = msg; el.style.display = 'block'; }}
+        function showSuccess(msg) {{ const el = document.getElementById('successMsg'); el.textContent = msg; el.style.display = 'block'; }}
     </script>
 </body>
 </html>
@@ -1191,128 +1220,282 @@ def get_2fa_ui_html(client_id: str) -> str:
 # Verify-only UI (for users who already completed setup)
 # ----------------------------------------------------------------------------
 def get_2fa_verify_only_html(client_id: str) -> str:
+    """Return verify-only UI with light enterprise theme for returning users."""
     return HTMLResponse(f"""
 <!DOCTYPE html>
-<html lang=\"en\">
+<html lang="en">
 <head>
-    <meta charset=\"UTF-8\">
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield — Verify Access</title>
     <style>
         :root {{
-            --bg: #0b1224;
-            --card: #0f172a;
-            --card-soft: #152036;
-            --text: #e7ecf5;
-            --muted: #94a3b8;
-            --accent: #0ea5e9;
-            --accent-strong: #0284c7;
-            --success: #22c55e;
-            --border: rgba(255,255,255,0.08);
-            --radius: 16px;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --card-alt: #f8fafc;
+            --text: #1e293b;
+            --muted: #64748b;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --success: #16a34a;
+            --error: #dc2626;
+            --border: #e2e8f0;
+            --radius: 12px;
         }}
-        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
-            background: radial-gradient(circle at 10% 20%, rgba(14,165,233,0.15), transparent 25%),
-                        radial-gradient(circle at 80% 0%, rgba(34,197,94,0.12), transparent 25%),
-                        linear-gradient(135deg, #0b1224 0%, #0f162b 40%, #0b1224 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
             color: var(--text);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 32px;
+            padding: 24px;
         }}
-        .shell {{
-            width: min(600px, 100%);
-            background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+        .container {{
+            width: 100%;
+            max-width: 420px;
+        }}
+        .header {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }}
+        .logo {{
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: #fff;
+        }}
+        .header-text h1 {{
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+        }}
+        .header-text p {{
+            font-size: 13px;
+            color: var(--muted);
+            margin-top: 2px;
+        }}
+        .card {{
+            background: var(--card);
             border: 1px solid var(--border);
-            border-radius: calc(var(--radius) + 4px);
-            box-shadow: 0 24px 80px rgba(0,0,0,0.45);
-            padding: 26px;
-            backdrop-filter: blur(10px);
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
         }}
-        .top {{ display:flex; justify-content:space-between; gap:16px; margin-bottom:18px; }}
-        .brand {{ display:flex; align-items:center; gap:12px; }}
-        .badge {{ width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg, #0ea5e9, #22c55e); display:grid; place-items:center; font-size:20px; color:#0b1224; font-weight:700; }}
-        .title h1 {{ font-size:20px; letter-spacing:-0.01em; }}
-        .title p {{ color: var(--muted); font-size: 13px; margin-top: 2px; }}
-        .card {{ background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; }}
-        .section-title {{ display:flex; align-items:center; gap:8px; margin-bottom:12px; font-weight:600; color:#e2e8f0; }}
-        .section-title .pill {{ background: rgba(14,165,233,0.15); color: var(--accent); padding: 4px 10px; border-radius: 999px; font-size:12px; border:1px solid rgba(14,165,233,0.25); }}
-        label {{ display:block; color: var(--muted); font-size:13px; margin-bottom:6px; }}
-        input {{ width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text); font-size:14px; }}
-        input:focus {{ border-color: rgba(14,165,233,0.6); box-shadow: 0 0 0 3px rgba(14,165,233,0.18); outline:none; }}
-        button {{ width:100%; padding:12px 14px; border-radius:12px; border:none; background:linear-gradient(135deg, var(--accent), var(--accent-strong)); color:#0b1224; font-weight:700; cursor:pointer; }}
-        button:hover {{ transform: translateY(-1px); box-shadow: 0 12px 30px rgba(14,165,233,0.35); }}
-        .status {{ display:grid; gap:10px; margin-top:10px; }}
-        .ok {{ display:none; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.35); color:#bbf7d0; padding:12px; border-radius:10px; }}
-        .err {{ display:none; background:rgba(244,63,94,0.12); border:1px solid rgba(244,63,94,0.35); color:#fecdd3; padding:12px; border-radius:10px; }}
-        .pill-row {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }}
-        .pill-row .pill {{ background: rgba(255,255,255,0.04); border:1px solid var(--border); color: var(--text); padding:8px 12px; border-radius:999px; font-size:12px; }}
-        .help {{ background: var(--card-soft); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-size: 13px; color: var(--muted); margin-top: 14px; }}
+        .card-title {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }}
+        .card-title h2 {{
+            font-size: 15px;
+            font-weight: 600;
+        }}
+        .badge {{
+            font-size: 11px;
+            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #dcfce7;
+            color: var(--success);
+        }}
+        .client-info {{
+            background: var(--card-alt);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 16px;
+        }}
+        label {{
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            margin-bottom: 6px;
+        }}
+        input {{
+            width: 100%;
+            padding: 12px 14px;
+            font-size: 16px;
+            letter-spacing: 4px;
+            text-align: center;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }}
+        input:focus {{
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }}
+        input::placeholder {{
+            letter-spacing: 2px;
+            color: #cbd5e1;
+        }}
+        .btn {{
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            margin-top: 12px;
+            background: var(--accent);
+            color: #fff;
+        }}
+        .btn:hover {{ background: var(--accent-hover); }}
+        .btn:disabled {{ background: #94a3b8; cursor: not-allowed; }}
+        .alert {{
+            display: none;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 12px;
+        }}
+        .alert-success {{
+            background: #dcfce7;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+        }}
+        .alert-error {{
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+        }}
+        .info {{
+            background: var(--card-alt);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.5;
+            margin-top: 16px;
+        }}
+        .tags {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 16px;
+        }}
+        .tag {{
+            font-size: 11px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            background: var(--card-alt);
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }}
+        .spinner {{
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }}
+        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
     </style>
+</head>
+<body onload="init()">
+    <div class="container">
+        <div class="header">
+            <div class="logo">WS</div>
+            <div class="header-text">
+                <h1>WireShield Verification</h1>
+                <p>Enter your authenticator code to connect</p>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">
+                <h2>Two-Factor Authentication</h2>
+                <span class="badge">Configured</span>
+            </div>
+            <div class="client-info">Client: {client_id}</div>
+            <label for="code">Enter 6-digit code</label>
+            <input type="text" id="code" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="one-time-code">
+            <button class="btn" id="verifyBtn" onclick="verify()">Verify &amp; Connect</button>
+            <div id="ok" class="alert alert-success"></div>
+            <div id="err" class="alert alert-error"></div>
+            <div class="info">
+                Open your authenticator app and enter the current code for WireShield. Codes refresh every 30 seconds.
+            </div>
+            <div class="tags">
+                <span class="tag">TLS secured</span>
+                <span class="tag">Rate limited</span>
+                <span class="tag">24h session</span>
+            </div>
+        </div>
+    </div>
     <script>
-        function onLoad() {{
-            const input = document.getElementById('code');
-            input && input.focus();
-            document.addEventListener('keydown', (e) => {{ if (e.key === 'Enter') verify(); }});
+        function init() {{
+            document.getElementById('code').focus();
+            document.addEventListener('keydown', e => {{ if (e.key === 'Enter') verify(); }});
         }}
         async function verify() {{
             const code = document.getElementById('code').value.trim();
             const ok = document.getElementById('ok');
             const err = document.getElementById('err');
-            ok.style.display='none'; err.style.display='none';
-            if (code.length !== 6 || isNaN(code)) {{ err.textContent='Enter a valid 6‑digit code'; err.style.display='block'; return; }}
-            const body = new FormData();
-            body.append('client_id', '{client_id}');
-            body.append('code', code);
-            const res = await fetch('/api/verify', {{ method:'POST', body }});
-            const data = await res.json();
-            if (data.success) {{
-                localStorage.setItem('session_token', data.session_token);
-                localStorage.setItem('client_id', '{client_id}');
-                ok.textContent = 'Verification successful. Your VPN access is enabled.';
-                ok.style.display='block';
-                setTimeout(()=> window.location.href='/success?client_id={client_id}', 1000);
-            }} else {{
-                err.textContent = data.detail || 'Invalid code';
-                err.style.display='block';
+            ok.style.display = 'none';
+            err.style.display = 'none';
+            if (!/^\\d{{6}}$/.test(code)) {{
+                err.textContent = 'Please enter a valid 6-digit code';
+                err.style.display = 'block';
+                return;
+            }}
+            const btn = document.getElementById('verifyBtn');
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Verifying...';
+            try {{
+                const form = new FormData();
+                form.append('client_id', '{client_id}');
+                form.append('code', code);
+                const res = await fetch('/api/verify', {{ method: 'POST', body: form }});
+                const data = await res.json();
+                if (data.success) {{
+                    localStorage.setItem('session_token', data.session_token);
+                    localStorage.setItem('client_id', '{client_id}');
+                    ok.textContent = 'Verification successful! Connecting...';
+                    ok.style.display = 'block';
+                    setTimeout(() => window.location.href = '/success?client_id={client_id}', 1000);
+                }} else {{
+                    err.textContent = data.detail || 'Invalid code. Please try again.';
+                    err.style.display = 'block';
+                    btn.disabled = false;
+                    btn.innerHTML = orig;
+                }}
+            }} catch (e) {{
+                err.textContent = 'Network error: ' + e.message;
+                err.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = orig;
             }}
         }}
     </script>
-</head>
-<body onload=\"onLoad()\">
-    <div class=\"shell\">
-        <div class=\"top\">
-            <div class=\"brand\">
-                <div class=\"badge\">WS</div>
-                <div class=\"title\">
-                    <h1>WireShield 2FA — Verify</h1>
-                    <p>Client ID: {client_id}</p>
-                </div>
-            </div>
-            <div style=\"color:#94a3b8; font-size:13px;\">Secure channel via TLS 1.2+</div>
-        </div>
-        <div class=\"card\">
-            <div class=\"section-title\"><span class=\"pill\">Step</span> Enter 6‑digit TOTP</div>
-            <label>One-time code</label>
-            <input id=\"code\" maxlength=\"6\" inputmode=\"numeric\" placeholder=\"123456\" />
-            <div style=\"height:10px\"></div>
-            <button onclick=\"verify()\">Verify and connect</button>
-            <div class=\"status\">
-                <div id=\"ok\" class=\"ok\"></div>
-                <div id=\"err\" class=\"err\"></div>
-            </div>
-            <div class=\"pill-row\">
-                <div class=\"pill\">TLS enforced</div>
-                <div class=\"pill\">Per‑IP rate limits</div>
-                <div class=\"pill\">Time drift tolerant</div>
-            </div>
-            <div class=\"help\">Use your authenticator app (Google Authenticator, 1Password, etc.). Codes rotate every 30 seconds. No code is stored server‑side.</div>
-        </div>
-    </div>
 </body>
 </html>
     """)
