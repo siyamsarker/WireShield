@@ -458,7 +458,11 @@ async def setup_start(
         
         img = qr_code.make_image(fill_color="black", back_color="white")
         img_bytes = BytesIO()
-        img.save(img_bytes, format="PNG")
+        try:
+            img.save(img_bytes, format="PNG")
+        except TypeError:
+            # PyPNG fallback (no Pillow installed) does not accept the format kwarg
+            img.save(img_bytes)
         img_base64 = base64.b64encode(img_bytes.getvalue()).decode()
         
         audit_log(client_id, "2FA_SETUP_START", "qr_generated", ip_address)

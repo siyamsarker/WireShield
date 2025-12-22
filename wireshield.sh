@@ -212,7 +212,6 @@ function installQuestions() {
 		echo -e "${ORANGE}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
 		echo ""
 		echo -e "${ORANGE}Tip:${NC} Use arrow keys to navigate. Press ${GREEN}Ctrl+C${NC} to exit at any time."
-		echo -e "${GREEN}WireShield v2.3.0${NC} – Professional WireGuard VPN Management"
 		echo ""
 
 		# Detect public IPv4 or IPv6 address and pre-fill for the user
