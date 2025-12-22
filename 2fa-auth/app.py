@@ -177,6 +177,32 @@ app = FastAPI(
     openapi_url=None,
 )
 
+# HTTP to HTTPS redirect middleware (for captive portal)
+@app.middleware("http")
+async def redirect_http_to_https(request: Request, call_next):
+    """Redirect HTTP requests to HTTPS."""
+    # Check if request came through HTTP (not forwarded from reverse proxy)
+    if request.url.scheme == "http":
+        # Build HTTPS URL, replacing port 80 with 8443
+        https_url = str(request.url)
+        https_url = https_url.replace("http://", "https://", 1)
+        # Replace :80/ with :8443/
+        if ":80/" in https_url:
+            https_url = https_url.replace(":80/", ":8443/")
+        elif https_url.count("://") == 1:
+            # No explicit port in URL, add :8443
+            parts = https_url.split("://")
+            domain_path = parts[1]
+            if "/" in domain_path:
+                domain, path = domain_path.split("/", 1)
+                https_url = f"{parts[0]}://{domain}:8443/{path}"
+            else:
+                https_url = f"{parts[0]}://{domain_path}:8443/"
+        return Response(status_code=307, headers={"Location": https_url})
+    
+    response = await call_next(request)
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["127.0.0.1", "localhost"],
@@ -307,13 +333,50 @@ async def health_check():
 # ============================================================================
 @app.get("/", response_class=HTMLResponse, tags=["ui"])
 async def root(client_id: Optional[str] = None, request: Request = None):
-    """Serve 2FA setup/verification UI."""
-    if not client_id:
-        return HTMLResponse("<h1>Missing client_id</h1>", status_code=400)
-    
+    """
+    Serve 2FA setup/verification UI.
+    Supports:
+    - Direct access with ?client_id=<id>
+    - Auto-discovery mode (detect client_id from database via IP)
+    """
     ip_address = request.client.host if request else "unknown"
-    audit_log(client_id, "UI_ACCESS", "page_loaded", ip_address)
     
+    # If client_id not provided, try to discover from IP
+    if not client_id:
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            # Try to find user by WireGuard IP that matches the connecting client
+            c.execute(
+                """
+                SELECT client_id FROM users 
+                WHERE wg_ipv4 = ? OR wg_ipv6 = ?
+                LIMIT 1
+                """,
+                (ip_address, ip_address)
+            )
+            result = c.fetchone()
+            conn.close()
+            if result:
+                client_id = result[0]
+        except Exception as e:
+            logger.debug(f"Auto-discovery for IP {ip_address} failed: {e}")
+    
+    if not client_id:
+        return HTMLResponse(
+            """
+            <html>
+            <head><title>WireShield 2FA</title></head>
+            <body style="font-family: Arial; text-align: center; padding-top: 50px;">
+            <h2>WireShield 2FA Setup</h2>
+            <p style="color: red;">❌ Unable to identify your client. Please check your VPN connection.</p>
+            </body>
+            </html>
+            """,
+            status_code=400
+        )
+    
+    audit_log(client_id, "UI_ACCESS", "page_loaded", ip_address)
     return get_2fa_ui_html(client_id)
 
 @app.post("/api/setup-start", tags=["2fa-setup"])
@@ -529,6 +592,96 @@ async def validate_session(
     except Exception as e:
         logger.error(f"Session validation error for {client_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Validation failed")
+
+@app.get("/success", response_class=HTMLResponse, tags=["ui"])
+async def success_page(client_id: Optional[str] = None):
+    """Success page after 2FA verification - indicates client can now access internet."""
+    return HTMLResponse("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✓ Connected - WireShield</title>
+    <style>
+        * {margin: 0; padding: 0; box-sizing: border-box;}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 60px 40px;
+            text-align: center;
+            max-width: 500px;
+        }
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 30px;
+            background: #22c55e;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+        }
+        h1 {
+            color: #1f2937;
+            margin-bottom: 12px;
+            font-size: 28px;
+        }
+        p {
+            color: #6b7280;
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+        .status {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+            padding: 16px;
+            border-radius: 12px;
+            margin: 30px 0;
+            font-size: 14px;
+        }
+        .note {
+            font-size: 13px;
+            color: #9ca3af;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-icon">✓</div>
+        <h1>Successfully Verified!</h1>
+        <p>Your 2FA authentication was successful.</p>
+        <div class="status">
+            ✓ Your VPN connection is now active<br>
+            ✓ You have full internet access<br>
+            ✓ Session valid for 24 hours
+        </div>
+        <p style="margin-top: 30px;">You can close this window and enjoy your secure VPN connection.</p>
+        <div class="note">
+            Your session will remain active until you disconnect from the VPN.
+        </div>
+    </div>
+    <script>
+        setTimeout(function() { window.close(); }, 5000);
+    </script>
+</body>
+</html>
+    """)
 
 # ============================================================================
 # Web UI HTML
@@ -957,9 +1110,11 @@ def get_2fa_ui_html(client_id: str) -> str:
                     localStorage.setItem('session_token', data.session_token);
                     localStorage.setItem('client_id', '{client_id}');
 
-                    document.getElementById('setupPhase').style.display = 'none';
-                    document.getElementById('successPhase').style.display = 'block';
                     showSuccess('2FA verified successfully!');
+                    // Redirect to success page after 1.5 seconds
+                    setTimeout(function() {{
+                        window.location.href = '/success?client_id={client_id}';
+                    }}, 1500);
                 }} else {{
                     showError(data.detail || 'Verification failed');
                     btn.disabled = false;
