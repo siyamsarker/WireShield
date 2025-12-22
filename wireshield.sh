@@ -871,27 +871,47 @@ PostDown = firewall-cmd --zone=public --add-interface=${SERVER_WG_NIC} && firewa
 		echo "PostUp = iptables -I INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist
 PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist
-PostUp = iptables -N WS_2FA_FILTER 2>/dev/null || true
-PostUp = iptables -F WS_2FA_FILTER
-PostUp = iptables -A WS_2FA_FILTER -m set --match-set ws_2fa_allowed_v4 src -j ACCEPT
-PostUp = iptables -A WS_2FA_FILTER -j DROP
-PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_FILTER
+PostUp = iptables -N WS_2FA_PORTAL 2>/dev/null || true
+PostUp = iptables -F WS_2FA_PORTAL
+PostUp = iptables -A WS_2FA_PORTAL -p tcp --dport 53 -j ACCEPT
+PostUp = iptables -A WS_2FA_PORTAL -p udp --dport 53 -j ACCEPT
+PostUp = iptables -A WS_2FA_PORTAL -p tcp --dport 8443 -j ACCEPT
+PostUp = iptables -A WS_2FA_PORTAL -p tcp --dport 80 -j ACCEPT
+PostUp = iptables -A WS_2FA_PORTAL -j DROP
+PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL
+PostUp = iptables -t nat -N WS_2FA_REDIRECT 2>/dev/null || true
+PostUp = iptables -t nat -F WS_2FA_REDIRECT
+PostUp = iptables -t nat -A WS_2FA_REDIRECT -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:8443
+PostUp = iptables -t nat -I PREROUTING -i ${SERVER_WG_NIC} -j WS_2FA_REDIRECT
 PostUp = iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
-PostUp = ip6tables -N WS_2FA_FILTER6 2>/dev/null || true
-PostUp = ip6tables -F WS_2FA_FILTER6
-PostUp = ip6tables -A WS_2FA_FILTER6 -m set --match-set ws_2fa_allowed_v6 src -j ACCEPT
-PostUp = ip6tables -A WS_2FA_FILTER6 -j DROP
-PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_FILTER6
+PostUp = ip6tables -N WS_2FA_PORTAL6 2>/dev/null || true
+PostUp = ip6tables -F WS_2FA_PORTAL6
+PostUp = ip6tables -A WS_2FA_PORTAL6 -p tcp --dport 53 -j ACCEPT
+PostUp = ip6tables -A WS_2FA_PORTAL6 -p udp --dport 53 -j ACCEPT
+PostUp = ip6tables -A WS_2FA_PORTAL6 -p tcp --dport 8443 -j ACCEPT
+PostUp = ip6tables -A WS_2FA_PORTAL6 -p tcp --dport 80 -j ACCEPT
+PostUp = ip6tables -A WS_2FA_PORTAL6 -j DROP
+PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL6
+PostUp = ip6tables -t nat -N WS_2FA_REDIRECT6 2>/dev/null || true
+PostUp = ip6tables -t nat -F WS_2FA_REDIRECT6
+PostUp = ip6tables -t nat -A WS_2FA_REDIRECT6 -p tcp --dport 80 -j DNAT --to-destination [::1]:8443
+PostUp = ip6tables -t nat -I PREROUTING -i ${SERVER_WG_NIC} -j WS_2FA_REDIRECT6
 PostUp = ip6tables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostDown = iptables -D INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
-PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_FILTER 2>/dev/null || true
-PostDown = iptables -F WS_2FA_FILTER 2>/dev/null || true
-PostDown = iptables -X WS_2FA_FILTER 2>/dev/null || true
+PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL 2>/dev/null || true
+PostDown = iptables -F WS_2FA_PORTAL 2>/dev/null || true
+PostDown = iptables -X WS_2FA_PORTAL 2>/dev/null || true
+PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -j WS_2FA_REDIRECT 2>/dev/null || true
+PostDown = iptables -t nat -F WS_2FA_REDIRECT 2>/dev/null || true
+PostDown = iptables -t nat -X WS_2FA_REDIRECT 2>/dev/null || true
 PostDown = ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true
-PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_FILTER6 2>/dev/null || true
-PostDown = ip6tables -F WS_2FA_FILTER6 2>/dev/null || true
-PostDown = ip6tables -X WS_2FA_FILTER6 2>/dev/null || true
+PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL6 2>/dev/null || true
+PostDown = ip6tables -F WS_2FA_PORTAL6 2>/dev/null || true
+PostDown = ip6tables -X WS_2FA_PORTAL6 2>/dev/null || true
+PostDown = ip6tables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -j WS_2FA_REDIRECT6 2>/dev/null || true
+PostDown = ip6tables -t nat -F WS_2FA_REDIRECT6 2>/dev/null || true
+PostDown = ip6tables -t nat -X WS_2FA_REDIRECT6 2>/dev/null || true
 PostDown = ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	fi
@@ -1432,12 +1452,18 @@ function uninstallWg() {
 
 		# Remove 2FA gating firewall structures
 		echo -e "${ORANGE}Removing 2FA gating firewall rules...${NC}"
-		iptables -D FORWARD -j WS_2FA_FILTER 2>/dev/null || true
-		iptables -F WS_2FA_FILTER 2>/dev/null || true
-		iptables -X WS_2FA_FILTER 2>/dev/null || true
-		ip6tables -D FORWARD -j WS_2FA_FILTER6 2>/dev/null || true
-		ip6tables -F WS_2FA_FILTER6 2>/dev/null || true
-		ip6tables -X WS_2FA_FILTER6 2>/dev/null || true
+		iptables -D FORWARD -j WS_2FA_PORTAL 2>/dev/null || true
+		iptables -F WS_2FA_PORTAL 2>/dev/null || true
+		iptables -X WS_2FA_PORTAL 2>/dev/null || true
+		iptables -t nat -D PREROUTING -j WS_2FA_REDIRECT 2>/dev/null || true
+		iptables -t nat -F WS_2FA_REDIRECT 2>/dev/null || true
+		iptables -t nat -X WS_2FA_REDIRECT 2>/dev/null || true
+		ip6tables -D FORWARD -j WS_2FA_PORTAL6 2>/dev/null || true
+		ip6tables -F WS_2FA_PORTAL6 2>/dev/null || true
+		ip6tables -X WS_2FA_PORTAL6 2>/dev/null || true
+		ip6tables -t nat -D PREROUTING -j WS_2FA_REDIRECT6 2>/dev/null || true
+		ip6tables -t nat -F WS_2FA_REDIRECT6 2>/dev/null || true
+		ip6tables -t nat -X WS_2FA_REDIRECT6 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 
