@@ -31,6 +31,8 @@ import pyotp
 import qrcode
 from io import BytesIO
 import base64
+import socket
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ============================================================================
 # Configuration
@@ -47,6 +49,7 @@ LOG_LEVEL = getenv_multi("INFO", "WS_2FA_LOG_LEVEL", "2FA_LOG_LEVEL")
 AUTH_DB_PATH = getenv_multi("/etc/wireshield/2fa/auth.db", "WS_2FA_DB_PATH", "2FA_DB_PATH")
 AUTH_HOST = getenv_multi("0.0.0.0", "WS_2FA_HOST", "2FA_HOST")
 AUTH_PORT = int(getenv_multi("8443", "WS_2FA_PORT", "2FA_PORT"))
+AUTH_HTTP_PORT = int(getenv_multi("8080", "WS_2FA_HTTP_PORT", "2FA_HTTP_PORT"))
 SSL_CERT = getenv_multi("/etc/wireshield/2fa/cert.pem", "WS_2FA_SSL_CERT", "2FA_SSL_CERT")
 SSL_KEY = getenv_multi("/etc/wireshield/2fa/key.pem", "WS_2FA_SSL_KEY", "2FA_SSL_KEY")
 SSL_ENABLED = getenv_multi("true", "WS_2FA_SSL_ENABLED", "2FA_SSL_ENABLED").lower() in ("true", "1", "yes")
@@ -202,6 +205,42 @@ async def redirect_http_to_https(request: Request, call_next):
     
     response = await call_next(request)
     return response
+
+# ----------------------------------------------------------------------------
+# Lightweight HTTP redirector (port 8080) for captive portal
+# ----------------------------------------------------------------------------
+class _RedirectHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            target = UI_BASE_URL + "/"
+            self.send_response(302)
+            self.send_header("Location", target)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(f"<html><head><meta http-equiv='refresh' content='0;url={target}'/></head><body>Redirecting to <a href='{target}'>WireShield 2FA</a>...</body></html>".encode("utf-8"))
+        except Exception:
+            pass
+
+    def log_message(self, fmt, *args):
+        return  # quiet
+
+def _start_http_redirector_ipv4():
+    try:
+        httpd = HTTPServer(("0.0.0.0", AUTH_HTTP_PORT), _RedirectHandler)
+        logger.info(f"HTTP redirector listening on 0.0.0.0:{AUTH_HTTP_PORT}")
+        httpd.serve_forever()
+    except Exception as e:
+        logger.debug(f"HTTP redirector IPv4 failed: {e}")
+
+def _start_http_redirector_ipv6():
+    try:
+        class HTTPServerV6(HTTPServer):
+            address_family = socket.AF_INET6
+        httpd6 = HTTPServerV6(("::", AUTH_HTTP_PORT), _RedirectHandler)
+        logger.info(f"HTTP redirector listening on [::]:{AUTH_HTTP_PORT}")
+        httpd6.serve_forever()
+    except Exception as e:
+        logger.debug(f"HTTP redirector IPv6 failed: {e}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -1155,6 +1194,9 @@ if __name__ == "__main__":
     init_db()
     # Start background ipset sync thread
     threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
+    # Start captive portal HTTP redirector (IPv4 and IPv6) on AUTH_HTTP_PORT
+    threading.Thread(target=_start_http_redirector_ipv4, daemon=True).start()
+    threading.Thread(target=_start_http_redirector_ipv6, daemon=True).start()
     
     # Log SSL configuration
     if SSL_ENABLED:
