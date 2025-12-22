@@ -402,7 +402,20 @@ async def root(client_id: Optional[str] = None, request: Request = None):
             status_code=400
         )
     
-    audit_log(client_id, "UI_ACCESS", "page_loaded", ip_address)
+    # Decide which UI to render based on whether 2FA is already configured
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT enabled, totp_secret FROM users WHERE client_id = ?", (client_id,))
+        row = c.fetchone()
+        conn.close()
+        if row and int(row[0]) == 1 and (row[1] or "") != "":
+            audit_log(client_id, "UI_ACCESS", "verify_only", ip_address)
+            return get_2fa_verify_only_html(client_id)
+    except Exception as e:
+        logger.debug(f"State check failed for {client_id}: {e}")
+
+    audit_log(client_id, "UI_ACCESS", "setup_flow", ip_address)
     return get_2fa_ui_html(client_id)
 
 @app.post("/api/setup-start", tags=["2fa-setup"])
@@ -418,10 +431,15 @@ async def setup_start(
         conn = get_db()
         c = conn.cursor()
         
-        # Check if user exists
-        c.execute("SELECT id, totp_secret FROM users WHERE client_id = ?", (client_id,))
+        # Check if user exists and whether already configured
+        c.execute("SELECT id, totp_secret, enabled FROM users WHERE client_id = ?", (client_id,))
         user = c.fetchone()
         
+        if user and user[2]:
+            conn.close()
+            audit_log(client_id, "2FA_SETUP_START", "already_configured", ip_address)
+            return JSONResponse({"success": False, "detail": "already_configured"}, status_code=400)
+
         if not user:
             # Create new user
             c.execute(
@@ -1166,6 +1184,96 @@ def get_2fa_ui_html(client_id: str) -> str:
             el.style.display = 'block';
         }}
     </script>
+</body>
+</html>
+    """)
+
+# ----------------------------------------------------------------------------
+# Verify-only UI (for users who already completed setup)
+# ----------------------------------------------------------------------------
+def get_2fa_verify_only_html(client_id: str) -> str:
+    return HTMLResponse(f"""
+<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+    <title>WireShield 2FA Verification</title>
+    <style>
+        :root {{
+            --bg: #0b1224;
+            --card: #0f172a;
+            --text: #e7ecf5;
+            --muted: #94a3b8;
+            --accent: #0ea5e9;
+            --accent-strong: #0284c7;
+            --border: rgba(255, 255, 255, 0.08);
+        }}
+        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        body {{
+            font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+            background: radial-gradient(circle at 10% 20%, rgba(14,165,233,0.15), transparent 25%),
+                        radial-gradient(circle at 80% 0%, rgba(34,197,94,0.12), transparent 25%),
+                        linear-gradient(135deg, #0b1224 0%, #0f162b 40%, #0b1224 100%);
+            min-height: 100vh; display:flex; align-items:center; justify-content:center; padding:32px; color:var(--text);
+        }}
+        .wrap {{ width:min(560px,100%); background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:16px; padding:24px; box-shadow:0 24px 80px rgba(0,0,0,0.45); }}
+        .header {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }}
+        .badge {{ width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg, #0ea5e9, #22c55e); display:grid; place-items:center; font-weight:700; color:#0b1224; }}
+        .title h1 {{ font-size:18px; margin:0; }}
+        .title p {{ font-size:13px; color:var(--muted); margin-top:2px; }}
+        .card {{ background:#0f172a; border:1px solid var(--border); border-radius:14px; padding:18px; margin-top:10px; }}
+        label {{ display:block; color:var(--muted); font-size:13px; margin-bottom:6px; }}
+        input {{ width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.03); color:var(--text); font-size:14px; }}
+        button {{ width:100%; padding:12px 14px; border-radius:12px; border:none; background:linear-gradient(135deg, var(--accent), var(--accent-strong)); color:#0b1224; font-weight:700; cursor:pointer; }}
+        .status {{ margin-top:10px; font-size:14px; }}
+        .ok {{ display:none; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.35); color:#bbf7d0; padding:12px; border-radius:10px; }}
+        .err {{ display:none; background:rgba(244,63,94,0.12); border:1px solid rgba(244,63,94,0.35); color:#fecdd3; padding:12px; border-radius:10px; }}
+        .meta {{ margin-top:12px; color:var(--muted); font-size:12px; text-align:center; }}
+    </style>
+    <script>
+        async function verify() {{
+            const code = document.getElementById('code').value.trim();
+            const ok = document.getElementById('ok');
+            const err = document.getElementById('err');
+            ok.style.display='none'; err.style.display='none';
+            if (code.length !== 6 || isNaN(code)) {{ err.textContent='Enter a valid 6-digit code'; err.style.display='block'; return; }}
+            const body = new FormData();
+            body.append('client_id', '{client_id}');
+            body.append('code', code);
+            const res = await fetch('/api/verify', {{ method:'POST', body }});
+            const data = await res.json();
+            if (data.success) {{
+                localStorage.setItem('session_token', data.session_token);
+                localStorage.setItem('client_id', '{client_id}');
+                ok.textContent = 'Verified. You now have internet access.';
+                ok.style.display='block';
+                setTimeout(()=> window.location.href='/success?client_id={client_id}', 1000);
+            }} else {{
+                err.textContent = data.detail || 'Invalid code';
+                err.style.display='block';
+            }}
+        }}
+    </script>
+</head>
+<body>
+    <div class=\"wrap\">
+        <div class=\"header\">
+            <div style=\"display:flex; gap:12px; align-items:center;\"><div class=\"badge\">WS</div><div class=\"title\"><h1>2FA Verification</h1><p>Client ID: {client_id}</p></div></div>
+            <div style=\"font-size:12px; color:#94a3b8;\">TLS 1.2+ enforced</div>
+        </div>
+        <div class=\"card\">
+            <label>Enter 6-digit code</label>
+            <input id=\"code\" maxlength=\"6\" inputmode=\"numeric\" placeholder=\"123456\" />
+            <div style=\"height:10px\"></div>
+            <button onclick=\"verify()\">Verify</button>
+            <div class=\"status\">
+                <div id=\"ok\" class=\"ok\"></div>
+                <div id=\"err\" class=\"err\"></div>
+            </div>
+            <div class=\"meta\">Use your authenticator app. Codes rotate every 30s.</div>
+        </div>
+    </div>
 </body>
 </html>
     """)
