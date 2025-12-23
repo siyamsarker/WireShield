@@ -212,7 +212,7 @@ class _RedirectHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format, *args):
         return  # quiet
 
 def _start_http_redirector_ipv4():
@@ -362,14 +362,14 @@ async def health_check():
 # Routes: 2FA Setup & Verification
 # ============================================================================
 @app.get("/", response_class=HTMLResponse, tags=["ui"])
-async def root(client_id: Optional[str] = None, request: Request = None):
+async def root(client_id: Optional[str] = None, request: Optional[Request] = None):
     """
     Serve 2FA setup/verification UI.
     Supports:
     - Direct access with ?client_id=<id>
     - Auto-discovery mode (detect client_id from database via IP)
     """
-    ip_address = request.client.host if request else "unknown"
+    ip_address = request.client.host if request and request.client else "unknown"
     
     # If client_id not provided, try to discover from IP
     if not client_id:
@@ -425,11 +425,11 @@ async def root(client_id: Optional[str] = None, request: Request = None):
 @app.post("/api/setup-start", tags=["2fa-setup"])
 async def setup_start(
     client_id: str = Form(...),
-    request: Request = None,
+    request: Optional[Request] = None,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Start 2FA setup: generate TOTP secret and QR code."""
-    ip_address = request.client.host if request else "unknown"
+    ip_address = request.client.host if request and request.client else "unknown"
     
     try:
         conn = get_db()
@@ -468,12 +468,8 @@ async def setup_start(
         
         img = qr_code.make_image(fill_color="black", back_color="white")
         img_bytes = BytesIO()
-        try:
-            # If Pillow backend is available, optimize PNG output
-            img.save(img_bytes, format="PNG", optimize=True)
-        except TypeError:
-            # PyPNG fallback (no Pillow installed) does not accept the format kwarg
-            img.save(img_bytes)
+        # Save QR code (PyPNG backend doesn't accept format/optimize kwargs)
+        img.save(img_bytes)
         img_base64 = base64.b64encode(img_bytes.getvalue()).decode()
         
         audit_log(client_id, "2FA_SETUP_START", "qr_generated", ip_address)
@@ -494,11 +490,11 @@ async def setup_start(
 async def setup_verify(
     client_id: str = Form(...),
     code: str = Form(...),
-    request: Request = None,
+    request: Optional[Request] = None,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Verify TOTP code and complete 2FA setup."""
-    ip_address = request.client.host if request else "unknown"
+    ip_address = request.client.host if request and request.client else "unknown"
     
     try:
         conn = get_db()
@@ -559,11 +555,11 @@ async def setup_verify(
 async def verify_code(
     client_id: str = Form(...),
     code: str = Form(...),
-    request: Request = None,
+    request: Optional[Request] = None,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Verify TOTP code on reconnection."""
-    ip_address = request.client.host if request else "unknown"
+    ip_address = request.client.host if request and request.client else "unknown"
     
     try:
         conn = get_db()
@@ -623,11 +619,11 @@ async def verify_code(
 async def validate_session(
     client_id: str = Form(...),
     session_token: str = Form(...),
-    request: Request = None,
+    request: Optional[Request] = None,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Validate active session token."""
-    ip_address = request.client.host if request else "unknown"
+    ip_address = request.client.host if request and request.client else "unknown"
     
     try:
         conn = get_db()
@@ -773,7 +769,7 @@ async def success_page(client_id: Optional[str] = None):
 # ============================================================================
 # Web UI HTML
 # ============================================================================
-def get_2fa_ui_html(client_id: str) -> str:
+def get_2fa_ui_html(client_id: str) -> HTMLResponse:
     """Return modern, responsive 2FA setup/verification UI with light enterprise theme."""
     return HTMLResponse(f"""
 <!DOCTYPE html>
@@ -1231,7 +1227,7 @@ def get_2fa_ui_html(client_id: str) -> str:
 # ----------------------------------------------------------------------------
 # Verify-only UI (for users who already completed setup)
 # ----------------------------------------------------------------------------
-def get_2fa_verify_only_html(client_id: str) -> str:
+def get_2fa_verify_only_html(client_id: str) -> HTMLResponse:
     """Return verify-only UI with light enterprise theme for returning users."""
     return HTMLResponse(f"""
 <!DOCTYPE html>
