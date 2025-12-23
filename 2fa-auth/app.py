@@ -752,8 +752,20 @@ async def success_page(client_id: Optional[str] = None):
             <div class="status-item"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Session valid for 24 hours</div>
         </div>
         <p class="note">You can close this window and continue using your secure VPN connection.</p>
-        <button class="btn" onclick="window.close();">Close Window</button>
+        <button class="btn" onclick="closeWindow();">Close Window</button>
     </div>
+    <script>
+        function closeWindow() {
+            // Try to close the window (works if opened via window.open)
+            window.close();
+            // If window.close() doesn't work (most browsers block it), show a message
+            setTimeout(function() {
+                if (!window.closed) {
+                    alert('Please close this tab manually to continue.');
+                }
+            }, 100);
+        }
+    </script>
 </body>
 </html>
     """)
