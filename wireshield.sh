@@ -1746,6 +1746,99 @@ function viewAuditLogs() {
 	esac
 }
 
+function removeCient2FA() {
+    # Remove 2FA configuration for a specific client, allowing them to set it up again
+	echo ""
+	echo -e "${ORANGE}=== Remove Client 2FA ===${NC}"
+	echo ""
+	
+	# Check if 2FA service is installed
+	if [[ ! -f /etc/wireshield/2fa/auth.db ]]; then
+		echo -e "${RED}Error: 2FA database not found. Is 2FA service installed?${NC}"
+		return 1
+	fi
+	
+	# List all clients with 2FA configured
+	echo "Clients with 2FA configured:"
+	echo ""
+	
+	local sqlite3_cmd="sqlite3 /etc/wireshield/2fa/auth.db"
+	local client_list
+	client_list=$($sqlite3_cmd "SELECT client_id, enabled, totp_secret FROM users WHERE totp_secret IS NOT NULL AND totp_secret != '';" 2>/dev/null)
+	
+	if [[ -z "$client_list" ]]; then
+		echo -e "${RED}No clients have 2FA configured.${NC}"
+		return 1
+	fi
+	
+	# Display formatted list
+	local index=1
+	declare -a client_ids
+	while IFS='|' read -r client_id enabled secret; do
+		client_ids[$index]="$client_id"
+		local status="DISABLED"
+		[[ "$enabled" == "1" ]] && status="ACTIVE"
+		echo "   $index) $client_id [$status]"
+		((index++))
+	done <<< "$client_list"
+	
+	echo ""
+	read -rp "Select client number to remove 2FA (or press Enter to cancel): " selection
+	
+	if [[ -z "$selection" ]] || [[ ! "$selection" =~ ^[0-9]+$ ]] || [[ $selection -lt 1 ]] || [[ $selection -gt ${#client_ids[@]} ]]; then
+		echo "Cancelled."
+		return 0
+	fi
+	
+	local target_client="${client_ids[$selection]}"
+	
+	# Confirm removal
+	echo ""
+	echo -e "${ORANGE}WARNING: This will remove 2FA for client: ${GREEN}${target_client}${NC}"
+	echo "The user will need to set up 2FA again to access the VPN."
+	echo ""
+	read -rp "Type the client ID '${target_client}' to confirm: " confirm_input
+	
+	if [[ "$confirm_input" != "$target_client" ]]; then
+		echo "Cancelled."
+		return 0
+	fi
+	
+	# Remove 2FA for this client
+	echo ""
+	echo "Removing 2FA for $target_client..."
+	
+	# Reset TOTP secret and disable user until they verify again
+	$sqlite3_cmd "UPDATE users SET totp_secret = NULL, enabled = 0, wg_ipv4 = NULL, wg_ipv6 = NULL WHERE client_id = '${target_client}';" 2>/dev/null
+	
+	# Delete all active sessions for this client
+	$sqlite3_cmd "DELETE FROM sessions WHERE client_id = '${target_client}';" 2>/dev/null
+	
+	# Remove from ipset allowlist
+	if command -v ipset &>/dev/null; then
+		ipset del ws_2fa_allowed_v4 "$(ipset list ws_2fa_allowed_v4 2>/dev/null | grep "^$target_client" | awk '{print $1}')" 2>/dev/null || true
+		ipset del ws_2fa_allowed_v6 "$(ipset list ws_2fa_allowed_v6 2>/dev/null | grep "^$target_client" | awk '{print $1}')" 2>/dev/null || true
+	fi
+	
+	echo -e "${GREEN}✓ 2FA removed for client: ${target_client}${NC}"
+	echo "  User must now verify 2FA again on next connection."
+	echo ""
+	
+	# Log this action
+	audit_log "$target_client" "2FA_REMOVED" "admin_action" "cli"
+}
+
+function audit_log() {
+	# Simple audit log function for CLI actions
+	local client_id="$1"
+	local action="$2"
+	local status="$3"
+	local ip_address="${4:-cli}"
+	
+	local sqlite3_cmd="sqlite3 /etc/wireshield/2fa/auth.db"
+	$sqlite3_cmd "INSERT INTO audit_log (client_id, action, status, ip_address) VALUES ('${client_id}', '${action}', '${status}', '${ip_address}');" 2>/dev/null || true
+}
+
 function manageMenu() {
     # Main interactive loop used after installation to manage clients and server.
 	while true; do
@@ -1756,7 +1849,7 @@ function manageMenu() {
 		local MENU_OPTION
 		if command -v whiptail &>/dev/null; then
 			# Center the prompt text within the specified width (approximate centering)
-			local MENU_HEIGHT=20 MENU_WIDTH=72 MENU_CHOICES=10
+			local MENU_HEIGHT=20 MENU_WIDTH=72 MENU_CHOICES=12
 			local _prompt="Select a management task"
 			local _pad=$(( (MENU_WIDTH - ${#_prompt}) / 2 ))
 			((_pad<0)) && _pad=0
@@ -1772,8 +1865,9 @@ function manageMenu() {
 				7 "Restart VPN Service" \
 				8 "View Audit Logs" \
 				9 "Backup Configuration" \
-				10 "Uninstall WireShield" \
-				11 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=11
+				10 "Remove Client 2FA" \
+				11 "Uninstall WireShield" \
+				12 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=12
 		else
 			local msg="Select a management task"
 			echo ""
@@ -1787,10 +1881,11 @@ function manageMenu() {
 			echo "   7) Restart VPN Service"
 			echo "   8) View Audit Logs"
 			echo "   9) Backup Configuration"
-			echo "  10) Uninstall WireShield"
-			echo "  11) Exit"
-			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$|^11$ ]]; do
-				read -rp "Select an option [1-11]: " MENU_OPTION
+			echo "  10) Remove Client 2FA"
+			echo "  11) Uninstall WireShield"
+			echo "  12) Exit"
+			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$|^11$|^12$ ]]; do
+				read -rp "Select an option [1-12]: " MENU_OPTION
 			done
 		fi
 
@@ -1814,8 +1909,10 @@ function manageMenu() {
 		9)
 			backupConfigs ;;
 		10)
-			uninstallWg ;;
+			removeCient2FA ;;
 		11)
+			uninstallWg ;;
+		12)
 			exit 0 ;;
 		esac
 
