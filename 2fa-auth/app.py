@@ -513,6 +513,9 @@ async def setup_verify(
             audit_log(client_id, "2FA_SETUP_VERIFY", "invalid_code", ip_address)
             raise HTTPException(status_code=401, detail="Invalid code")
         
+        # Invalidate all previous sessions for this client (re-authentication required)
+        c.execute("DELETE FROM sessions WHERE client_id = ?", (client_id,))
+        
         # Enable user and create session
         c.execute("UPDATE users SET enabled = 1 WHERE client_id = ?", (client_id,))
         # Persist client's WG IP (v4/v6) for ipset allowlist
@@ -577,6 +580,9 @@ async def verify_code(
         if not totp.verify(code, valid_window=1):
             audit_log(client_id, "2FA_VERIFY", "invalid_code", ip_address)
             raise HTTPException(status_code=401, detail="Invalid code")
+        
+        # Invalidate all previous sessions for this client (only current verification is valid)
+        c.execute("DELETE FROM sessions WHERE client_id = ?", (client_id,))
         
         # Persist client's WG IP (v4/v6) for ipset allowlist
         if ":" in ip_address:
