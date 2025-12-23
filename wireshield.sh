@@ -947,6 +947,7 @@ PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL 2>/dev/null 
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -m set --match-set ws_2fa_allowed_v4 src -j ACCEPT 2>/dev/null || true
 PostDown = iptables -F WS_2FA_PORTAL 2>/dev/null || true
 PostDown = iptables -X WS_2FA_PORTAL 2>/dev/null || true
+PostDown = ipset flush ws_2fa_allowed_v4 2>/dev/null || true
 PostDown = ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true
 PostDown = ip6tables -D INPUT -i ${SERVER_WG_NIC} -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
@@ -957,6 +958,7 @@ PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL6 2>/dev/nul
 PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -m set --match-set ws_2fa_allowed_v6 src -j ACCEPT 2>/dev/null || true
 PostDown = ip6tables -F WS_2FA_PORTAL6 2>/dev/null || true
 PostDown = ip6tables -X WS_2FA_PORTAL6 2>/dev/null || true
+PostDown = ipset flush ws_2fa_allowed_v6 2>/dev/null || true
 PostDown = ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	fi
