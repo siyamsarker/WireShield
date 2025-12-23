@@ -1271,31 +1271,33 @@ def get_2fa_verify_only_html(client_id: str) -> str:
         }}
         .header {{
             display: flex;
+            flex-direction: column;
             align-items: center;
+            text-align: center;
             gap: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 24px;
         }}
         .logo {{
-            width: 42px;
-            height: 42px;
-            border-radius: 10px;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
             background: var(--accent);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 16px;
+            font-size: 18px;
             color: #fff;
         }}
         .header-text h1 {{
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 600;
             color: var(--text);
         }}
         .header-text p {{
             font-size: 13px;
             color: var(--muted);
-            margin-top: 2px;
+            margin-top: 4px;
         }}
         .card {{
             background: var(--card);
