@@ -735,6 +735,21 @@ EOF
 		echo -e "${ORANGE}2FA service did not start successfully. Check 'journalctl -u wireshield-2fa' for details.${NC}"
 	fi
 
+	# Open firewall for 2FA TCP port to allow external/NAT access
+	if [[ -f /etc/wireshield/2fa/config.env ]]; then
+		# shellcheck disable=SC1091
+		source /etc/wireshield/2fa/config.env 2>/dev/null || true
+	fi
+	local _ws_2fa_port
+	_ws_2fa_port=${WS_2FA_PORT:-8443}
+	if pgrep firewalld >/dev/null 2>&1; then
+		firewall-cmd --add-port ${_ws_2fa_port}/tcp --permanent 2>/dev/null || true
+		firewall-cmd --reload 2>/dev/null || true
+	else
+		iptables -I INPUT -p tcp --dport ${_ws_2fa_port} -j ACCEPT 2>/dev/null || true
+		ip6tables -I INPUT -p tcp --dport ${_ws_2fa_port} -j ACCEPT 2>/dev/null || true
+	fi
+
 	# Post-install health check: ping /health and surface a clear status
 	if [[ -f /etc/wireshield/2fa/config.env ]]; then
 		# Prefer WS_* keys to avoid bash parsing errors
@@ -1513,6 +1528,22 @@ function uninstallWg() {
 		ip6tables -t nat -X WS_2FA_REDIRECT6 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
+
+		# Close 2FA service TCP port
+		local _ws_2fa_port_rm
+		_ws_2fa_port_rm=8443
+		if [[ -f /etc/wireshield/2fa/config.env ]]; then
+			# shellcheck disable=SC1091
+			source /etc/wireshield/2fa/config.env 2>/dev/null || true
+			_ws_2fa_port_rm=${WS_2FA_PORT:-8443}
+		fi
+		if pgrep firewalld >/dev/null 2>&1; then
+			firewall-cmd --remove-port ${_ws_2fa_port_rm}/tcp --permanent 2>/dev/null || true
+			firewall-cmd --reload 2>/dev/null || true
+		else
+			iptables -D INPUT -p tcp --dport ${_ws_2fa_port_rm} -j ACCEPT 2>/dev/null || true
+			ip6tables -D INPUT -p tcp --dport ${_ws_2fa_port_rm} -j ACCEPT 2>/dev/null || true
+		fi
 
 		# Remove automatic expiration cron job and helper script
 		echo -e "${ORANGE}Removing client expiration service...${NC}"
