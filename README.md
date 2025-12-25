@@ -1068,10 +1068,12 @@ WireShield/
 │   ├── .venv/                         Isolated virtual environment
 │   ├── wireshield-2fa.service         Systemd unit file
 │   ├── generate-certs.sh              SSL cert generator
-│   ├── 2fa-helper.sh                  Management CLI
-│   └── tests/                         Test suite
-│       ├── test_rate_limit.py         Rate limiting tests (pytest)
-│       └── test-integration.sh        Integration tests (bash)
+│   └── 2fa-helper.sh                  Management CLI
+│
+├── tests/                             Test suite
+│   ├── test-2fa-access.sh             Network connectivity tests
+│   ├── test-integration.sh            Installation validation
+│   └── test_rate_limit.py             Rate limiting unit tests
 │
 ├── README.md                          This file (comprehensive guide)
 └── LICENSE                            GPLv3 license
@@ -1684,6 +1686,69 @@ This is not legal advice. For detailed license interpretation:
 - Read the [LICENSE](LICENSE) file
 - Visit [gnu.org](https://www.gnu.org/licenses/gpl-3.0.html)
 - Consult a lawyer for your specific situation
+
+---
+
+## 🧪 Testing
+
+WireShield includes a comprehensive test suite to validate installation and functionality.
+
+### Test Scripts
+
+#### Deployment Tests (Bash)
+
+**`tests/test-2fa-access.sh`** - Network Connectivity Test
+- Tests 2FA service accessibility from different interfaces (loopback, VPN IP, public IP)
+- Verifies HTTPS endpoints respond correctly
+- Checks iptables DNAT rules for hairpin NAT
+- **Run on server after installation**
+
+**`tests/test-integration.sh`** - Installation Validation
+- Validates 2FA service installation
+- Checks Python dependencies are installed
+- Verifies systemd service configuration
+- Tests database initialization
+- **Run on server after installation**
+
+#### Unit Tests (Python)
+
+**`tests/test_rate_limit.py`** - Rate Limiting Tests
+- Unit tests for rate limiting functionality
+- Tests request throttling behavior
+- Requires pytest
+- **Run during development**
+
+### Running Tests
+
+**On Server (Post-Installation):**
+```bash
+cd ~/WireShield
+
+# Test network connectivity and firewall rules
+sudo bash tests/test-2fa-access.sh
+
+# Validate service installation
+sudo bash tests/test-integration.sh
+```
+
+**Local Development:**
+```bash
+# Install dev dependencies
+pip install pytest httpx
+
+# Run unit tests
+pytest tests/test_rate_limit.py
+```
+
+### Are All Tests Needed?
+
+**YES** - Each test serves a critical purpose:
+
+| Test | Purpose | When to Run |
+|------|---------|-------------|
+| **test-2fa-access.sh** | Verify NAT rules and connectivity work correctly | After installation, after firewall changes |
+| **test-integration.sh** | Validate dependencies and service configuration | After installation, before production |
+| **test_rate_limit.py** | Ensure rate limiting prevents abuse attacks | During development, before releases |
 
 ---
 
