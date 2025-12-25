@@ -21,11 +21,11 @@ This directory contains test scripts for WireShield.
 
 ### Unit Tests (Python)
 
-**2fa-auth/tests/test_rate_limit.py**
+**tests/test_rate_limit.py**
 - Unit tests for rate limiting functionality
 - Tests request throttling behavior
 - Requires pytest
-- **Run during development**: `cd 2fa-auth && pytest tests/test_rate_limit.py`
+- **Run during development**: `pytest tests/test_rate_limit.py`
 
 ## Running Tests
 
@@ -38,7 +38,6 @@ sudo bash tests/test-integration.sh
 
 ### Local Development
 ```bash
-cd 2fa-auth
 pytest tests/test_rate_limit.py
 ```
 
