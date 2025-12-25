@@ -492,9 +492,6 @@ EOFSERVICE
 				echo "WS_2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
 				echo "WS_2FA_SSL_TYPE=letsencrypt" >> /etc/wireshield/2fa/config.env
 				echo "WS_2FA_DOMAIN=${WS_2FA_DOMAIN}" >> /etc/wireshield/2fa/config.env
-				echo "2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
-				echo "2FA_SSL_TYPE=letsencrypt" >> /etc/wireshield/2fa/config.env
-				echo "2FA_DOMAIN=${WS_2FA_DOMAIN}" >> /etc/wireshield/2fa/config.env
 				return 0
 			fi
 		fi
@@ -519,13 +516,10 @@ EOFSERVICE
 	chmod 644 /etc/wireshield/2fa/cert.pem
 	
 	echo -e "${GREEN}✓ Self-signed certificate configured${NC}"
-	# Write both WS_* and 2FA_* for compatibility
+	# Write WS_* names only (systemd EnvironmentFile cannot parse 2FA_*)
 	echo "WS_2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
 	echo "WS_2FA_SSL_TYPE=self-signed" >> /etc/wireshield/2fa/config.env
 	echo "WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA}" >> /etc/wireshield/2fa/config.env
-	echo "2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
-	echo "2FA_SSL_TYPE=self-signed" >> /etc/wireshield/2fa/config.env
-	echo "HOSTNAME_2FA=${WS_HOSTNAME_2FA}" >> /etc/wireshield/2fa/config.env
 }
 
 function _ws_install_2fa_service() {
@@ -542,11 +536,10 @@ function _ws_install_2fa_service() {
 	cat > /etc/wireshield/2fa/config.env << 'EOF'
 # WireShield 2FA Configuration
 # Generated during installation
-# Both WS_* (bash-safe) and 2FA_* keys are provided for compatibility.
+# Use only WS_* prefixed names (systemd EnvironmentFile cannot parse 2FA_* or names starting with numbers)
 WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
 WS_2FA_HOST=0.0.0.0
-WS_2FA_PORT=443
-WS_2FA_HTTP_PORT=80
+WS_2FA_PORT=8443
 WS_2FA_LOG_LEVEL=INFO
 WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
 WS_2FA_RATE_LIMIT_WINDOW=60
@@ -554,17 +547,6 @@ WS_2FA_SSL_ENABLED=false
 WS_2FA_SSL_TYPE=none
 WS_2FA_DOMAIN=
 WS_HOSTNAME_2FA=127.0.0.1
-2FA_DB_PATH=/etc/wireshield/2fa/auth.db
-2FA_HOST=0.0.0.0
-2FA_PORT=443
-2FA_HTTP_PORT=80
-2FA_LOG_LEVEL=INFO
-2FA_RATE_LIMIT_MAX_REQUESTS=30
-2FA_RATE_LIMIT_WINDOW=60
-2FA_SSL_ENABLED=false
-2FA_SSL_TYPE=none
-2FA_DOMAIN=
-HOSTNAME_2FA=127.0.0.1
 EOF
 	
 	# Ensure Python3, pip and venv are available (install even if python3 already exists)
