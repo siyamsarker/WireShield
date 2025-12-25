@@ -362,7 +362,7 @@ async def health_check():
 # Routes: 2FA Setup & Verification
 # ============================================================================
 @app.get("/", response_class=HTMLResponse, tags=["ui"])
-async def root(client_id: Optional[str] = None, request: Request):
+async def root(request: Request, client_id: Optional[str] = None):
     """
     Serve 2FA setup/verification UI.
     Supports:
