@@ -917,6 +917,8 @@ PostDown = firewall-cmd --zone=public --add-interface=${SERVER_WG_NIC} && firewa
 		echo "PostUp = iptables -I INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostUp = iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 PostUp = iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:443
+PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:80
 PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist
 PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist
 PostUp = iptables -N WS_2FA_PORTAL 2>/dev/null || true
@@ -940,6 +942,8 @@ PostUp = ip6tables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostDown = iptables -D INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostDown = iptables -D INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:443 2>/dev/null || true
+PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:80 2>/dev/null || true
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL 2>/dev/null || true
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -m set --match-set ws_2fa_allowed_v4 src -j ACCEPT 2>/dev/null || true
 PostDown = iptables -F WS_2FA_PORTAL 2>/dev/null || true
