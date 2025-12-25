@@ -362,7 +362,7 @@ async def health_check():
 # Routes: 2FA Setup & Verification
 # ============================================================================
 @app.get("/", response_class=HTMLResponse, tags=["ui"])
-async def root(client_id: Optional[str] = None, request: Optional[Request] = None):
+async def root(client_id: Optional[str] = None, request: Request):
     """
     Serve 2FA setup/verification UI.
     Supports:
@@ -425,7 +425,7 @@ async def root(client_id: Optional[str] = None, request: Optional[Request] = Non
 @app.post("/api/setup-start", tags=["2fa-setup"])
 async def setup_start(
     client_id: str = Form(...),
-    request: Optional[Request] = None,
+    request: Request,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Start 2FA setup: generate TOTP secret and QR code."""
@@ -490,7 +490,7 @@ async def setup_start(
 async def setup_verify(
     client_id: str = Form(...),
     code: str = Form(...),
-    request: Optional[Request] = None,
+    request: Request,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Verify TOTP code and complete 2FA setup."""
@@ -558,7 +558,7 @@ async def setup_verify(
 async def verify_code(
     client_id: str = Form(...),
     code: str = Form(...),
-    request: Optional[Request] = None,
+    request: Request,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Verify TOTP code on reconnection."""
@@ -625,7 +625,7 @@ async def verify_code(
 async def validate_session(
     client_id: str = Form(...),
     session_token: str = Form(...),
-    request: Optional[Request] = None,
+    request: Request,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Validate active session token."""
