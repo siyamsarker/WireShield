@@ -424,8 +424,8 @@ async def root(request: Request, client_id: Optional[str] = None):
 
 @app.post("/api/setup-start", tags=["2fa-setup"])
 async def setup_start(
-    client_id: str = Form(...),
     request: Request,
+    client_id: str = Form(...),
     rate_limit: None = Depends(rate_limiter),
 ):
     """Start 2FA setup: generate TOTP secret and QR code."""
@@ -488,9 +488,9 @@ async def setup_start(
 
 @app.post("/api/setup-verify", tags=["2fa-setup"])
 async def setup_verify(
+    request: Request,
     client_id: str = Form(...),
     code: str = Form(...),
-    request: Request,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Verify TOTP code and complete 2FA setup."""
@@ -556,9 +556,9 @@ async def setup_verify(
 
 @app.post("/api/verify", tags=["2fa-auth"])
 async def verify_code(
+    request: Request,
     client_id: str = Form(...),
     code: str = Form(...),
-    request: Request,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Verify TOTP code on reconnection."""
@@ -623,9 +623,9 @@ async def verify_code(
 
 @app.post("/api/validate-session", tags=["session"])
 async def validate_session(
+    request: Request,
     client_id: str = Form(...),
     session_token: str = Form(...),
-    request: Request,
     rate_limit: None = Depends(rate_limiter),
 ):
     """Validate active session token."""
