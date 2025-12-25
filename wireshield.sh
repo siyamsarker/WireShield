@@ -539,7 +539,8 @@ function _ws_install_2fa_service() {
 # Use only WS_* prefixed names (systemd EnvironmentFile cannot parse 2FA_* or names starting with numbers)
 WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
 WS_2FA_HOST=0.0.0.0
-WS_2FA_PORT=8443
+WS_2FA_PORT=443
+WS_2FA_HTTP_PORT=80
 WS_2FA_LOG_LEVEL=INFO
 WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
 WS_2FA_RATE_LIMIT_WINDOW=60
@@ -694,7 +695,8 @@ WorkingDirectory=/etc/wireshield/2fa
 	EnvironmentFile=-/etc/wireshield/2fa/config.env
 	Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
 	Environment=WS_2FA_HOST=0.0.0.0
-	Environment=WS_2FA_PORT=8443
+	Environment=WS_2FA_PORT=443
+	Environment=WS_2FA_HTTP_PORT=80
 	Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
 	Environment=WS_2FA_RATE_LIMIT_WINDOW=60
 ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/app.py
@@ -717,19 +719,23 @@ EOF
 		echo -e "${ORANGE}2FA service did not start successfully. Check 'journalctl -u wireshield-2fa' for details.${NC}"
 	fi
 
-	# Open firewall for 2FA TCP port to allow external/NAT access
+	# Open firewall for 2FA TCP ports (HTTP 80 and HTTPS 443) to allow external/NAT access
 	if [[ -f /etc/wireshield/2fa/config.env ]]; then
 		# shellcheck disable=SC1091
 		source /etc/wireshield/2fa/config.env 2>/dev/null || true
 	fi
-	local _ws_2fa_port
-	_ws_2fa_port=${WS_2FA_PORT:-8443}
+	local _ws_2fa_port _ws_2fa_http_port
+	_ws_2fa_port=${WS_2FA_PORT:-443}
+	_ws_2fa_http_port=${WS_2FA_HTTP_PORT:-80}
 	if pgrep firewalld >/dev/null 2>&1; then
 		firewall-cmd --add-port ${_ws_2fa_port}/tcp --permanent 2>/dev/null || true
+		firewall-cmd --add-port ${_ws_2fa_http_port}/tcp --permanent 2>/dev/null || true
 		firewall-cmd --reload 2>/dev/null || true
 	else
 		iptables -I INPUT -p tcp --dport ${_ws_2fa_port} -j ACCEPT 2>/dev/null || true
+		iptables -I INPUT -p tcp --dport ${_ws_2fa_http_port} -j ACCEPT 2>/dev/null || true
 		ip6tables -I INPUT -p tcp --dport ${_ws_2fa_port} -j ACCEPT 2>/dev/null || true
+		ip6tables -I INPUT -p tcp --dport ${_ws_2fa_http_port} -j ACCEPT 2>/dev/null || true
 	fi
 
 	# Post-install health check: ping /health and surface a clear status
@@ -1511,20 +1517,25 @@ function uninstallWg() {
 		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 
-		# Close 2FA service TCP port
-		local _ws_2fa_port_rm
-		_ws_2fa_port_rm=8443
+		# Close 2FA service TCP ports
+		local _ws_2fa_port_rm _ws_2fa_http_port_rm
+		_ws_2fa_port_rm=443
+		_ws_2fa_http_port_rm=80
 		if [[ -f /etc/wireshield/2fa/config.env ]]; then
 			# shellcheck disable=SC1091
 			source /etc/wireshield/2fa/config.env 2>/dev/null || true
-			_ws_2fa_port_rm=${WS_2FA_PORT:-8443}
+			_ws_2fa_port_rm=${WS_2FA_PORT:-443}
+			_ws_2fa_http_port_rm=${WS_2FA_HTTP_PORT:-80}
 		fi
 		if pgrep firewalld >/dev/null 2>&1; then
 			firewall-cmd --remove-port ${_ws_2fa_port_rm}/tcp --permanent 2>/dev/null || true
+			firewall-cmd --remove-port ${_ws_2fa_http_port_rm}/tcp --permanent 2>/dev/null || true
 			firewall-cmd --reload 2>/dev/null || true
 		else
 			iptables -D INPUT -p tcp --dport ${_ws_2fa_port_rm} -j ACCEPT 2>/dev/null || true
+			iptables -D INPUT -p tcp --dport ${_ws_2fa_http_port_rm} -j ACCEPT 2>/dev/null || true
 			ip6tables -D INPUT -p tcp --dport ${_ws_2fa_port_rm} -j ACCEPT 2>/dev/null || true
+			ip6tables -D INPUT -p tcp --dport ${_ws_2fa_http_port_rm} -j ACCEPT 2>/dev/null || true
 		fi
 
 		# Remove automatic expiration cron job and helper script
