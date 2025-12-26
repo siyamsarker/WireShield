@@ -34,6 +34,7 @@ from io import BytesIO
 import base64
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import shutil
 
 # ============================================================================
 # Configuration
@@ -61,6 +62,9 @@ SECRET_KEY = getenv_multi("", "WS_2FA_SECRET_KEY", "2FA_SECRET_KEY")  # Must be 
 SESSION_TIMEOUT_MINUTES = int(getenv_multi("1440", "WS_2FA_SESSION_TIMEOUT", "2FA_SESSION_TIMEOUT"))  # 24h default
 RATE_LIMIT_MAX_REQUESTS = int(getenv_multi("30", "WS_2FA_RATE_LIMIT_MAX_REQUESTS", "2FA_RATE_LIMIT_MAX_REQUESTS"))
 RATE_LIMIT_WINDOW_SECONDS = int(getenv_multi("60", "WS_2FA_RATE_LIMIT_WINDOW", "2FA_RATE_LIMIT_WINDOW"))
+WIREGUARD_PARAMS_PATH = getenv_multi("/etc/wireguard/params", "WS_WIREGUARD_PARAMS", "WIREGUARD_PARAMS")
+WG_INTERFACE = getenv_multi("", "WS_WG_INTERFACE", "WG_INTERFACE", "WS_SERVER_WG_NIC")
+SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("180", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
@@ -76,6 +80,34 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _load_wireguard_params() -> Dict[str, str]:
+    """Read /etc/wireguard/params (created by installer) for interface data."""
+    params: Dict[str, str] = {}
+    try:
+        with open(WIREGUARD_PARAMS_PATH, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                params[key.strip()] = value.strip()
+    except FileNotFoundError:
+        logger.debug("WireGuard params file not found at %s", WIREGUARD_PARAMS_PATH)
+    except Exception as exc:  # pragma: no cover - best effort helper
+        logger.debug("WireGuard params parse error: %s", exc)
+    return params
+
+
+def _ensure_wg_interface() -> str:
+    """Determine which WireGuard interface to monitor for peer activity."""
+    global WG_INTERFACE
+    if WG_INTERFACE:
+        return WG_INTERFACE
+    params = _load_wireguard_params()
+    WG_INTERFACE = params.get("SERVER_WG_NIC") or "wg0"
+    return WG_INTERFACE
 
 # ============================================================================
 # Database
@@ -281,6 +313,19 @@ rate_limiter = RateLimiter(
 # ============================================================================
 # Traffic Gating via ipset
 # ============================================================================
+def _extract_ips_from_allowed_field(field: str) -> set[str]:
+    """Split WireGuard allowed IP descriptors into raw IP strings."""
+    ips: set[str] = set()
+    for chunk in field.split(','):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if '/' in chunk:
+            chunk = chunk.split('/', 1)[0]
+        ips.add(chunk)
+    return ips
+
+
 def _ipset(cmd: list[str]) -> None:
     try:
         subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -348,6 +393,97 @@ def _sync_ipsets_from_sessions():
             logger.debug(f"ipset sync error: {e}")
         finally:
             time.sleep(60)
+
+
+def _monitor_wireguard_sessions():
+    """Drop 2FA sessions once peers disconnect from the WireGuard interface."""
+    if SESSION_IDLE_TIMEOUT_SECONDS <= 0:
+        logger.info("WireGuard session monitor disabled (timeout <= 0)")
+        return
+
+    wg_binary = shutil.which("wg")
+    if not wg_binary:
+        logger.warning("WireGuard binary 'wg' not found; session monitor disabled")
+        return
+
+    interface = _ensure_wg_interface()
+    if not interface:
+        logger.warning("WireGuard interface unknown; session monitor disabled")
+        return
+
+    poll_interval = max(30, SESSION_IDLE_TIMEOUT_SECONDS // 2)
+    logger.info(
+        "WireGuard session monitor active on %s (idle timeout %ss)",
+        interface,
+        SESSION_IDLE_TIMEOUT_SECONDS,
+    )
+
+    while True:
+        stale_clients: list[str] = []
+        try:
+            proc = subprocess.run(
+                [wg_binary, "show", interface, "dump"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr.strip() or "wg show dump failed")
+
+            lines = [line for line in proc.stdout.strip().splitlines() if line]
+            if len(lines) <= 1:
+                continue
+
+            active_ips: set[str] = set()
+            now = int(time.time())
+            for line in lines[1:]:
+                parts = line.split('\t')
+                if len(parts) < 5:
+                    continue
+                allowed_field = parts[3]
+                try:
+                    handshake_ts = int(parts[4])
+                except ValueError:
+                    handshake_ts = 0
+                if handshake_ts == 0:
+                    continue
+                if (now - handshake_ts) > SESSION_IDLE_TIMEOUT_SECONDS:
+                    continue
+                active_ips.update(_extract_ips_from_allowed_field(allowed_field))
+
+            conn = get_db()
+            try:
+                c = conn.cursor()
+                c.execute(
+                    """
+                    SELECT DISTINCT u.client_id, u.wg_ipv4, u.wg_ipv6
+                    FROM users u
+                    JOIN sessions s ON s.client_id = u.client_id
+                    """
+                )
+                rows = c.fetchall()
+                for row in rows:
+                    client_id = row["client_id"]
+                    v4 = (row["wg_ipv4"] or "").strip()
+                    v6 = (row["wg_ipv6"] or "").strip()
+                    if (v4 and v4 in active_ips) or (v6 and v6 in active_ips):
+                        continue
+                    stale_clients.append(client_id)
+
+                if stale_clients:
+                    for cid in stale_clients:
+                        c.execute("DELETE FROM sessions WHERE client_id = ?", (cid,))
+                    conn.commit()
+            finally:
+                conn.close()
+
+            for cid in stale_clients:
+                remove_client_by_id(cid)
+                audit_log(cid, "SESSION_MONITOR", "expired_on_disconnect", "wireguard-monitor")
+        except Exception as exc:
+            logger.debug(f"WireGuard session monitor error: {exc}")
+
+        time.sleep(poll_interval)
 
 
 # ============================================================================
@@ -1528,6 +1664,8 @@ if __name__ == "__main__":
     init_db()
     # Start background ipset sync thread
     threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
+    # Tear down 2FA sessions when peers disconnect from WireGuard
+    threading.Thread(target=_monitor_wireguard_sessions, daemon=True).start()
     # Start captive portal HTTP redirector (IPv4 and IPv6) on AUTH_HTTP_PORT
     threading.Thread(target=_start_http_redirector_ipv4, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv6, daemon=True).start()
