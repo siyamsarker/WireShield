@@ -1162,9 +1162,8 @@ PublicKey = ${SERVER_PUB_KEY}
 PresharedKey = ${CLIENT_PRE_SHARED_KEY}
 Endpoint = ${ENDPOINT}
 AllowedIPs = ${ALLOWED_IPS}
-# PersistentKeepalive helps with NAT traversal and keeps connection alive
-# Uncomment the next line if you're behind NAT or firewall
-# PersistentKeepalive = 25" >"${CLIENT_CONFIG}"
+# Keep WireGuard handshakes active so 2FA session monitor stays accurate
+PersistentKeepalive = 25" >"${CLIENT_CONFIG}"
 
 	# Add the client as a peer to the server configuration
 	if [[ -n "${EXPIRY_DATE}" ]]; then
