@@ -67,7 +67,7 @@ WG_INTERFACE = getenv_multi("", "WS_WG_INTERFACE", "WG_INTERFACE", "WS_SERVER_WG
 # Idle timeout used by the WireGuard handshake monitor. Must be greater than
 # the client's PersistentKeepalive (usually 25s) to avoid premature pruning.
 # Default raised to 60s for reliability across diverse client platforms.
-SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("60", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
+SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("300", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
