@@ -64,10 +64,11 @@ RATE_LIMIT_MAX_REQUESTS = int(getenv_multi("30", "WS_2FA_RATE_LIMIT_MAX_REQUESTS
 RATE_LIMIT_WINDOW_SECONDS = int(getenv_multi("60", "WS_2FA_RATE_LIMIT_WINDOW", "2FA_RATE_LIMIT_WINDOW"))
 WIREGUARD_PARAMS_PATH = getenv_multi("/etc/wireguard/params", "WS_WIREGUARD_PARAMS", "WIREGUARD_PARAMS")
 WG_INTERFACE = getenv_multi("", "WS_WG_INTERFACE", "WG_INTERFACE", "WS_SERVER_WG_NIC")
-# Idle timeout used by the WireGuard handshake monitor. Must be greater than
-# the client's PersistentKeepalive (usually 25s) to avoid premature pruning.
-# Default raised to 60s for reliability across diverse client platforms.
-SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("300", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
+# Idle timeout while connected: how recent a handshake must be to consider the peer active.
+# Default 3600s (1 hour) to keep sessions for long idle periods while connected.
+SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("3600", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
+# Disconnect grace: revoke session after this many seconds without any handshake.
+DISCONNECT_GRACE_SECONDS = int(getenv_multi("30", "WS_2FA_DISCONNECT_GRACE_SECONDS", "2FA_DISCONNECT_GRACE_SECONDS"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
@@ -414,11 +415,13 @@ def _monitor_wireguard_sessions():
         logger.warning("WireGuard interface unknown; session monitor disabled")
         return
 
-    poll_interval = max(3, min(max(1, SESSION_IDLE_TIMEOUT_SECONDS // 3), 10))
+    poll_interval = 3
     logger.info(
-        "WireGuard session monitor active on %s (idle timeout %ss)",
+        "WireGuard session monitor active on %s (idle=%ss, disconnect_grace=%ss, poll=%ss)",
         interface,
         SESSION_IDLE_TIMEOUT_SECONDS,
+        DISCONNECT_GRACE_SECONDS,
+        poll_interval,
     )
 
     while True:
@@ -437,7 +440,8 @@ def _monitor_wireguard_sessions():
             if len(lines) <= 1:
                 continue
 
-            active_ips: set[str] = set()
+            # Map each allowed IP to its handshake age (seconds).
+            ip_handshake_age: Dict[str, Optional[int]] = {}
             now = int(time.time())
             for line in lines[1:]:
                 parts = line.split('\t')
@@ -448,11 +452,9 @@ def _monitor_wireguard_sessions():
                     handshake_ts = int(parts[4])
                 except ValueError:
                     handshake_ts = 0
-                if handshake_ts == 0:
-                    continue
-                if (now - handshake_ts) > SESSION_IDLE_TIMEOUT_SECONDS:
-                    continue
-                active_ips.update(_extract_ips_from_allowed_field(allowed_field))
+                age = None if handshake_ts == 0 else max(0, now - handshake_ts)
+                for ip in _extract_ips_from_allowed_field(allowed_field):
+                    ip_handshake_age[ip] = age
 
             conn = get_db()
             try:
@@ -472,7 +474,7 @@ def _monitor_wireguard_sessions():
                 rows = c.fetchall()
 
                 # Grace period after a fresh 2FA verification to allow the next handshake
-                grace_seconds = max(SESSION_IDLE_TIMEOUT_SECONDS // 2, 30)
+                grace_seconds = max(10, DISCONNECT_GRACE_SECONDS)
 
                 for row in rows:
                     client_id = row["client_id"]
@@ -491,9 +493,32 @@ def _monitor_wireguard_sessions():
                         if (datetime.utcnow() - created_dt).total_seconds() < grace_seconds:
                             continue
 
-                    if (v4 and v4 in active_ips) or (v6 and v6 in active_ips):
+                    v4_age = ip_handshake_age.get(v4) if v4 else None
+                    v6_age = ip_handshake_age.get(v6) if v6 else None
+
+                    # Consider client active if any address handshaked within idle timeout
+                    active_recent = False
+                    if v4 and (v4_age is not None) and (v4_age <= SESSION_IDLE_TIMEOUT_SECONDS):
+                        active_recent = True
+                    if v6 and (v6_age is not None) and (v6_age <= SESSION_IDLE_TIMEOUT_SECONDS):
+                        active_recent = True
+                    if active_recent:
                         continue
-                    stale_clients.append(client_id)
+
+                    # Otherwise, expire if all present addresses exceed disconnect grace (or have no handshake)
+                    def exceeds_grace(age: Optional[int]) -> bool:
+                        return (age is None) or (age > DISCONNECT_GRACE_SECONDS)
+
+                    all_exceed = True
+                    if v4:
+                        if not exceeds_grace(v4_age):
+                            all_exceed = False
+                    if v6:
+                        if not exceeds_grace(v6_age):
+                            all_exceed = False
+
+                    if all_exceed:
+                        stale_clients.append(client_id)
 
                 if stale_clients:
                     for cid in stale_clients:
