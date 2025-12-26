@@ -64,7 +64,10 @@ RATE_LIMIT_MAX_REQUESTS = int(getenv_multi("30", "WS_2FA_RATE_LIMIT_MAX_REQUESTS
 RATE_LIMIT_WINDOW_SECONDS = int(getenv_multi("60", "WS_2FA_RATE_LIMIT_WINDOW", "2FA_RATE_LIMIT_WINDOW"))
 WIREGUARD_PARAMS_PATH = getenv_multi("/etc/wireguard/params", "WS_WIREGUARD_PARAMS", "WIREGUARD_PARAMS")
 WG_INTERFACE = getenv_multi("", "WS_WG_INTERFACE", "WG_INTERFACE", "WS_SERVER_WG_NIC")
-SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("15", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
+# Idle timeout used by the WireGuard handshake monitor. Must be greater than
+# the client's PersistentKeepalive (usually 25s) to avoid premature pruning.
+# Default raised to 60s for reliability across diverse client platforms.
+SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("60", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
@@ -454,18 +457,40 @@ def _monitor_wireguard_sessions():
             conn = get_db()
             try:
                 c = conn.cursor()
+                # Include session creation time to avoid pruning brand new sessions
                 c.execute(
                     """
-                    SELECT DISTINCT u.client_id, u.wg_ipv4, u.wg_ipv6
+                    SELECT u.client_id AS client_id,
+                           u.wg_ipv4     AS wg_ipv4,
+                           u.wg_ipv6     AS wg_ipv6,
+                           MAX(s.created_at) AS last_session_created
                     FROM users u
                     JOIN sessions s ON s.client_id = u.client_id
+                    GROUP BY u.client_id, u.wg_ipv4, u.wg_ipv6
                     """
                 )
                 rows = c.fetchall()
+
+                # Grace period after a fresh 2FA verification to allow the next handshake
+                grace_seconds = max(SESSION_IDLE_TIMEOUT_SECONDS // 2, 30)
+
                 for row in rows:
                     client_id = row["client_id"]
                     v4 = (row["wg_ipv4"] or "").strip()
                     v6 = (row["wg_ipv6"] or "").strip()
+
+                    # Skip pruning if client has a recent session (avoid race with keepalive)
+                    try:
+                        created_ts = row["last_session_created"]
+                        # created_ts is a string like 'YYYY-MM-DD HH:MM:SS'
+                        created_dt = datetime.strptime(created_ts, "%Y-%m-%d %H:%M:%S") if created_ts else None
+                    except Exception:
+                        created_dt = None
+
+                    if created_dt is not None:
+                        if (datetime.utcnow() - created_dt).total_seconds() < grace_seconds:
+                            continue
+
                     if (v4 and v4 in active_ips) or (v6 and v6 in active_ips):
                         continue
                     stale_clients.append(client_id)
