@@ -68,7 +68,7 @@ WG_INTERFACE = getenv_multi("", "WS_WG_INTERFACE", "WG_INTERFACE", "WS_SERVER_WG
 # Default 3600s (1 hour) to keep sessions for long idle periods while connected.
 SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("3600", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
 # Disconnect grace: revoke session after this many seconds without any handshake.
-DISCONNECT_GRACE_SECONDS = int(getenv_multi("30", "WS_2FA_DISCONNECT_GRACE_SECONDS", "2FA_DISCONNECT_GRACE_SECONDS"))
+DISCONNECT_GRACE_SECONDS = int(getenv_multi("3600", "WS_2FA_DISCONNECT_GRACE_SECONDS", "2FA_DISCONNECT_GRACE_SECONDS"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
@@ -440,21 +440,29 @@ def _monitor_wireguard_sessions():
             if len(lines) <= 1:
                 continue
 
-            # Map each allowed IP to its handshake age (seconds).
-            ip_handshake_age: Dict[str, Optional[int]] = {}
+            # Map each allowed IP to its stats
+            # keys: ip -> { 'handshake_ts': int, 'rx': int }
+            ip_stats: Dict[str, Dict[str, int]] = {}
             now = int(time.time())
             for line in lines[1:]:
                 parts = line.split('\t')
-                if len(parts) < 5:
+                if len(parts) < 6:
                     continue
                 allowed_field = parts[3]
                 try:
                     handshake_ts = int(parts[4])
                 except ValueError:
                     handshake_ts = 0
-                age = None if handshake_ts == 0 else max(0, now - handshake_ts)
+                
+                try:
+                    rx_bytes = int(parts[5])
+                except ValueError:
+                    rx_bytes = 0
+                
+                stats = {'handshake_ts': handshake_ts, 'rx': rx_bytes}
+                
                 for ip in _extract_ips_from_allowed_field(allowed_field):
-                    ip_handshake_age[ip] = age
+                    ip_stats[ip] = stats
 
             conn = get_db()
             try:
@@ -473,18 +481,18 @@ def _monitor_wireguard_sessions():
                 )
                 rows = c.fetchall()
 
-                # Grace period after a fresh 2FA verification to allow the next handshake
-                grace_seconds = max(10, DISCONNECT_GRACE_SECONDS)
+                # Grace period after a fresh 2FA verification before we start enforcing checks
+                # This ensures we don't kill a session before the client even connects
+                grace_seconds = max(60, DISCONNECT_GRACE_SECONDS + 30)
 
                 for row in rows:
                     client_id = row["client_id"]
                     v4 = (row["wg_ipv4"] or "").strip()
                     v6 = (row["wg_ipv6"] or "").strip()
 
-                    # Skip pruning if client has a recent session (avoid race with keepalive)
+                    # 1. New Session Grace: Skip if session is brand new
                     try:
                         created_ts = row["last_session_created"]
-                        # created_ts is a string like 'YYYY-MM-DD HH:MM:SS'
                         created_dt = datetime.strptime(created_ts, "%Y-%m-%d %H:%M:%S") if created_ts else None
                     except Exception:
                         created_dt = None
@@ -493,36 +501,79 @@ def _monitor_wireguard_sessions():
                         if (datetime.utcnow() - created_dt).total_seconds() < grace_seconds:
                             continue
 
-                    v4_age = ip_handshake_age.get(v4) if v4 else None
-                    v6_age = ip_handshake_age.get(v6) if v6 else None
+                    # 2. Get Stats for this client
+                    # We combine stats from v4 and v6 IPs (logic: if either is active, client is active)
+                    current_stats = []
+                    if v4 and v4 in ip_stats:
+                        current_stats.append(ip_stats[v4])
+                    if v6 and v6 in ip_stats:
+                        current_stats.append(ip_stats[v6])
+                    
+                    if not current_stats:
+                        # No info found in dump? Maybe disconnected or mismatch.
+                        # If we can't find them in WG, they are definitely not active.
+                        # But we should be careful about race conditions with WG restart.
+                        # For now, treat missing as "no activity".
+                        pass
 
-                    # Consider client active if any address handshaked within idle timeout
-                    active_recent = False
-                    if v4 and (v4_age is not None) and (v4_age <= SESSION_IDLE_TIMEOUT_SECONDS):
-                        active_recent = True
-                    if v6 and (v6_age is not None) and (v6_age <= SESSION_IDLE_TIMEOUT_SECONDS):
-                        active_recent = True
-                    if active_recent:
-                        continue
-
-                    # Otherwise, expire if all present addresses exceed disconnect grace (or have no handshake)
-                    def exceeds_grace(age: Optional[int]) -> bool:
-                        return (age is None) or (age > DISCONNECT_GRACE_SECONDS)
-
-                    all_exceed = True
-                    if v4:
-                        if not exceeds_grace(v4_age):
-                            all_exceed = False
-                    if v6:
-                        if not exceeds_grace(v6_age):
-                            all_exceed = False
-
-                    if all_exceed:
-                        stale_clients.append(client_id)
+                    # 3. Determine last activity time
+                    # We track this in a persistent in-memory dict: client_activity_monitor
+                    if not hasattr(_monitor_wireguard_sessions, "client_state"):
+                        _monitor_wireguard_sessions.client_state = {}
+                    
+                    state = _monitor_wireguard_sessions.client_state.get(client_id, {
+                        'last_rx': 0,
+                        'last_handshake': 0,
+                        'last_seen_active': time.time() # Assume active on startup/discovery to prevent instant kill
+                    })
+                    
+                    # Calculate max current values across IPs
+                    curr_rx = 0
+                    curr_handshake = 0
+                    for s in current_stats:
+                         if s['rx'] > curr_rx: curr_rx = s['rx']
+                         if s['handshake_ts'] > curr_handshake: curr_handshake = s['handshake_ts']
+                    
+                    is_active = False
+                    
+                    # Check for RX increase
+                    if curr_rx > state['last_rx']:
+                        is_active = True
+                        state['last_rx'] = curr_rx
+                    
+                    # Check for Handshake update
+                    if curr_handshake > state['last_handshake']:
+                        is_active = True
+                        state['last_handshake'] = curr_handshake
+                        
+                    if is_active:
+                        state['last_seen_active'] = time.time()
+                    
+                    _monitor_wireguard_sessions.client_state[client_id] = state
+                    
+                    # 4. Check for Timeout
+                    # How long since we last saw activity?
+                    time_since_active = time.time() - state['last_seen_active']
+                    
+                    # We use DISCONNECT_GRACE_SECONDS as the threshold.
+                    # Default 30s is fine if keepalives (25s) are working and RX checking is used.
+                    
+                    if time_since_active > DISCONNECT_GRACE_SECONDS:
+                         stale_clients.append(client_id)
+                    
+                    # Note: We effectively ignore SESSION_IDLE_TIMEOUT_SECONDS for the "Drop" logic 
+                    # because we want to enforce the stricter 'Disconnect' check.
+                    # The session expiry (24h) is handled by the SQL query `expires_at > datetime('now')` check in `_sync_ipsets_from_sessions`?
+                    # No, `_sync_ipsets_from_sessions` (not shown here) handles expiry.
+                    # This function is purely for "Disconnect" cleanup.
 
                 if stale_clients:
                     for cid in stale_clients:
                         c.execute("DELETE FROM sessions WHERE client_id = ?", (cid,))
+                        # Cleanup state
+                        if cid in _monitor_wireguard_sessions.client_state:
+                            del _monitor_wireguard_sessions.client_state[cid]
+
                     conn.commit()
             finally:
                 conn.close()

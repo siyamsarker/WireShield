@@ -38,11 +38,20 @@ WireShield is an automated WireGuard VPN deployment tool with integrated two-fac
 5. Upon successful verification, client IP is added to ipset allowlist
 6. Full internet access is granted through the VPN tunnel
 
-**Session Management:**
-- **Session validity:** 24 hours (configurable)
-- **Idle tolerance:** Sessions remain active as long as WireGuard handshakes occur within 3600 seconds (1 hour by default)
-- **Disconnect behavior:** Sessions are revoked 30 seconds after all addresses stop handshaking
-- **Re-authentication:** Required after session expiration or VPN disconnection
+**Session Management Rules:**
+
+1. **Absolute Timeout (24 Hours):**
+   - Every authenticated session is valid for a maximum of 24 hours.
+   - After 24 hours, you *must* re-authenticate with 2FA, regardless of activity.
+
+2. **Inactivity/Disconnect (1 Hour Grace Period):**
+   - If you disconnect the VPN or your device sleeps, your session remains active for **1 Hour**.
+   - **Reconnecting < 1 Hour:** No 2FA required. Instant access.
+   - **Reconnecting > 1 Hour:** Session expired. 2FA required.
+
+3. **Strict Revocation:**
+   - Once a session expires (either due to the 24h limit or >1h inactivity), it is immediately revoked.
+   - The firewall blocks all internet access until 2FA is verified again.
 
 ---
 
@@ -278,7 +287,7 @@ The background monitor polls WireGuard handshakes every 3 seconds:
 2. Calculates age for each client IP
 3. Applies dual-threshold logic:
    - **Idle threshold (3600s):** Client active if any handshake ≤ 3600s
-   - **Disconnect grace (30s):** Client expired if all handshakes > 30s
+   - **Disconnect grace (3600s):** Client expired if all handshakes > 3600s
 4. Removes stale sessions from database
 5. Syncs ipset allowlists (removes IPs without active sessions)
 
@@ -311,7 +320,7 @@ WS_2FA_RATE_LIMIT_WINDOW=60
 # Session Management
 WS_2FA_SESSION_TIMEOUT=1440                    # 24 hours (in minutes)
 WS_2FA_SESSION_IDLE_TIMEOUT=3600               # 1 hour (in seconds)
-WS_2FA_DISCONNECT_GRACE_SECONDS=30             # 30 seconds
+WS_2FA_DISCONNECT_GRACE_SECONDS=3600           # 1 hour (in seconds)
 
 # SSL/TLS
 WS_2FA_SSL_ENABLED=true
