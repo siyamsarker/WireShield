@@ -672,7 +672,7 @@ ALLOW:  All traffic (firewall whitelist activated)
 **On disconnect or session expiry:**
 - Client IP removed from allowlist
 - Next connection requires 2FA again
-- WireGuard disconnect monitor polls `wg show <iface> dump` and wipes active 2FA sessions once a peer stops handshaking for `WS_2FA_SESSION_IDLE_TIMEOUT` seconds (default 180s, set to `0` to disable). Keep the generated `PersistentKeepalive = 25` line in your client configs so legitimate, idle peers stay marked as active.
+- WireGuard disconnect monitor polls `wg show <iface> dump` every few seconds and wipes active 2FA sessions once a peer stops handshaking for `WS_2FA_SESSION_IDLE_TIMEOUT` seconds (default 15s, set to `0` to disable). Keep the generated `PersistentKeepalive = 25` line in your client configs so legitimate, idle peers stay marked as active.
 
 #### Firewall constructs created
 
@@ -754,7 +754,7 @@ curl -sk https://127.0.0.1:8443/health
 - Gating is applied in the iptables path (common on Ubuntu/Debian). If your host uses firewalld exclusively, the standard rich rules are configured; equivalent ipset-based gating for firewalld can be added in a future release.
 - Multiple sessions per client are supported; gating persists while any session is valid.
 - Default pruning interval is 60s. This can be tuned in code if you need tighter revocation.
-- `WS_2FA_SESSION_IDLE_TIMEOUT` (seconds) controls how quickly disconnected peers lose their session. Set to `0` to disable the handshake monitor or increase if you want a longer grace period.
+- `WS_2FA_SESSION_IDLE_TIMEOUT` (seconds) controls how quickly disconnected peers lose their session (default 15s). Set to `0` to disable the handshake monitor or increase if you want a longer grace period.
 - `WS_WG_INTERFACE` forces the monitor to watch a specific interface if `/etc/wireguard/params` is unavailable (multi-interface hosts).
 
 ### Service Management
