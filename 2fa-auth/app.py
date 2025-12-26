@@ -64,7 +64,7 @@ RATE_LIMIT_MAX_REQUESTS = int(getenv_multi("30", "WS_2FA_RATE_LIMIT_MAX_REQUESTS
 RATE_LIMIT_WINDOW_SECONDS = int(getenv_multi("60", "WS_2FA_RATE_LIMIT_WINDOW", "2FA_RATE_LIMIT_WINDOW"))
 WIREGUARD_PARAMS_PATH = getenv_multi("/etc/wireguard/params", "WS_WIREGUARD_PARAMS", "WIREGUARD_PARAMS")
 WG_INTERFACE = getenv_multi("", "WS_WG_INTERFACE", "WG_INTERFACE", "WS_SERVER_WG_NIC")
-SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("180", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
+SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("15", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
@@ -411,7 +411,7 @@ def _monitor_wireguard_sessions():
         logger.warning("WireGuard interface unknown; session monitor disabled")
         return
 
-    poll_interval = max(30, SESSION_IDLE_TIMEOUT_SECONDS // 2)
+    poll_interval = max(3, min(max(1, SESSION_IDLE_TIMEOUT_SECONDS // 3), 10))
     logger.info(
         "WireGuard session monitor active on %s (idle timeout %ss)",
         interface,
