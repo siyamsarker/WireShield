@@ -298,6 +298,8 @@ Enter domain name: vpn.example.com
 ✅ Installation complete!
 ```
 
+> **NAT tip:** Enter your public IP or hostname even if the server only owns a private address. WireShield automatically remembers the interface's private IPv4 and hairpins VPN traffic so the 2FA portal stays reachable through the public IP while you're connected to the tunnel.
+
 ### SSL/TLS Configuration
 
 Three options available:

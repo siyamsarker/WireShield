@@ -229,6 +229,12 @@ function installQuestions() {
 		ip link show dev "$1" >/dev/null 2>&1
 	}
 
+	# helper: get the primary IPv4 assigned to an interface
+	get_interface_ipv4() {
+		local nic="$1"
+		ip -o -4 addr show "$nic" 2>/dev/null | awk '{print $4}' | cut -d'/' -f1 | head -1
+	}
+
 	while true; do
 		clear
 		echo ""
@@ -272,6 +278,11 @@ function installQuestions() {
 			fi
 		done
 
+		SERVER_LOCAL_IPV4=$(get_interface_ipv4 "${SERVER_PUB_NIC}")
+		if [[ -z ${SERVER_LOCAL_IPV4} ]]; then
+			SERVER_LOCAL_IPV4=$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $4}' | cut -d'/' -f1 | head -1)
+		fi
+
 		until [[ ${SERVER_WG_NIC} =~ ^[a-zA-Z0-9_]+$ && ${#SERVER_WG_NIC} -lt 16 ]]; do
 			read -rp "WireGuard interface name: " -e -i wg0 SERVER_WG_NIC
 		done
@@ -279,6 +290,10 @@ function installQuestions() {
 		until [[ ${SERVER_WG_IPV4} =~ ^([0-9]{1,3}\.){3} ]]; do
 			read -rp "Server WireGuard IPv4: " -e -i 10.66.66.1 SERVER_WG_IPV4
 		done
+
+		if [[ -z ${SERVER_LOCAL_IPV4} ]]; then
+			SERVER_LOCAL_IPV4="${SERVER_WG_IPV4}"
+		fi
 
 		until [[ ${SERVER_WG_IPV6} =~ ^([a-f0-9]{1,4}:){3,4}: ]]; do
 			read -rp "Server WireGuard IPv6: " -e -i fd42:42:42::1 SERVER_WG_IPV6
@@ -891,7 +906,8 @@ function installWireGuard() {
 
 	# Persist installation parameters for later operations (add/revoke clients)
 	echo "SERVER_PUB_IP=${SERVER_PUB_IP}
-SERVER_PUB_NIC=${SERVER_PUB_NIC}
+	SERVER_PUB_NIC=${SERVER_PUB_NIC}
+	SERVER_LOCAL_IPV4=${SERVER_LOCAL_IPV4}
 SERVER_WG_NIC=${SERVER_WG_NIC}
 SERVER_WG_IPV4=${SERVER_WG_IPV4}
 SERVER_WG_IPV6=${SERVER_WG_IPV6}
@@ -908,6 +924,8 @@ Address = ${SERVER_WG_IPV4}/24,${SERVER_WG_IPV6}/64
 ListenPort = ${SERVER_PORT}
 PrivateKey = ${SERVER_PRIV_KEY}" >"/etc/wireguard/${SERVER_WG_NIC}.conf"
 
+	PORTAL_DNAT_TARGET="${SERVER_LOCAL_IPV4:-${SERVER_WG_IPV4}}"
+
 	if pgrep firewalld; then
 		FIREWALLD_IPV4_ADDRESS=$(echo "${SERVER_WG_IPV4}" | cut -d"." -f1-3)".0"
 		FIREWALLD_IPV6_ADDRESS=$(echo "${SERVER_WG_IPV6}" | sed 's/:[^:]*$/:0/')
@@ -917,8 +935,8 @@ PostDown = firewall-cmd --zone=public --add-interface=${SERVER_WG_NIC} && firewa
 		echo "PostUp = iptables -I INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostUp = iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 PostUp = iptables -I INPUT -p tcp --dport 80 -j ACCEPT
-PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:443
-PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:80
+PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:443
+PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:80
 PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist
 PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist
 PostUp = iptables -N WS_2FA_PORTAL 2>/dev/null || true
@@ -942,8 +960,8 @@ PostUp = ip6tables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostDown = iptables -D INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostDown = iptables -D INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
-PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:443 2>/dev/null || true
-PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:80 2>/dev/null || true
+PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:443 2>/dev/null || true
+PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:80 2>/dev/null || true
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL 2>/dev/null || true
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -m set --match-set ws_2fa_allowed_v4 src -j ACCEPT 2>/dev/null || true
 PostDown = iptables -F WS_2FA_PORTAL 2>/dev/null || true
@@ -1948,6 +1966,12 @@ function _ws_ensure_params_loaded() {
 	if [[ -z "${SERVER_WG_NIC}" ]] && [[ -e /etc/wireguard/params ]]; then
 		# shellcheck disable=SC1091
 		source /etc/wireguard/params
+		if [[ -z "${SERVER_LOCAL_IPV4}" ]] && [[ -n "${SERVER_PUB_NIC}" ]]; then
+			SERVER_LOCAL_IPV4=$(get_interface_ipv4 "${SERVER_PUB_NIC}")
+		fi
+		if [[ -z "${SERVER_LOCAL_IPV4}" ]] && [[ -n "${SERVER_WG_IPV4}" ]]; then
+			SERVER_LOCAL_IPV4="${SERVER_WG_IPV4}"
+		fi
 	fi
 }
 

@@ -396,9 +396,9 @@ async def root(request: Request, client_id: Optional[str] = None):
         return HTMLResponse(
             """
             <html>
-            <head><title>WireShield 2FA</title></head>
+            <head><title>WireShield</title></head>
             <body style="font-family: Arial; text-align: center; padding-top: 50px;">
-            <h2>WireShield 2FA Setup</h2>
+            <h2>WireShield</h2>
             <p style="color: red;">❌ Unable to identify your client. Please check your VPN connection.</p>
             </body>
             </html>
