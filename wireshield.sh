@@ -1807,7 +1807,7 @@ function removeCient2FA() {
 	
 	local sqlite3_cmd="sqlite3 /etc/wireshield/2fa/auth.db"
 	local client_list
-	client_list=$($sqlite3_cmd "SELECT client_id, enabled, totp_secret FROM users WHERE totp_secret IS NOT NULL AND totp_secret != '';" 2>/dev/null)
+	client_list=$($sqlite3_cmd "SELECT client_id, enabled, totp_secret FROM users ORDER BY client_id ASC;" 2>/dev/null)
 	
 	if [[ -z "$client_list" ]]; then
 		echo -e "${RED}No clients have 2FA configured.${NC}"
