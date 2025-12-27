@@ -1708,7 +1708,7 @@ function showClientQR() {
 	fi
 	
 	echo -e "${GREEN}\nQR Code for ${name}:${NC}\n"
-	qrencode -t ansiutf8 -l L <"${cfg}"
+	qrencode -t ansiutf8 -l L -m 1 <"${cfg}"
 	echo ""
 }
 
