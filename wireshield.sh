@@ -1794,7 +1794,7 @@ function viewAuditLogs() {
 	esac
 }
 
-function removeCient2FA() {
+function removeClient2FA() {
     # Remove 2FA configuration for a specific client, allowing them to set it up again
 	echo ""
 	echo -e "${ORANGE}=== Remove Client 2FA ===${NC}"
@@ -1856,16 +1856,31 @@ function removeCient2FA() {
 	echo ""
 	echo "Removing 2FA for $target_client..."
 	
+	# Fetch current IPs before resetting/deleting
+	local client_ips
+	client_ips=$($sqlite3_cmd "SELECT wg_ipv4, wg_ipv6 FROM users WHERE client_id = '${target_client}';" 2>/dev/null)
+	
+	local ipv4=""
+	local ipv6=""
+	if [[ -n "$client_ips" ]]; then
+		ipv4=$(echo "$client_ips" | cut -d'|' -f1)
+		ipv6=$(echo "$client_ips" | cut -d'|' -f2)
+	fi
+
 	# Reset TOTP secret and disable user until they verify again
 	$sqlite3_cmd "UPDATE users SET totp_secret = NULL, enabled = 0, wg_ipv4 = NULL, wg_ipv6 = NULL WHERE client_id = '${target_client}';" 2>/dev/null
 	
 	# Delete all active sessions for this client
 	$sqlite3_cmd "DELETE FROM sessions WHERE client_id = '${target_client}';" 2>/dev/null
 	
-	# Remove from ipset allowlist
+	# Remove from ipset allowlist using the fetched IPs
 	if command -v ipset &>/dev/null; then
-		ipset del ws_2fa_allowed_v4 "$(ipset list ws_2fa_allowed_v4 2>/dev/null | grep "^$target_client" | awk '{print $1}')" 2>/dev/null || true
-		ipset del ws_2fa_allowed_v6 "$(ipset list ws_2fa_allowed_v6 2>/dev/null | grep "^$target_client" | awk '{print $1}')" 2>/dev/null || true
+		if [[ -n "$ipv4" ]]; then
+			ipset del ws_2fa_allowed_v4 "$ipv4" 2>/dev/null || true
+		fi
+		if [[ -n "$ipv6" ]]; then
+			ipset del ws_2fa_allowed_v6 "$ipv6" 2>/dev/null || true
+		fi
 	fi
 	
 	echo -e "${GREEN}✓ 2FA removed for client: ${target_client}${NC}"
@@ -1957,7 +1972,7 @@ function manageMenu() {
 		9)
 			backupConfigs ;;
 		10)
-			removeCient2FA ;;
+			removeClient2FA ;;
 		11)
 			uninstallWg ;;
 		12)
