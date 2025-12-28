@@ -1709,7 +1709,12 @@ function showClientQR() {
 	
 	echo -e "${GREEN}\nQR Code for ${name}:${NC}\n"
 	qrencode -t ansiutf8 -l L -m 1 <"${cfg}"
+	
+	# Generate PNG approx 650x650
+	local png_file="${name}.png"
+	qrencode -t PNG -s 10 -o "${png_file}" <"${cfg}"
 	echo ""
+	echo -e "${GREEN}Saved QR image to ${png_file} (approx 650x650 pixels)${NC}"
 }
 
 function showStatus() {
