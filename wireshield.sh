@@ -1596,7 +1596,7 @@ function uninstallWg() {
 		for cname in "${CLIENT_NAMES[@]}"; do
 			for base in "${SEARCH_DIRS[@]}"; do
 				# remove client config files if they exist within depth 2
-				find "$base" -maxdepth 2 -type f -name "${cname}.conf" \
+				find "$base" -maxdepth 2 -type f \( -name "${cname}.conf" -o -name "${cname}.png" \) \
 					-print -delete 2>/dev/null
 			done
 		done
