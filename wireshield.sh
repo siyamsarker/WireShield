@@ -338,7 +338,6 @@ function installQuestions() {
 		Allowed IPs    : ${ALLOWED_IPS}
 
 		Install target: ${SERVER_PUB_IP}:${SERVER_PORT}
-		Owner         : Siyam Sarker
 		EOT
 		)
 
@@ -843,7 +842,7 @@ function installWireGuard() {
 	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' && ${VERSION_ID} -gt 10 ]]; then
 		apt-get update
 		# Install wireguard package which includes kernel module and tools
-		apt-get install -y wireguard iptables resolvconf qrencode ipset
+		apt-get install -y wireguard iptables resolvconf qrencode ipset sqlite3
 	elif [[ ${OS} == 'debian' ]]; then
 		# For Debian 10 Buster, use backports repository
 		if ! grep -rqs "^deb .* buster-backports" /etc/apt/; then
@@ -851,7 +850,7 @@ function installWireGuard() {
 			apt-get update
 		fi
 		apt-get update
-		apt-get install -y iptables resolvconf qrencode
+		apt-get install -y iptables resolvconf qrencode sqlite3
 		apt-get install -y -t buster-backports wireguard
 	elif [[ ${OS} == 'fedora' ]]; then
 		# Fedora 32+ has WireGuard in the default repositories
@@ -860,7 +859,7 @@ function installWireGuard() {
 			dnf copr enable -y jdoss/wireguard
 			dnf install -y wireguard-dkms
 		fi
-		dnf install -y wireguard-tools iptables qrencode ipset
+		dnf install -y wireguard-tools iptables qrencode ipset sqlite
 	elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
 		# For RHEL-based systems
 		if [[ ${VERSION_ID} == 8* ]]; then
@@ -868,20 +867,20 @@ function installWireGuard() {
 			yum install -y kmod-wireguard
 			yum install -y qrencode # not available on release 9
 		fi
-		yum install -y wireguard-tools iptables ipset
+		yum install -y wireguard-tools iptables ipset sqlite
 	elif [[ ${OS} == 'oracle' ]]; then
 		dnf install -y oraclelinux-developer-release-el8
 		dnf config-manager --disable -y ol8_developer
 		dnf config-manager --enable -y ol8_developer_UEKR6
 		dnf config-manager --save -y --setopt=ol8_developer_UEKR6.includepkgs='wireguard-tools*'
-		dnf install -y wireguard-tools qrencode iptables
+		dnf install -y wireguard-tools qrencode iptables sqlite
 	elif [[ ${OS} == 'arch' ]]; then
 		# Arch Linux has latest WireGuard in official repositories
-		pacman -Sy --needed --noconfirm wireguard-tools qrencode ipset
+		pacman -Sy --needed --noconfirm wireguard-tools qrencode ipset sqlite
 	elif [[ ${OS} == 'alpine' ]]; then
 		# Alpine Linux supports WireGuard natively
 		apk update
-		apk add wireguard-tools iptables libqrencode-tools ipset
+		apk add wireguard-tools iptables libqrencode-tools ipset sqlite
 	fi
 
 	# Ensure the newest available WireGuard packages are installed
@@ -1708,11 +1707,12 @@ function showClientQR() {
 	fi
 	
 	echo -e "${GREEN}\nQR Code for ${name}:${NC}\n"
-	qrencode -t ansiutf8 -l L -m 1 <"${cfg}"
+	# Strip comments and empty lines to reduce QR code size
+	grep -vE '^\s*(#|$)' "${cfg}" | qrencode -t ansiutf8 -l L -m 1
 	
 	# Generate PNG approx 650x650
 	local png_file="${name}.png"
-	qrencode -t PNG -s 10 -o "${png_file}" <"${cfg}"
+	grep -vE '^\s*(#|$)' "${cfg}" | qrencode -t PNG -s 10 -o "${png_file}"
 	echo ""
 	echo -e "${GREEN}Saved QR image to ${png_file} (approx 650x650 pixels)${NC}"
 }
@@ -1812,7 +1812,7 @@ function removeClient2FA() {
 	
 	local sqlite3_cmd="sqlite3 /etc/wireshield/2fa/auth.db"
 	local client_list
-	client_list=$($sqlite3_cmd "SELECT client_id, enabled, totp_secret FROM users ORDER BY client_id ASC;" 2>/dev/null)
+	client_list=$($sqlite3_cmd "SELECT client_id, enabled, totp_secret FROM users ORDER BY client_id ASC;")
 	
 	if [[ -z "$client_list" ]]; then
 		echo -e "${RED}No clients have 2FA configured.${NC}"
