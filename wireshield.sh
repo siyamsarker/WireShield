@@ -1868,7 +1868,7 @@ function removeClient2FA() {
 	fi
 
 	# Reset TOTP secret and disable user until they verify again
-	$sqlite3_cmd "UPDATE users SET totp_secret = NULL, enabled = 0, wg_ipv4 = NULL, wg_ipv6 = NULL WHERE client_id = '${target_client}';" 2>/dev/null
+	$sqlite3_cmd "UPDATE users SET totp_secret = NULL, enabled = 0 WHERE client_id = '${target_client}';" 2>/dev/null
 	
 	# Delete all active sessions for this client
 	$sqlite3_cmd "DELETE FROM sessions WHERE client_id = '${target_client}';" 2>/dev/null
