@@ -1564,6 +1564,14 @@ function uninstallWg() {
 			crontab -l 2>/dev/null | sed '/wireshield-check-expired/d' | crontab - 2>/dev/null || true
 		fi
 
+		# Remove activity log archiving
+		echo -e "${ORANGE}Removing activity log services...${NC}"
+		rm -f /usr/local/bin/wireshield-archive-logs 2>/dev/null || true
+		rm -rf /var/log/wireshield 2>/dev/null || true
+		if crontab -l 2>/dev/null | grep -q "wireshield-archive-logs"; then
+			crontab -l 2>/dev/null | sed '/wireshield-archive-logs/d' | crontab - 2>/dev/null || true
+		fi
+
 		# Remove 2FA service and related services
 		echo -e "${ORANGE}Removing 2FA services...${NC}"
 		systemctl stop wireshield-2fa 2>/dev/null || true
@@ -1891,6 +1899,356 @@ function removeClient2FA() {
 	audit_log "$target_client" "2FA_REMOVED" "admin_action" "cli"
 }
 
+
+# ============================================================================
+# Activity Logging & Auditing
+# ============================================================================
+
+function _ws_setup_log_archiving() {
+	# Setup extraction and rotation of activity logs from journald to files
+	# $1: retention days (default: read from params or 30)
+
+	local retention="${1}"
+	if [[ -z "${retention}" ]]; then
+		if [[ -f /etc/wireguard/params ]]; then
+			source /etc/wireguard/params
+		fi
+		retention="${ACTIVITY_LOG_RETENTION:-15}"
+	fi
+
+	# Create archive directory
+	mkdir -p /var/log/wireshield/archives
+	chmod 750 /var/log/wireshield
+	chmod 750 /var/log/wireshield/archives
+
+	# Create the archiving script
+	cat > /usr/local/bin/wireshield-archive-logs <<EOF
+#!/bin/bash
+# WireShield Activity Log Archiver
+# Extracts WS-Audit logs from journalctl and archives them daily.
+
+LOG_DIR="/var/log/wireshield/archives"
+RETENTION_DAYS=${retention}
+DATE_YESTERDAY=\$(date -d "yesterday" '+%Y-%m-%d' 2>/dev/null || date -v-1d '+%Y-%m-%d')
+LOG_FILE="\${LOG_DIR}/activity-\${DATE_YESTERDAY}.log"
+
+# Extract logs for yesterday (00:00:00 to 23:59:59)
+# We use journalctl with the specific tag.
+# Note: journalctl --since and --until handle "yesterday" and "today" midnight correctly.
+
+if journalctl --version &>/dev/null; then
+    journalctl -k -g "WS-Audit" --since "yesterday" --until "today" --output=short-iso >> "\${LOG_FILE}"
+fi
+
+# Set permissions
+chmod 640 "\${LOG_FILE}" 2>/dev/null
+
+# Compress logs older than 1 day to save space (optional, skipping for simple text grep)
+# gzip "\${LOG_DIR}/activity-*.log" ...
+
+# Cleanup old logs
+find "\${LOG_DIR}" -name "activity-*.log" -type f -mtime +\${RETENTION_DAYS} -delete
+EOF
+
+	chmod +x /usr/local/bin/wireshield-archive-logs
+
+	# Add to crontab (runs daily at 00:10)
+	local cron_job="10 0 * * * /usr/local/bin/wireshield-archive-logs >/dev/null 2>&1"
+	(crontab -l 2>/dev/null | grep -v "wireshield-archive-logs"; echo "$cron_job") | crontab -
+}
+
+function toggleActivityLogging() {
+	# Enable or Disable traffic logging via iptables/firewalld
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
+	echo "Activity Logging tracks NEW connections made by clients."
+	echo "Logs are stored in the system journal and archived to /var/log/wireshield."
+	echo ""
+
+	# Check current status by looking for specific rule in wg0.conf
+	# We look for the LOG rule in PostUp
+	local log_enabled=0
+	if grep -q "WS-Audit" "/etc/wireguard/${SERVER_WG_NIC}.conf"; then
+		log_enabled=1
+	fi
+
+	if [[ ${log_enabled} -eq 1 ]]; then
+		echo -e "Current status: ${GREEN}ENABLED${NC}"
+		read -rp "Do you want to DISABLE activity logging? [y/N]: " -e CONFIRM
+		if [[ ${CONFIRM} =~ ^[Yy]$ ]]; then
+			# Remove rules
+			# We use sed to delete lines containing "WS-Audit" from the config
+			sed -i '/WS-Audit/d' "/etc/wireguard/${SERVER_WG_NIC}.conf"
+			
+			# Remove rules from runtime
+			if pgrep firewalld >/dev/null 2>&1; then
+				firewall-cmd --remove-rich-rule='rule family=ipv4 source address=0.0.0.0/0 log prefix="[WS-Audit] " level="info"' --permanent 2>/dev/null || true
+				firewall-cmd --remove-rich-rule='rule family=ipv6 source address=::/0 log prefix="[WS-Audit] " level="info"' --permanent 2>/dev/null || true
+				firewall-cmd --reload
+			else
+				# iptables: try to remove the specific LOG rule from FORWARD chain
+				iptables -D FORWARD -i "${SERVER_WG_NIC}" -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4 2>/dev/null || true
+				ip6tables -D FORWARD -i "${SERVER_WG_NIC}" -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4 2>/dev/null || true
+			fi
+
+			echo -e "${GREEN}Activity logging has been disabled.${NC}"
+			wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+		fi
+	else
+		echo -e "Current status: ${ORANGE}DISABLED${NC}"
+		read -rp "Do you want to ENABLE activity logging? [y/N]: " -e CONFIRM
+		if [[ ${CONFIRM} =~ ^[Yy]$ ]]; then
+			# Add rules to config
+			# We insert them before the end of the Interface block or append to it. 
+			# Since we are using PostUp lines, we can just append them to the [Interface] section.
+			# But wg0.conf has multiple peers. We need to add it to the Interface block.
+			# Safest way is to append PostUp rules.
+			
+			# Detect where [Interface] ends or just add to the file? 
+			# Actually, PostUp commands are part of [Interface].
+			# Let's find the line "PostUp = ..." and append after it, or add if missing.
+			# Simpler: Just append to the [Interface] block effectively.
+			# But sed is tricky. Let's just say we support standard iptables based logging for now.
+			
+			local log_rule_v4=""
+			local log_rule_v6=""
+			
+			if pgrep firewalld >/dev/null 2>&1; then
+				# For firewalld, we add rich rules.
+				# Note: Limiting to source address of the VPN subnet is better practice.
+				log_rule_v4="PostUp = firewall-cmd --add-rich-rule='rule family=ipv4 source address=${SERVER_WG_IPV4}/24 log prefix=\"[WS-Audit] \" level=\"info\"'"
+				log_rule_v6="PostUp = firewall-cmd --add-rich-rule='rule family=ipv6 source address=${SERVER_WG_IPV6}/64 log prefix=\"[WS-Audit] \" level=\"info\"'"
+				# And PostDown
+				local down_rule_v4="PostDown = firewall-cmd --remove-rich-rule='rule family=ipv4 source address=${SERVER_WG_IPV4}/24 log prefix=\"[WS-Audit] \" level=\"info\"'"
+				local down_rule_v6="PostDown = firewall-cmd --remove-rich-rule='rule family=ipv6 source address=${SERVER_WG_IPV6}/64 log prefix=\"[WS-Audit] \" level=\"info\"'"
+				
+				# Insert into config
+				# We want to insert these after other PostUp rules
+				sed -i "/^PostUp = .*MASQUERADE/a ${log_rule_v4}\n${log_rule_v6}" "/etc/wireguard/${SERVER_WG_NIC}.conf"
+				sed -i "/^PostDown = .*MASQUERADE/a ${down_rule_v4}\n${down_rule_v6}" "/etc/wireguard/${SERVER_WG_NIC}.conf"
+				
+				# Apply runtime
+				firewall-cmd --add-rich-rule="rule family=ipv4 source address=${SERVER_WG_IPV4}/24 log prefix=\"[WS-Audit] \" level=\"info\""
+				firewall-cmd --add-rich-rule="rule family=ipv6 source address=${SERVER_WG_IPV6}/64 log prefix=\"[WS-Audit] \" level=\"info\""
+
+			else
+				# Standard iptables
+				# We log NEW connections coming from the wireguard interface
+				log_rule_v4="PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4"
+				log_rule_v6="PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4"
+				
+				local down_rule_v4="PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4"
+				local down_rule_v6="PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4"
+				
+				# Insert into config
+				sed -i "/^PostUp = .*MASQUERADE/a ${log_rule_v4}\n${log_rule_v6}" "/etc/wireguard/${SERVER_WG_NIC}.conf"
+				sed -i "/^PostDown = .*MASQUERADE/a ${down_rule_v4}\n${down_rule_v6}" "/etc/wireguard/${SERVER_WG_NIC}.conf"
+				
+				# Apply runtime
+				iptables -I FORWARD -i "${SERVER_WG_NIC}" -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4
+				ip6tables -I FORWARD -i "${SERVER_WG_NIC}" -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4
+			fi
+
+			# Ensure archiving is set up
+			_ws_setup_log_archiving
+			
+			echo -e "${GREEN}Activity logging has been enabled.${NC}"
+			echo "Traffic will be logged to system journal and archived to /var/log/wireshield/archives."
+			wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+		fi
+	fi
+}
+
+function configureLogRetention() {
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
+	echo "Set the number of days to keep archived activity logs."
+	echo "Logs older than this will be automatically deleted."
+	
+	if [[ -f /etc/wireguard/params ]]; then
+		source /etc/wireguard/params
+	fi
+	local current_retention="${ACTIVITY_LOG_RETENTION:-15}"
+	
+	read -rp "Retention period in days [${current_retention}]: " -e DAYS
+	DAYS=${DAYS:-$current_retention}
+	
+	if [[ ! "${DAYS}" =~ ^[0-9]+$ ]] || [[ "${DAYS}" -le 0 ]]; then
+		echo -e "${ORANGE}Invalid input. Please enter a positive number.${NC}"
+		return
+	fi
+	
+	# Update params file
+	if grep -q "ACTIVITY_LOG_RETENTION" /etc/wireguard/params; then
+		sed -i "s/^ACTIVITY_LOG_RETENTION=.*/ACTIVITY_LOG_RETENTION=${DAYS}/" /etc/wireguard/params
+	else
+		echo "ACTIVITY_LOG_RETENTION=${DAYS}" >> /etc/wireguard/params
+	fi
+	
+	# Update archiving script
+	_ws_setup_log_archiving "${DAYS}"
+	
+	echo -e "${GREEN}Retention period updated to ${DAYS} days.${NC}"
+}
+
+function viewUserActivityLogs() {
+	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	echo ""
+	
+	# Mapping IPs to Names
+	declare -A ip_map
+	local cfg="/etc/wireguard/${SERVER_WG_NIC}.conf"
+	
+	# Read config to map IPs to Client Names
+	# Loop through file, capturing Client Name and then the Address/AllowedIPs
+	local current_client=""
+	while IFS= read -r line; do
+		if [[ $line =~ ^###[[:space:]]Client[[:space:]](.+) ]]; then
+			# Remove expiry info if present to get just the name
+			local info="${BASH_REMATCH[1]}"
+			if [[ $info =~ ^([^[:space:]]+)[[:space:]]\| ]]; then
+				current_client="${BASH_REMATCH[1]}"
+			else
+				current_client="${info}"
+			fi
+		elif [[ $line =~ ^AllowedIPs[[:space:]]*=[[:space:]]*(.*) ]]; then
+			if [[ -n "${current_client}" ]]; then
+				local ips="${BASH_REMATCH[1]}"
+				# Split by comma
+				IFS=',' read -ra ADDR <<< "$ips"
+				for i in "${ADDR[@]}"; do
+					# Remove /32 or /128
+					local clean_ip=$(echo "$i" | cut -d'/' -f1 | tr -d '[:space:]')
+					ip_map["$clean_ip"]="$current_client"
+				done
+				current_client=""
+			fi
+		fi
+	done < "$cfg"
+	
+	echo "Select filter:"
+	echo "   1) View all logs"
+	echo "   2) Filter by specific user/client"
+	read -rp "Option [1-2]: " -e OPT
+	
+	local filter_ip=""
+	if [[ "$OPT" == "2" ]]; then
+		local name=$(_ws_choose_client)
+		if [[ -z "$name" ]]; then return; fi
+		
+		# Find IP for this client
+		# We can just grep the config
+		# But we already have the map. Iterate or just re-parse specifically for this user.
+		# Simpler: grep the AllowedIPs for this client block.
+		local client_ips=$(sed -n "/^### Client ${name}/,/^$/p" "$cfg" | grep "AllowedIPs" | cut -d'=' -f2)
+		# Just take the first IPv4 ?
+		# A user might have v4 and v6. We need to filter logs where SRC equals any of their IPs.
+		# Construct a grep pattern for the IPs.
+		local grep_pattern=""
+		IFS=',' read -ra ADDR <<< "$client_ips"
+		for i in "${ADDR[@]}"; do
+			local clean_ip=$(echo "$i" | cut -d'/' -f1 | tr -d '[:space:]')
+			if [[ -z "$grep_pattern" ]]; then
+				grep_pattern="SRC=${clean_ip} "
+			else
+				grep_pattern="${grep_pattern}|SRC=${clean_ip} "
+			fi
+		done
+		
+		echo -e "Showing logs for user: ${GREEN}${name}${NC}"
+	else
+		echo -e "Showing logs for ${GREEN}ALL USERS${NC}"
+	fi
+	
+	echo -e "${ORANGE}Retrieving logs (this may take a moment)...${NC}"
+	
+	# Temporary file for aggregation
+	local tmp_log=$(mktemp)
+	
+	# 1. Get archived logs (if any exist)
+	# 2. Get today's logs from journalctl
+	
+	# Function to parse and format log lines
+	# Log format: ... kernel: [WS-Audit] IN=wg0 OUT=eth0 ... SRC=10.66.66.2 DST=1.1.1.1 ...
+	parse_logs() {
+		# We want: Date Time | User | Source | Destination
+		while IFS= read -r line; do
+			# Extract timestamp (ISO format from journalctl short-iso: 2023-10-27T10:00:00+0000)
+			# or syslog format depending on source.
+			# Let's assume the grep input line has the timestamp at the beginning.
+			
+			# Extract fields
+			# SRC=...
+			local src=$(echo "$line" | grep -o 'SRC=[^ ]*' | cut -d= -f2)
+			# DST=...
+			local dst=$(echo "$line" | grep -o 'DST=[^ ]*' | cut -d= -f2)
+			# DPT=... (Optional)
+			local dpt=$(echo "$line" | grep -o 'DPT=[^ ]*' | cut -d= -f2)
+			# PROTO=...
+			local proto=$(echo "$line" | grep -o 'PROTO=[^ ]*' | cut -d= -f2)
+			
+			# Timestamp: fields 1 and 2 usually?
+			# journalctl -o short-iso output example:
+			# 2023-12-29T19:00:00+0600 hostname kernel: [WS-Audit] ...
+			local ts=$(echo "$line" | awk '{print $1}')
+			
+			local user="${ip_map[$src]}"
+			if [[ -z "$user" ]]; then user="Unknown($src)"; fi
+			
+			# Format nicely
+			# TS | User | SRC -> DST:PORT (PROTO)
+			printf "%-25s | %-15s | %-15s -> %s:%s (%s)\n" "$ts" "$user" "$src" "$dst" "${dpt:--}" "$proto"
+		done
+	}
+	
+	# Collect logs
+	# Archived
+	find /var/log/wireshield/archives -name "activity-*.log" -print0 2>/dev/null | xargs -0 cat 2>/dev/null >> "$tmp_log"
+	# Today
+	journalctl -k -g "WS-Audit" --since "today" --output=short-iso >> "$tmp_log"
+	
+	# Filter and Display
+	if [[ -n "$grep_pattern" ]]; then
+		if [[ -s "$tmp_log" ]]; then
+			grep -E "$grep_pattern" "$tmp_log" | parse_logs | less
+		else
+			echo "No logs found."
+		fi
+	else
+		if [[ -s "$tmp_log" ]]; then
+			cat "$tmp_log" | parse_logs | less
+		else
+			echo "No logs found."
+		fi
+	fi
+	
+	rm -f "$tmp_log"
+}
+
+function activityLogsMenu() {
+	while true; do
+		clear
+		echo -e "${GREEN}Activity Logs Management${NC}"
+		echo ""
+		echo "   1) Enable/Disable Activity Logging"
+		echo "   2) Configure Retention Period"
+		echo "   3) View User Logs"
+		echo "   4) Back to Main Menu"
+		echo ""
+		read -rp "Select option [1-4]: " OPT
+		
+		case "$OPT" in
+			1) toggleActivityLogging ;;
+			2) configureLogRetention ;;
+			3) viewUserActivityLogs ;;
+			4) return ;;
+			*) ;;
+		esac
+		echo ""
+		read -rp "Press Enter to continue..." _
+	done
+}
+
 function audit_log() {
 	# Simple audit log function for CLI actions
 	local client_id="$1"
@@ -1930,7 +2288,8 @@ function manageMenu() {
 				9 "Backup Configuration" \
 				10 "Remove Client 2FA" \
 				11 "Uninstall WireShield" \
-				12 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=12
+				12 "User Activity Logs" \
+				13 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=13
 		else
 			local msg="Select a management task"
 			echo ""
@@ -1946,9 +2305,10 @@ function manageMenu() {
 			echo "   9) Backup Configuration"
 			echo "  10) Remove Client 2FA"
 			echo "  11) Uninstall WireShield"
-			echo "  12) Exit"
-			until [[ ${MENU_OPTION} =~ ^[1-9]$|^10$|^11$|^12$ ]]; do
-				read -rp "Select an option [1-12]: " MENU_OPTION
+			echo "  12) User Activity Logs"
+			echo "  13) Exit"
+			until [[ ${MENU_OPTION} =~ ^[1-9]$|^1[0-3]$ ]]; do
+				read -rp "Select an option [1-13]: " MENU_OPTION
 			done
 		fi
 
@@ -1976,6 +2336,8 @@ function manageMenu() {
 		11)
 			uninstallWg ;;
 		12)
+			activityLogsMenu ;;
+		13)
 			exit 0 ;;
 		esac
 

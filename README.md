@@ -64,6 +64,8 @@ WireShield is an automated WireGuard VPN deployment tool with integrated two-fac
 - ✅ **Audit logging** for all authentication events
 - ✅ **Session monitoring** with WireGuard handshake-aware revocation
 - ✅ **ipset-based allowlisting** for verified clients
+- ✅ **User activity logging** with configurable retention
+
 
 ### Deployment
 - ✅ **One-command installation** via interactive CLI
@@ -558,6 +560,51 @@ sudo ipset del ws_2fa_allowed_v6 fd42:42:42::2
 sudo sqlite3 /etc/wireshield/2fa/auth.db \
   "DELETE FROM sessions WHERE client_id='alice';"
 ```
+
+### User Activity Logging
+
+WireShield includes a built-in activity logger that tracks connection history for auditing purposes.
+
+#### Enable/Disable Logging
+
+```bash
+# Via interactive menu
+sudo ./wireshield.sh
+# Select option: "User Activity Logs" -> "Enable/Disable Activity Logging"
+```
+When enabled, the system logs every **NEW** connection made by authenticated clients from the WireGuard interface.
+
+#### View Activity Logs
+
+```bash
+# Via interactive menu
+sudo ./wireshield.sh
+# Select option: "User Activity Logs" -> "View User Logs"
+```
+The unified log viewer combines:
+- Real-time logs from the system journal
+- Archived historical logs
+
+**Output format:**
+```text
+TIMESTAMP                 | USER            | SOURCE          -> DESTINATION (PROTO)
+2023-12-30T10:00:00+0000 | alice           | 10.66.66.2      -> 8.8.8.8:53 (UDP)
+```
+
+#### Configure Retention
+
+By default, logs are kept for **15 days**. You can adjust this period:
+
+```bash
+# Via interactive menu
+sudo ./wireshield.sh
+# Select option: "User Activity Logs" -> "Configure Retention Period"
+```
+
+A daily cron job (`/usr/local/bin/wireshield-archive-logs`) automatically:
+1. Archives yesterday's logs to `/var/log/wireshield/archives/`
+2. Deletes archives older than the configured retention period
+
 
 ### SSL/TLS Management
 
