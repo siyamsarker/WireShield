@@ -1535,6 +1535,17 @@ function uninstallWg() {
 		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 
+		# Remove activity logging rules (best effort)
+		if pgrep firewalld >/dev/null 2>&1; then
+			firewall-cmd --remove-rich-rule='rule family=ipv4 source address=0.0.0.0/0 log prefix="[WS-Audit] " level="info"' --permanent 2>/dev/null || true
+			firewall-cmd --remove-rich-rule='rule family=ipv6 source address=::/0 log prefix="[WS-Audit] " level="info"' --permanent 2>/dev/null || true
+			# Also remove non-permanent variants just in case
+			firewall-cmd --remove-rich-rule='rule family=ipv4 source address=0.0.0.0/0 log prefix="[WS-Audit] " level="info"' 2>/dev/null || true
+		else
+			iptables -D FORWARD -i "${SERVER_WG_NIC}" -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4 2>/dev/null || true
+			ip6tables -D FORWARD -i "${SERVER_WG_NIC}" -m state --state NEW -j LOG --log-prefix '[WS-Audit] ' --log-level 4 2>/dev/null || true
+		fi
+
 		# Close 2FA service TCP ports
 		local _ws_2fa_port_rm _ws_2fa_http_port_rm
 		_ws_2fa_port_rm=443
