@@ -249,7 +249,7 @@ function installQuestions() {
 		echo -e "${GREEN}║                                                                                   ║${NC}"
 		echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════════════╝${NC}"
 		echo ""
-		echo -e "                 ${GREEN}● Secure${NC}  ${ORANGE}● Simple${NC}  ${GREEN}● Enterprise-Grade${NC}                 "
+		echo -e "          ${GREEN}● Secure${NC}  ${ORANGE}● Simple${NC}  ${GREEN}● Enterprise-Grade${NC}          "
 		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 		echo -e "          ${GREEN}Professional WireGuard VPN Deployment System${NC}"
 		echo ""

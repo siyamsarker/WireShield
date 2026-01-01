@@ -1,6 +1,6 @@
 [Unit]
 Description=WireShield 2FA Authentication Service
-Documentation=https://github.com/technonext/wireshield
+Documentation=https://github.com/siyamsarker/WireShield
 Requires=network-online.target
 After=network-online.target
 
