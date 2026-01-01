@@ -1728,12 +1728,6 @@ function showClientQR() {
 	echo -e "${GREEN}\nQR Code for ${name}:${NC}\n"
 	# Strip comments and empty lines to reduce QR code size
 	grep -vE '^\s*(#|$)' "${cfg}" | qrencode -t ansiutf8 -l L -m 1
-	
-	# Generate PNG approx 650x650
-	local png_file="${name}.png"
-	grep -vE '^\s*(#|$)' "${cfg}" | qrencode -t PNG -s 10 -o "${png_file}"
-	echo ""
-	echo -e "${GREEN}Saved QR image to ${png_file} (approx 650x650 pixels)${NC}"
 }
 
 function showStatus() {
