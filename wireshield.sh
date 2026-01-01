@@ -2287,8 +2287,8 @@ function manageMenu() {
 				8 "View Audit Logs" \
 				9 "Backup Configuration" \
 				10 "Remove Client 2FA" \
-				11 "Uninstall WireShield" \
-				12 "User Activity Logs" \
+				11 "User Activity Logs" \
+				12 "Uninstall WireShield" \
 				13 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=13
 		else
 			local msg="Select a management task"
@@ -2304,8 +2304,8 @@ function manageMenu() {
 			echo "   8) View Audit Logs"
 			echo "   9) Backup Configuration"
 			echo "  10) Remove Client 2FA"
-			echo "  11) Uninstall WireShield"
-			echo "  12) User Activity Logs"
+			echo "  11) User Activity Logs"
+			echo "  12) Uninstall WireShield"
 			echo "  13) Exit"
 			until [[ ${MENU_OPTION} =~ ^[1-9]$|^1[0-3]$ ]]; do
 				read -rp "Select an option [1-13]: " MENU_OPTION
@@ -2334,9 +2334,9 @@ function manageMenu() {
 		10)
 			removeClient2FA ;;
 		11)
-			uninstallWg ;;
-		12)
 			activityLogsMenu ;;
+		12)
+			uninstallWg ;;
 		13)
 			exit 0 ;;
 		esac
