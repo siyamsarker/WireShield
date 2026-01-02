@@ -131,7 +131,8 @@ def init_db():
             backup_codes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            enabled BOOLEAN DEFAULT 1
+            enabled BOOLEAN DEFAULT 1,
+            console_access BOOLEAN DEFAULT 0
         )
     ''')
     
@@ -168,6 +169,10 @@ def init_db():
         pass
     try:
         c.execute('ALTER TABLE users ADD COLUMN wg_ipv6 TEXT')
+    except Exception:
+        pass
+    try:
+        c.execute('ALTER TABLE users ADD COLUMN console_access BOOLEAN DEFAULT 0')
     except Exception:
         pass
     conn.close()
@@ -313,6 +318,467 @@ rate_limiter = RateLimiter(
     max_requests=RATE_LIMIT_MAX_REQUESTS,
     window_seconds=RATE_LIMIT_WINDOW_SECONDS,
 )
+
+# ============================================================================
+# Console Access & Routes
+# ============================================================================
+
+def _check_console_access(request: Request):
+    """Dependency: Verify if the requester is authorized for console access."""
+    client_ip = request.client.host
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Find client by IP (v4 or v6)
+    c.execute("SELECT client_id, console_access FROM users WHERE wg_ipv4 = ? OR wg_ipv6 = ?", (client_ip, client_ip))
+    row = c.fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=403, detail="Access denied: Unknown client")
+    
+    client_id, access = row["client_id"], row["console_access"]
+    if not access:
+        raise HTTPException(status_code=403, detail="Access denied: Console access not granted")
+    
+    return client_id
+
+@app.get("/console", response_class=HTMLResponse)
+async def console_dashboard(request: Request):
+    """Render the Web Console Dashboard."""
+    try:
+        _check_console_access(request)
+    except HTTPException:
+        return HTMLResponse(content="<h1>Access Denied</h1><p>You are not authorized to view this console.</p>", status_code=403)
+        
+    html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WireShield Console</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #3b82f6;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --border: #334155;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+        
+        .layout {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 100vh;
+        }
+        
+        header {
+            background-color: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .brand {
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+        }
+        
+        .brand span { color: var(--accent); }
+        
+        main {
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .tab {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover { color: var(--text-primary); }
+        
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        
+        .card {
+            background-color: var(--bg-card);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+        
+        .toolbar {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .btn {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn:hover { opacity: 0.9; }
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            background-color: rgba(0,0,0,0.2);
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+        
+        .badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .badge.success { background-color: rgba(34, 197, 94, 0.1); color: var(--success); }
+        .badge.error { background-color: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .badge.info { background-color: rgba(59, 130, 246, 0.1); color: var(--accent); }
+        
+        .view { display: none; }
+        .view.active { display: block; }
+        
+        /* Loader */
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-left-color: var(--accent);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <header>
+            <div class="brand">Wire<span>Shield</span> Console</div>
+            <div style="font-size: 0.875rem; color: var(--text-secondary);">Authenticated</div>
+        </header>
+        
+        <main>
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('activity')">Activity Log</div>
+                <div class="tab" onclick="switchTab('access')">Access Log</div>
+            </div>
+            
+            <!-- Activity Log View -->
+            <div id="view-activity" class="view active">
+                <div class="card">
+                    <div class="toolbar">
+                        <h3 style="font-size: 1rem;">System Activity (Traffic)</h3>
+                        <button class="btn" onclick="fetchActivityLogs()">
+                            Refresh
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>User</th>
+                                    <th>Source</th>
+                                    <th>Destination</th>
+                                    <th>Proto</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activity-tbody">
+                                <tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Access Log View -->
+            <div id="view-access" class="view">
+                <div class="card">
+                    <div class="toolbar">
+                        <h3 style="font-size: 1rem;">Authentication Events</h3>
+                        <button class="btn" onclick="fetchAccessLogs()">
+                            Refresh
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Client</th>
+                                    <th>Action</th>
+                                    <th>Status</th>
+                                    <th>IP Address</th>
+                                </tr>
+                            </thead>
+                            <tbody id="access-tbody">
+                                <tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // State
+        let currentTab = 'activity';
+        
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // Updates Tabs
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[onclick="switchTab('${tab}')"]`).classList.add('active');
+            
+            // Update Views
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(`view-${tab}`).classList.add('active');
+            
+            // Fetch data
+            if (tab === 'activity') fetchActivityLogs();
+            if (tab === 'access') fetchAccessLogs();
+        }
+        
+        async function fetchActivityLogs() {
+            const tbody = document.getElementById('activity-tbody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">Loading...</td></tr>';
+            
+            try {
+                const res = await fetch('/api/console/activity-logs');
+                if (!res.ok) throw new Error('Failed to fetch');
+                const data = await res.json();
+                
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">No logs found.</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.map(log => `
+                    <tr>
+                        <td style="color: var(--text-secondary); white-space: nowrap;">${log.timestamp}</td>
+                        <td style="font-weight: 500;">${log.client || '-'}</td>
+                        <td style="font-family: monospace;">${log.src}</td>
+                        <td style="font-family: monospace;">${log.dst}:${log.dpt || ''}</td>
+                        <td><span class="badge info">${log.proto}</span></td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger); padding: 2rem;">Error loading logs: ${e.message}</td></tr>`;
+            }
+        }
+        
+        async function fetchAccessLogs() {
+            const tbody = document.getElementById('access-tbody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">Loading...</td></tr>';
+            
+            try {
+                const res = await fetch('/api/console/audit-logs');
+                if (!res.ok) throw new Error('Failed to fetch');
+                const data = await res.json();
+                
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">No logs found.</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.map(log => {
+                    let badgeClass = 'info';
+                    if (log.status.toLowerCase().includes('success')) badgeClass = 'success';
+                    if (log.status.toLowerCase().includes('fail') || log.status.toLowerCase().includes('invalid')) badgeClass = 'error';
+                    
+                    return `
+                    <tr>
+                        <td style="color: var(--text-secondary); white-space: nowrap;">${log.timestamp}</td>
+                        <td style="font-weight: 500;">${log.client_id || 'Unknown'}</td>
+                        <td>${log.action}</td>
+                        <td><span class="badge ${badgeClass}">${log.status}</span></td>
+                        <td style="font-family: monospace;">${log.ip_address}</td>
+                    </tr>
+                `}).join('');
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger); padding: 2rem;">Error loading logs: ${e.message}</td></tr>`;
+            }
+        }
+        
+        // Initial load
+        fetchActivityLogs();
+    </script>
+</body>
+</html>
+    """
+    return html
+
+@app.get("/api/console/audit-logs")
+async def get_audit_logs(client_id: str = Depends(_check_console_access)):
+    """Fetch recent audit logs from DB."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT timestamp, client_id, action, status, ip_address FROM audit_log ORDER BY timestamp DESC LIMIT 200")
+    rows = c.fetchall()
+    conn.close()
+    
+    return [
+        {
+            "timestamp": row["timestamp"],
+            "client_id": row["client_id"],
+            "action": row["action"],
+            "status": row["status"],
+            "ip_address": row["ip_address"]
+        }
+        for row in rows
+    ]
+
+@app.get("/api/console/activity-logs")
+async def get_activity_logs(client_id: str = Depends(_check_console_access)):
+    """Fetch parsed activity logs from journalctl."""
+    # This involves running journalctl and parsing the output.
+    # Limit to last 200 lines or specific time window for performance.
+    try:
+        # Run journalctl
+        proc = subprocess.run(
+            ["journalctl", "-k", "-g", "WS-Audit", "-n", "200", "--output=short-iso", "--no-pager"],
+            capture_output=True,
+            text=True
+        )
+        if proc.returncode != 0:
+            return []
+            
+        lines = proc.stdout.strip().splitlines()
+        logs = []
+        
+        # We need to map IPs to Client IDs for display
+        # This is expensive to do perfectly for every log, but we can do a quick lookup cache
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users")
+        user_rows = c.fetchall()
+        conn.close()
+        
+        ip_map = {}
+        for row in user_rows:
+            if row["wg_ipv4"]: ip_map[row["wg_ipv4"]] = row["client_id"]
+            if row["wg_ipv6"]: ip_map[row["wg_ipv6"]] = row["client_id"]
+            
+        for line in lines:
+            try:
+                # Format: 2023-12-01T12:00:00+0000 hostname kernel: [WS-Audit] ... SRC=... DST=...
+                # Simple parsing
+                parts = line.split()
+                ts = parts[0]
+                
+                src = ""
+                dst = ""
+                dpt = ""
+                proto = ""
+                
+                # Regex or naive split
+                import re
+                src_m = re.search(r'SRC=([^\s]+)', line)
+                dst_m = re.search(r'DST=([^\s]+)', line)
+                dpt_m = re.search(r'DPT=([^\s]+)', line)
+                proto_m = re.search(r'PROTO=([^\s]+)', line)
+                
+                if src_m: src = src_m.group(1)
+                if dst_m: dst = dst_m.group(1)
+                if dpt_m: dpt = dpt_m.group(1)
+                if proto_m: proto = proto_m.group(1)
+                
+                client_name = ip_map.get(src)
+                
+                if src and dst: # Filter out empty parsing
+                    logs.append({
+                        "timestamp": ts,
+                        "client": client_name,
+                        "src": src,
+                        "dst": dst,
+                        "dpt": dpt,
+                        "proto": proto
+                    })
+            except Exception:
+                continue
+                
+        # Reverse to show newest first? journalctl -n 200 shows oldest to newest of the last 200.
+        # So the last line is the newest. We should reverse it.
+        return logs[::-1]
+        
+    except Exception as e:
+        # logger is not imported? Check imports. Yes, logging imported as logging.
+        # But 'logger' variable is usually setup.
+        # I'll use logging.error instead or check if logger is defined.
+        # Previous view showed 'logger.debug' usage.
+        # Assuming logger is global.
+        # To be safe I will use `logger = logging.getLogger("WireShield")` inside or just assume the global one.
+        # The file has local logger usage so it should be fine.
+        logging.getLogger("WireShield").error(f"Failed to fetch activity logs: {e}")
+        return []
 
 # ============================================================================
 # Traffic Gating via ipset
