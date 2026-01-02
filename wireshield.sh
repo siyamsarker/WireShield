@@ -1598,9 +1598,13 @@ function uninstallWg() {
 		rm -f /etc/systemd/system/wireshield-2fa-renew.service 2>/dev/null || true
 		systemctl daemon-reload 2>/dev/null || true
 
-		# Remove 2FA directory (database, certificates, configs)
-		echo -e "${ORANGE}Removing 2FA configuration and database...${NC}"
+		# Remove 2FA directory (database, certificates, configs, console assets)
+		echo -e "${ORANGE}Removing 2FA configuration, database, and Console data...${NC}"
 		rm -rf /etc/wireshield 2>/dev/null || true
+
+		# Clean up Console/2FA ipsets
+		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
+		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 
 		# Remove Let's Encrypt symlinks if they exist
 		rm -f /usr/local/bin/wireshield-renew-cert 2>/dev/null || true
