@@ -486,21 +486,23 @@ async def console_dashboard(request: Request):
         @font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/static/fonts/Inter-Bold.woff2') format('woff2'); }
 
         :root {
-            --bg-dark: #0f172a;
-            --bg-card: #1e293b;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --accent: #3b82f6;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
             --danger: #ef4444;
-            --success: #22c55e;
-            --border: #334155;
+            --success: #16a34a;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
         }
         
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-dark);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
             color: var(--text-primary);
             line-height: 1.5;
         }
@@ -512,12 +514,15 @@ async def console_dashboard(request: Request):
         }
         
         header {
-            background-color: var(--bg-card);
+            background-color: var(--card);
             border-bottom: 1px solid var(--border);
-            padding: 1rem 2rem;
+            padding: 0 2rem;
+            height: 64px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            z-index: 10;
         }
         
         .brand {
@@ -559,18 +564,26 @@ async def console_dashboard(request: Request):
         }
         
         .card {
-            background-color: var(--bg-card);
+            background-color: var(--card);
             border-radius: 8px;
             border: 1px solid var(--border);
+            box-shadow: var(--shadow);
             overflow: hidden;
         }
         
         .toolbar {
-            padding: 1rem;
+            padding: 1rem 1.5rem;
             border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background-color: #f8fafc;
+        }
+        
+        .toolbar h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
         }
         
         .btn {
@@ -578,16 +591,17 @@ async def console_dashboard(request: Request):
             color: white;
             border: none;
             padding: 0.5rem 1rem;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-weight: 500;
             font-size: 0.875rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            transition: background-color 0.15s;
         }
         
-        .btn:hover { opacity: 0.9; }
+        .btn:hover { background-color: var(--accent-hover); }
         
         .table-container {
             overflow-x: auto;
@@ -601,28 +615,32 @@ async def console_dashboard(request: Request):
         
         th, td {
             text-align: left;
-            padding: 1rem;
+            padding: 1rem 1.5rem;
             border-bottom: 1px solid var(--border);
         }
         
         th {
-            background-color: rgba(0,0,0,0.2);
+            background-color: #f8fafc;
             font-weight: 600;
             color: var(--text-secondary);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
         }
         
-        tr:hover { background-color: rgba(255,255,255,0.02); }
+        tr:hover td { background-color: #f8fafc; }
         
         .badge {
-            padding: 0.25rem 0.5rem;
+            padding: 0.25rem 0.625rem;
             border-radius: 9999px;
             font-size: 0.75rem;
             font-weight: 600;
+            display: inline-block;
         }
         
-        .badge.success { background-color: rgba(34, 197, 94, 0.1); color: var(--success); }
-        .badge.error { background-color: rgba(239, 68, 68, 0.1); color: var(--danger); }
-        .badge.info { background-color: rgba(59, 130, 246, 0.1); color: var(--accent); }
+        .badge.success { background-color: #dcfce7; color: #166534; }
+        .badge.error { background-color: #fee2e2; color: #991b1b; }
+        .badge.info { background-color: #dbeafe; color: #1e40af; }
         
         .view { display: none; }
         .view.active { display: block; }
@@ -643,8 +661,11 @@ async def console_dashboard(request: Request):
 <body>
     <div class="layout">
         <header>
-            <div class="brand">Wire<span>Shield</span> Console</div>
-            <div style="font-size: 0.875rem; color: var(--text-secondary);">Authenticated</div>
+            <div class="brand">
+                <div style="width:24px;height:24px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">WS</div>
+                Wire<span>Shield</span> Console
+            </div>
+            <div style="font-size: 0.875rem; color: var(--text-secondary); background: var(--bg); padding: 0.25rem 0.75rem; border-radius: 9999px; border: 1px solid var(--border); font-weight: 500;">Authenticated</div>
         </header>
         
         <main>
