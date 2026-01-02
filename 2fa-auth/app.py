@@ -1149,7 +1149,9 @@ async def get_activity_logs(
                 # Format: 2023-12-01T12:00:00+0000 hostname kernel: [WS-Audit] ... SRC=... DST=...
                 parts = line.split()
                 if len(parts) < 3: continue
-                ts = parts[0]
+                ts_raw = parts[0]
+                # Format: 2023-12-01T12:00:00+0000 -> 2023-12-01 12:00:00
+                ts = ts_raw.replace('T', ' ')[:19]
                 
                 src = ""
                 dst = ""
