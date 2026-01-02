@@ -681,7 +681,24 @@ async def console_dashboard(request: Request):
             text-transform: uppercase;
             font-size: 0.75rem;
             letter-spacing: 0.05em;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
         }
+        
+        th:hover {
+            background-color: #e2e8f0;
+            color: var(--text-primary);
+        }
+        
+        th .sort-icon {
+            display: inline-block;
+            margin-left: 0.5rem;
+            opacity: 0.3;
+        }
+        
+        th.sorted-asc .sort-icon::after { content: '▲'; opacity: 1; }
+        th.sorted-desc .sort-icon::after { content: '▼'; opacity: 1; }
         
         tr:hover td { background-color: #f8fafc; }
         
@@ -767,7 +784,7 @@ async def console_dashboard(request: Request):
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Time</th>
+                                    <th onclick="sortActivity('timestamp')">Time <span class="sort-icon"></span></th>
                                     <th>User</th>
                                     <th>Source</th>
                                     <th>Destination</th>
@@ -807,11 +824,11 @@ async def console_dashboard(request: Request):
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Time</th>
-                                    <th>Client</th>
-                                    <th>Action</th>
-                                    <th>Status</th>
-                                    <th>IP Address</th>
+                                    <th onclick="sortAccess('timestamp')">Time <span class="sort-icon"></span></th>
+                                    <th onclick="sortAccess('client_id')">Client <span class="sort-icon"></span></th>
+                                    <th onclick="sortAccess('action')">Action <span class="sort-icon"></span></th>
+                                    <th onclick="sortAccess('status')">Status <span class="sort-icon"></span></th>
+                                    <th onclick="sortAccess('ip_address')">IP Address <span class="sort-icon"></span></th>
                                 </tr>
                             </thead>
                             <tbody id="access-tbody"></tbody>
@@ -834,6 +851,12 @@ async def console_dashboard(request: Request):
         let currentTab = 'activity';
         let currentAccessPage = 1;
         let debounceTimer;
+        
+        // Sorting State
+        let actSortOrder = 'desc'; // Activity logs only support time sort really, effectively reversing list
+        
+        let accSortBy = 'timestamp';
+        let accSortOrder = 'desc';
 
         // Utils
         const debounce = (func, delay) => {
@@ -854,15 +877,26 @@ async def console_dashboard(request: Request):
         }
         
         // --- Activity Logs ---
+        function sortActivity(col) {
+            // Only timestamp is practically sortable for journalctl efficiently in this setup
+            if (col !== 'timestamp') return; 
+            
+            actSortOrder = actSortOrder === 'desc' ? 'asc' : 'desc';
+            updateHeaders('activity', col, actSortOrder);
+            fetchActivityLogs();
+        }
+
         async function fetchActivityLogs() {
             const tbody = document.getElementById('activity-tbody');
             const limit = document.getElementById('act-limit').value;
             const search = document.getElementById('act-search').value;
             
+            updateHeaders('activity', 'timestamp', actSortOrder);
+            
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">Loading...</td></tr>';
             
             try {
-                const params = new URLSearchParams({ limit, search });
+                const params = new URLSearchParams({ limit, search, order: actSortOrder });
                 const res = await fetch(`/api/console/activity-logs?${params}`);
                 if (!res.ok) throw new Error('Failed to fetch');
                 const data = await res.json();
@@ -883,7 +917,7 @@ async def console_dashboard(request: Request):
                     </tr>
                 `).join('');
                 
-                document.getElementById('act-info').innerText = `Showing last ${data.items.length} records (Limit: ${data.limit})`;
+                document.getElementById('act-info').innerText = `Showing ${data.items.length} records (Limit: ${data.limit})`;
                 
             } catch (e) {
                 tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger); padding: 2rem;">Error: ${e.message}</td></tr>`;
@@ -891,6 +925,16 @@ async def console_dashboard(request: Request):
         }
         
         // --- Access Logs ---
+        function sortAccess(col) {
+            if (accSortBy === col) {
+                accSortOrder = accSortOrder === 'desc' ? 'asc' : 'desc';
+            } else {
+                accSortBy = col;
+                accSortOrder = 'desc'; // Default new sort to desc
+            }
+            changeAccessPage(1);
+        }
+
         function changeAccessPage(page) {
             if (page < 1) return;
             currentAccessPage = page;
@@ -903,6 +947,8 @@ async def console_dashboard(request: Request):
             const search = document.getElementById('acc-search').value;
             const status = document.getElementById('acc-status').value;
             
+            updateHeaders('access', accSortBy, accSortOrder);
+            
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">Loading...</td></tr>';
             
             try {
@@ -910,7 +956,9 @@ async def console_dashboard(request: Request):
                     page: currentAccessPage, 
                     limit, 
                     search, 
-                    status 
+                    status,
+                    sort_by: accSortBy,
+                    order: accSortOrder
                 });
                 
                 const res = await fetch(`/api/console/audit-logs?${params}`);
@@ -946,6 +994,23 @@ async def console_dashboard(request: Request):
             }
         }
         
+        function updateHeaders(tab, currentSort, currentOrder) {
+            // Find specific view headers
+            const container = document.getElementById(`view-${tab}`);
+            if (!container) return;
+            
+            const ths = container.querySelectorAll('th');
+            ths.forEach(th => {
+                th.classList.remove('sorted-asc', 'sorted-desc');
+                
+                // Check if this th calls sort function with currentSort
+                const onClick = th.getAttribute('onclick');
+                if (onClick && onClick.includes(`'${currentSort}'`)) {
+                    th.classList.add(`sorted-${currentOrder}`);
+                }
+            });
+        }
+        
         function updatePagination(data) {
             const start = (data.page - 1) * data.limit + 1;
             const end = Math.min(start + data.limit - 1, data.total);
@@ -976,6 +1041,8 @@ async def get_audit_logs(
     search: str = None,
     status: str = None,
     client_filter: str = None,
+    sort_by: str = 'timestamp',
+    order: str = 'desc',
     client_id: str = Depends(_check_console_access)
 ):
     """Fetch paginated and filtered audit logs from DB."""
@@ -1014,8 +1081,14 @@ async def get_audit_logs(
     c.execute(count_query, params)
     total_count = c.fetchone()[0]
     
-    # Apply pagination
-    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    # Apply sorting and pagination
+    allowed_sorts = {'timestamp', 'client_id', 'action', 'status', 'ip_address'}
+    if sort_by not in allowed_sorts:
+        sort_by = 'timestamp'
+    
+    sort_order = 'DESC' if order.lower() == 'desc' else 'ASC'
+    query += f" ORDER BY {sort_by} {sort_order} LIMIT ? OFFSET ?"
+    
     offset = (page - 1) * limit
     params.extend([limit, offset])
     
@@ -1035,6 +1108,7 @@ async def get_audit_logs(
 async def get_activity_logs(
     limit: int = 50,
     search: str = None,
+    order: str = 'desc',
     client_id: str = Depends(_check_console_access)
 ):
     """Fetch parsed activity logs from journalctl with filtering."""
@@ -1106,9 +1180,13 @@ async def get_activity_logs(
                     })
             except Exception:
                 continue
-                
-        # Reverse to show newest first
-        return {"items": logs[::-1], "limit": limit}
+        
+        # Default is newest first (reversed from journalctl output)
+        # If order is asc, keep original order
+        if order.lower() == 'desc':
+            logs = logs[::-1]
+            
+        return {"items": logs, "limit": limit}
         
     except Exception as e:
         print(f"Error fetching logs: {e}")
