@@ -2265,6 +2265,76 @@ function audit_log() {
 	$sqlite3_cmd "INSERT INTO audit_log (client_id, action, status, ip_address) VALUES ('${client_id}', '${action}', '${status}', '${ip_address}');" 2>/dev/null || true
 }
 
+function consoleAccessMenu() {
+	# Submenu for managing Web Console access permissions
+	while true; do
+		clear
+		echo -e "${GREEN}Web Console Access Management${NC}"
+		echo ""
+		echo -e "Dashboard URL: ${ORANGE}https://${SERVER_PUB_IP}:${WS_2FA_PORT:-443}/console${NC}"
+		echo ""
+		
+		# Check DB
+		if [[ ! -f /etc/wireshield/2fa/auth.db ]]; then
+			echo -e "${RED}Error: 2FA database not found.${NC}"
+			read -rp "Press Enter to return..." _
+			return
+		fi
+		
+		local sqlite3_cmd="sqlite3 /etc/wireshield/2fa/auth.db"
+		local user_list
+		user_list=$($sqlite3_cmd "SELECT client_id, console_access FROM users ORDER BY client_id ASC;" 2>/dev/null)
+		
+		if [[ -z "$user_list" ]]; then
+			echo "No users found in 2FA database."
+		else
+			echo "   User List & Status:"
+			local i=1
+			declare -a ids
+			declare -a statuses
+			
+			while IFS='|' read -r client_id access; do
+				ids[$i]="$client_id"
+				statuses[$i]="$access"
+				local status_str="${RED}DENIED${NC}"
+				[[ "$access" == "1" ]] && status_str="${GREEN}ALLOWED${NC}"
+				
+				# Handle variable expansion in printf safely
+				printf "   %2d) %-20s [%b]\n" "$i" "$client_id" "$status_str"
+				((i++))
+			done <<< "$user_list"
+		fi
+		
+		echo ""
+		echo "   Actions:"
+		echo "   Input number to toggle access for a user"
+		echo "   Or type 'q' or 'b' to go back"
+		echo ""
+		read -rp "Select option: " SEL
+		
+		if [[ "$SEL" == "q" ]] || [[ "$SEL" == "b" ]] || [[ -z "$SEL" ]]; then
+			return
+		fi
+		
+		if [[ "$SEL" =~ ^[0-9]+$ ]] && [[ "$SEL" -ge 1 ]] && [[ "$SEL" -lt $i ]]; then
+			local target="${ids[$SEL]}"
+			local current="${statuses[$SEL]}"
+			local new_status=1
+			local verb="grant"
+			if [[ "$current" == "1" ]]; then
+				new_status=0
+				verb="revoke"
+			fi
+			
+			echo ""
+			echo "Changing access for ${target}..."
+			$sqlite3_cmd "UPDATE users SET console_access = ${new_status} WHERE client_id = '${target}';"
+			echo -e "${GREEN}Success: Access ${verb}ed for ${target}.${NC}"
+			sleep 1
+		fi
+	done
+}
+
 function manageMenu() {
     # Main interactive loop used after installation to manage clients and server.
 	while true; do
@@ -2275,7 +2345,7 @@ function manageMenu() {
 		local MENU_OPTION
 		if command -v whiptail &>/dev/null; then
 			# Center the prompt text within the specified width (approximate centering)
-			local MENU_HEIGHT=20 MENU_WIDTH=72 MENU_CHOICES=12
+			local MENU_HEIGHT=22 MENU_WIDTH=72 MENU_CHOICES=14
 			local _prompt="Select a management task"
 			local _pad=$(( (MENU_WIDTH - ${#_prompt}) / 2 ))
 			((_pad<0)) && _pad=0
@@ -2293,8 +2363,9 @@ function manageMenu() {
 				9 "Backup Configuration" \
 				10 "Remove Client 2FA" \
 				11 "User Activity Logs" \
-				12 "Uninstall WireShield" \
-				13 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=13
+				12 "Console Access Management" \
+				13 "Uninstall WireShield" \
+				14 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=14
 		else
 			local msg="Select a management task"
 			echo ""
@@ -2310,10 +2381,11 @@ function manageMenu() {
 			echo "   9) Backup Configuration"
 			echo "  10) Remove Client 2FA"
 			echo "  11) User Activity Logs"
-			echo "  12) Uninstall WireShield"
-			echo "  13) Exit"
-			until [[ ${MENU_OPTION} =~ ^[1-9]$|^1[0-3]$ ]]; do
-				read -rp "Select an option [1-13]: " MENU_OPTION
+			echo "  12) Console Access Management"
+			echo "  13) Uninstall WireShield"
+			echo "  14) Exit"
+			until [[ ${MENU_OPTION} =~ ^[1-9]$|^1[0-4]$ ]]; do
+				read -rp "Select an option [1-14]: " MENU_OPTION
 			done
 		fi
 
@@ -2341,8 +2413,10 @@ function manageMenu() {
 		11)
 			activityLogsMenu ;;
 		12)
-			uninstallWg ;;
+			consoleAccessMenu ;;
 		13)
+			uninstallWg ;;
+		14)
 			exit 0 ;;
 		esac
 
