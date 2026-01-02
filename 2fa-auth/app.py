@@ -478,7 +478,6 @@ async def console_dashboard(request: Request):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield Console</title>
-    <title>WireShield Console</title>
     <style>
         @font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/static/fonts/Inter-Regular.woff2') format('woff2'); }
         @font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2'); }
@@ -529,6 +528,9 @@ async def console_dashboard(request: Request):
             font-weight: 700;
             font-size: 1.25rem;
             color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         
         .brand span { color: var(--accent); }
@@ -542,18 +544,19 @@ async def console_dashboard(request: Request):
         
         .tabs {
             display: flex;
-            gap: 1rem;
+            gap: 2rem;
             margin-bottom: 2rem;
             border-bottom: 1px solid var(--border);
         }
         
         .tab {
-            padding: 0.75rem 1.5rem;
+            padding: 0.75rem 0;
             cursor: pointer;
             color: var(--text-secondary);
             font-weight: 500;
             border-bottom: 2px solid transparent;
             transition: all 0.2s;
+            font-size: 0.95rem;
         }
         
         .tab:hover { color: var(--text-primary); }
@@ -569,6 +572,8 @@ async def console_dashboard(request: Request):
             border: 1px solid var(--border);
             box-shadow: var(--shadow);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
         
         .toolbar {
@@ -578,12 +583,45 @@ async def console_dashboard(request: Request):
             justify-content: space-between;
             align-items: center;
             background-color: #f8fafc;
+            gap: 1rem;
+            flex-wrap: wrap;
         }
         
         .toolbar h3 {
             font-size: 1rem;
             font-weight: 600;
             color: var(--text-primary);
+            margin-right: auto;
+        }
+        
+        .filters {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+        
+        .input-group {
+            position: relative;
+        }
+        
+        .form-control {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            background: var(--card);
+            min-width: 150px;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+        }
+        
+        select.form-control {
+            cursor: pointer;
         }
         
         .btn {
@@ -603,8 +641,25 @@ async def console_dashboard(request: Request):
         
         .btn:hover { background-color: var(--accent-hover); }
         
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        
+        .btn-outline:hover:not(:disabled) {
+            background-color: #f1f5f9;
+            color: var(--text-primary);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
         .table-container {
             overflow-x: auto;
+            min-height: 200px;
         }
         
         table {
@@ -642,8 +697,25 @@ async def console_dashboard(request: Request):
         .badge.error { background-color: #fee2e2; color: #991b1b; }
         .badge.info { background-color: #dbeafe; color: #1e40af; }
         
+        .footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f8fafc;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        
         .view { display: none; }
-        .view.active { display: block; }
+        .view.active { display: block; animation: fadeIn 0.3s ease-out; }
         
         /* Loader */
         .spinner {
@@ -656,6 +728,7 @@ async def console_dashboard(request: Request):
         }
         
         @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -670,18 +743,25 @@ async def console_dashboard(request: Request):
         
         <main>
             <div class="tabs">
-                <div class="tab active" onclick="switchTab('activity')">Activity Log</div>
-                <div class="tab" onclick="switchTab('access')">Access Log</div>
+                <div class="tab active" onclick="switchTab('activity', event)">Activity Log</div>
+                <div class="tab" onclick="switchTab('access', event)">Access Log</div>
             </div>
             
             <!-- Activity Log View -->
             <div id="view-activity" class="view active">
                 <div class="card">
                     <div class="toolbar">
-                        <h3 style="font-size: 1rem;">System Activity (Traffic)</h3>
-                        <button class="btn" onclick="fetchActivityLogs()">
-                            Refresh
-                        </button>
+                        <h3>System Activity</h3>
+                        <div class="filters">
+                            <input type="text" class="form-control" id="act-search" placeholder="Search logs..." onkeyup="debounce(fetchActivityLogs, 500)">
+                            <select class="form-control" id="act-limit" onchange="fetchActivityLogs()">
+                                <option value="50">50 Rows</option>
+                                <option value="100">100 Rows</option>
+                                <option value="200">200 Rows</option>
+                                <option value="500">500 Rows</option>
+                            </select>
+                            <button class="btn" onclick="fetchActivityLogs()">Refresh</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table>
@@ -694,10 +774,11 @@ async def console_dashboard(request: Request):
                                     <th>Proto</th>
                                 </tr>
                             </thead>
-                            <tbody id="activity-tbody">
-                                <tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">Loading...</td></tr>
-                            </tbody>
+                            <tbody id="activity-tbody"></tbody>
                         </table>
+                    </div>
+                    <div class="footer">
+                        <span id="act-info">Showing recent logs</span>
                     </div>
                 </div>
             </div>
@@ -706,10 +787,21 @@ async def console_dashboard(request: Request):
             <div id="view-access" class="view">
                 <div class="card">
                     <div class="toolbar">
-                        <h3 style="font-size: 1rem;">Authentication Events</h3>
-                        <button class="btn" onclick="fetchAccessLogs()">
-                            Refresh
-                        </button>
+                        <h3>Authentication Events</h3>
+                        <div class="filters">
+                            <input type="text" class="form-control" id="acc-search" placeholder="Search..." onkeyup="debounce(() => changeAccessPage(1), 500)">
+                            <select class="form-control" id="acc-status" onchange="changeAccessPage(1)">
+                                <option value="all">All Status</option>
+                                <option value="success">Success</option>
+                                <option value="failure">Failure / Denied</option>
+                            </select>
+                            <select class="form-control" id="acc-limit" onchange="changeAccessPage(1)">
+                                <option value="10">10 Rows</option>
+                                <option value="50" selected>50 Rows</option>
+                                <option value="100">100 Rows</option>
+                            </select>
+                            <button class="btn" onclick="changeAccessPage(1)">Refresh</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table>
@@ -722,10 +814,15 @@ async def console_dashboard(request: Request):
                                     <th>IP Address</th>
                                 </tr>
                             </thead>
-                            <tbody id="access-tbody">
-                                <tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">Loading...</td></tr>
-                            </tbody>
+                            <tbody id="access-tbody"></tbody>
                         </table>
+                    </div>
+                    <div class="footer">
+                        <span id="acc-info">Loading...</span>
+                        <div class="pagination">
+                            <button class="btn btn-outline" id="acc-prev" onclick="changeAccessPage(currentAccessPage - 1)" disabled>Previous</button>
+                            <button class="btn btn-outline" id="acc-next" onclick="changeAccessPage(currentAccessPage + 1)" disabled>Next</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -735,38 +832,48 @@ async def console_dashboard(request: Request):
     <script>
         // State
         let currentTab = 'activity';
-        
-        function switchTab(tab) {
-            currentTab = tab;
-            
-            // Updates Tabs
+        let currentAccessPage = 1;
+        let debounceTimer;
+
+        // Utils
+        const debounce = (func, delay) => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(func, delay);
+        };
+
+        function switchTab(tab, event) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelector(`.tab[onclick="switchTab('${tab}')"]`).classList.add('active');
-            
-            // Update Views
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            document.getElementById(`view-${tab}`).classList.add('active');
             
-            // Fetch data
+            event.target.classList.add('active');
+            document.getElementById('view-' + tab).classList.add('active');
+            
+            currentTab = tab;
             if (tab === 'activity') fetchActivityLogs();
             if (tab === 'access') fetchAccessLogs();
         }
         
+        // --- Activity Logs ---
         async function fetchActivityLogs() {
             const tbody = document.getElementById('activity-tbody');
+            const limit = document.getElementById('act-limit').value;
+            const search = document.getElementById('act-search').value;
+            
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">Loading...</td></tr>';
             
             try {
-                const res = await fetch('/api/console/activity-logs');
+                const params = new URLSearchParams({ limit, search });
+                const res = await fetch(`/api/console/activity-logs?${params}`);
                 if (!res.ok) throw new Error('Failed to fetch');
                 const data = await res.json();
                 
-                if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">No logs found.</td></tr>';
+                if (data.items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">No logs found matching filters.</td></tr>';
+                    document.getElementById('act-info').innerText = 'No results';
                     return;
                 }
                 
-                tbody.innerHTML = data.map(log => `
+                tbody.innerHTML = data.items.map(log => `
                     <tr>
                         <td style="color: var(--text-secondary); white-space: nowrap;">${log.timestamp}</td>
                         <td style="font-weight: 500;">${log.client || '-'}</td>
@@ -775,29 +882,52 @@ async def console_dashboard(request: Request):
                         <td><span class="badge info">${log.proto}</span></td>
                     </tr>
                 `).join('');
+                
+                document.getElementById('act-info').innerText = `Showing last ${data.items.length} records (Limit: ${data.limit})`;
+                
             } catch (e) {
-                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger); padding: 2rem;">Error loading logs: ${e.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger); padding: 2rem;">Error: ${e.message}</td></tr>`;
             }
         }
         
+        // --- Access Logs ---
+        function changeAccessPage(page) {
+            if (page < 1) return;
+            currentAccessPage = page;
+            fetchAccessLogs();
+        }
+
         async function fetchAccessLogs() {
             const tbody = document.getElementById('access-tbody');
+            const limit = document.getElementById('acc-limit').value;
+            const search = document.getElementById('acc-search').value;
+            const status = document.getElementById('acc-status').value;
+            
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">Loading...</td></tr>';
             
             try {
-                const res = await fetch('/api/console/audit-logs');
+                const params = new URLSearchParams({ 
+                    page: currentAccessPage, 
+                    limit, 
+                    search, 
+                    status 
+                });
+                
+                const res = await fetch(`/api/console/audit-logs?${params}`);
                 if (!res.ok) throw new Error('Failed to fetch');
                 const data = await res.json();
                 
-                if (data.length === 0) {
+                if (data.items.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">No logs found.</td></tr>';
+                    updatePagination(data);
                     return;
                 }
                 
-                tbody.innerHTML = data.map(log => {
+                tbody.innerHTML = data.items.map(log => {
                     let badgeClass = 'info';
-                    if (log.status.toLowerCase().includes('success')) badgeClass = 'success';
-                    if (log.status.toLowerCase().includes('fail') || log.status.toLowerCase().includes('invalid')) badgeClass = 'error';
+                    const s = log.status.toLowerCase();
+                    if (s.includes('success')) badgeClass = 'success';
+                    if (s.includes('fail') || s.includes('invalid') || s.includes('denied')) badgeClass = 'error';
                     
                     return `
                     <tr>
@@ -808,9 +938,26 @@ async def console_dashboard(request: Request):
                         <td style="font-family: monospace;">${log.ip_address}</td>
                     </tr>
                 `}).join('');
+                
+                updatePagination(data);
+                
             } catch (e) {
-                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger); padding: 2rem;">Error loading logs: ${e.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger); padding: 2rem;">Error: ${e.message}</td></tr>`;
             }
+        }
+        
+        function updatePagination(data) {
+            const start = (data.page - 1) * data.limit + 1;
+            const end = Math.min(start + data.limit - 1, data.total);
+            
+            if (data.total === 0) {
+                document.getElementById('acc-info').innerText = 'No results';
+            } else {
+                document.getElementById('acc-info').innerText = `Showing ${start}-${end} of ${data.total}`;
+            }
+            
+            document.getElementById('acc-prev').disabled = data.page <= 1;
+            document.getElementById('acc-next').disabled = data.page >= data.pages;
         }
         
         // Initial load
@@ -822,46 +969,97 @@ async def console_dashboard(request: Request):
     return html
 
 @app.get("/api/console/audit-logs")
-async def get_audit_logs(client_id: str = Depends(_check_console_access)):
-    """Fetch recent audit logs from DB."""
+async def get_audit_logs(
+    request: Request,
+    page: int = 1,
+    limit: int = 50,
+    search: str = None,
+    status: str = None,
+    client_filter: str = None,
+    client_id: str = Depends(_check_console_access)
+):
+    """Fetch paginated and filtered audit logs from DB."""
     conn = get_db()
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT timestamp, client_id, action, status, ip_address FROM audit_log ORDER BY timestamp DESC LIMIT 200")
+    
+    query = "SELECT timestamp, client_id, action, status, ip_address FROM audit_log"
+    count_query = "SELECT COUNT(*) FROM audit_log"
+    params = []
+    conditions = []
+    
+    # Build filters
+    if search:
+        conditions.append("(client_id LIKE ? OR ip_address LIKE ? OR action LIKE ?)")
+        search_term = f"%{search}%"
+        params.extend([search_term, search_term, search_term])
+    
+    if status and status != 'all':
+        if status == 'success':
+            conditions.append("status LIKE '%Success%'")
+        elif status == 'failure':
+            conditions.append("(status LIKE '%Fail%' OR status LIKE '%Invalid%' OR status LIKE '%Denied%')")
+            
+    if client_filter:
+        conditions.append("client_id LIKE ?")
+        params.append(f"%{client_filter}%")
+        
+    # Apply filters
+    if conditions:
+        where_clause = " WHERE " + " AND ".join(conditions)
+        query += where_clause
+        count_query += where_clause
+        
+    # Get total count
+    c.execute(count_query, params)
+    total_count = c.fetchone()[0]
+    
+    # Apply pagination
+    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    offset = (page - 1) * limit
+    params.extend([limit, offset])
+    
+    c.execute(query, params)
     rows = c.fetchall()
     conn.close()
     
-    return [
-        {
-            "timestamp": row["timestamp"],
-            "client_id": row["client_id"],
-            "action": row["action"],
-            "status": row["status"],
-            "ip_address": row["ip_address"]
-        }
-        for row in rows
-    ]
+    return {
+        "items": [dict(row) for row in rows],
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "pages": (total_count + limit - 1) // limit if limit > 0 else 1
+    }
 
 @app.get("/api/console/activity-logs")
-async def get_activity_logs(client_id: str = Depends(_check_console_access)):
-    """Fetch parsed activity logs from journalctl."""
-    # This involves running journalctl and parsing the output.
-    # Limit to last 200 lines or specific time window for performance.
+async def get_activity_logs(
+    limit: int = 50,
+    search: str = None,
+    client_id: str = Depends(_check_console_access)
+):
+    """Fetch parsed activity logs from journalctl with filtering."""
     try:
-        # Run journalctl
-        proc = subprocess.run(
-            ["journalctl", "-k", "-g", "WS-Audit", "-n", "200", "--output=short-iso", "--no-pager"],
-            capture_output=True,
-            text=True
-        )
+        cmd = ["journalctl", "-k", "-n", str(limit), "--output=short-iso", "--no-pager"]
+        
+        # Add search filter (grep pattern)
+        if search:
+            # -g is extremely fast on journalctl
+            cmd.extend(["-g", search])
+        else:
+            # Default filter to show relevant traffic if no specific search
+            cmd.extend(["-g", "WS-Audit"])
+            
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        
         if proc.returncode != 0:
-            return []
+            return {"items": [], "limit": limit}
             
         lines = proc.stdout.strip().splitlines()
         logs = []
         
         # We need to map IPs to Client IDs for display
-        # This is expensive to do perfectly for every log, but we can do a quick lookup cache
         conn = get_db()
+        conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users")
         user_rows = c.fetchall()
@@ -875,8 +1073,8 @@ async def get_activity_logs(client_id: str = Depends(_check_console_access)):
         for line in lines:
             try:
                 # Format: 2023-12-01T12:00:00+0000 hostname kernel: [WS-Audit] ... SRC=... DST=...
-                # Simple parsing
                 parts = line.split()
+                if len(parts) < 3: continue
                 ts = parts[0]
                 
                 src = ""
@@ -884,7 +1082,6 @@ async def get_activity_logs(client_id: str = Depends(_check_console_access)):
                 dpt = ""
                 proto = ""
                 
-                # Regex or naive split
                 import re
                 src_m = re.search(r'SRC=([^\s]+)', line)
                 dst_m = re.search(r'DST=([^\s]+)', line)
@@ -896,9 +1093,9 @@ async def get_activity_logs(client_id: str = Depends(_check_console_access)):
                 if dpt_m: dpt = dpt_m.group(1)
                 if proto_m: proto = proto_m.group(1)
                 
-                client_name = ip_map.get(src)
+                client_name = ip_map.get(src, '')
                 
-                if src and dst: # Filter out empty parsing
+                if src and dst:
                     logs.append({
                         "timestamp": ts,
                         "client": client_name,
@@ -910,20 +1107,12 @@ async def get_activity_logs(client_id: str = Depends(_check_console_access)):
             except Exception:
                 continue
                 
-        # Reverse to show newest first? journalctl -n 200 shows oldest to newest of the last 200.
-        # So the last line is the newest. We should reverse it.
-        return logs[::-1]
+        # Reverse to show newest first
+        return {"items": logs[::-1], "limit": limit}
         
     except Exception as e:
-        # logger is not imported? Check imports. Yes, logging imported as logging.
-        # But 'logger' variable is usually setup.
-        # I'll use logging.error instead or check if logger is defined.
-        # Previous view showed 'logger.debug' usage.
-        # Assuming logger is global.
-        # To be safe I will use `logger = logging.getLogger("WireShield")` inside or just assume the global one.
-        # The file has local logger usage so it should be fine.
-        logging.getLogger("WireShield").error(f"Failed to fetch activity logs: {e}")
-        return []
+        print(f"Error fetching logs: {e}")
+        return {"items": [], "error": str(e), "limit": limit}
 
 # ============================================================================
 # Traffic Gating via ipset
