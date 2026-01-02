@@ -350,7 +350,120 @@ async def console_dashboard(request: Request):
     try:
         _check_console_access(request)
     except HTTPException:
-        return HTMLResponse(content="<h1>Access Denied</h1><p>You are not authorized to view this console.</p>", status_code=403)
+        html_error = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Denied | WireShield</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%);
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden; position: relative; color: #fff;
+        }
+        body::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-image: linear-gradient(rgba(255,0,60,0.03) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,0,60,0.03) 1px, transparent 1px);
+            background-size: 50px 50px; animation: gridPulse 4s ease-in-out infinite;
+        }
+        @keyframes gridPulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.6; } }
+        .glow-orb {
+            position: absolute; width: 400px; height: 400px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(220,38,38,0.15) 0%, transparent 70%);
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            animation: orbPulse 3s ease-in-out infinite;
+        }
+        @keyframes orbPulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.8; }
+        }
+        .container { position: relative; z-index: 10; text-align: center; padding: 3rem; max-width: 520px; }
+        .shield-icon { width: 120px; height: 120px; margin: 0 auto 2rem; position: relative; }
+        .shield-icon svg {
+            width: 100%; height: 100%; filter: drop-shadow(0 0 30px rgba(220,38,38,0.5));
+            animation: shieldGlow 2s ease-in-out infinite;
+        }
+        @keyframes shieldGlow {
+            0%, 100% { filter: drop-shadow(0 0 20px rgba(220,38,38,0.4)); }
+            50% { filter: drop-shadow(0 0 40px rgba(220,38,38,0.7)); }
+        }
+        .error-code {
+            font-size: 0.875rem; font-weight: 600; letter-spacing: 0.3em;
+            color: #dc2626; text-transform: uppercase; margin-bottom: 1rem; opacity: 0.9;
+        }
+        h1 {
+            font-size: 2.5rem; font-weight: 900; color: #ffffff; margin-bottom: 1rem;
+            letter-spacing: -0.02em; text-shadow: 0 0 40px rgba(220,38,38,0.3);
+        }
+        .subtitle { font-size: 1.125rem; color: #94a3b8; margin-bottom: 2.5rem; line-height: 1.6; }
+        .warning-box {
+            background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.3);
+            border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 2rem;
+        }
+        .warning-box p {
+            color: #f87171; font-size: 0.9rem; font-weight: 500;
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+        }
+        .info-text { font-size: 0.875rem; color: #64748b; line-height: 1.7; }
+        .info-text strong { color: #94a3b8; }
+        .brand {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            font-size: 0.75rem; color: #475569; letter-spacing: 0.1em;
+        }
+        /* Corners */
+        .corner { position: fixed; width: 100px; height: 100px; border: 2px solid rgba(220,38,38,0.2); }
+        .corner-tl { top: 20px; left: 20px; border-right: none; border-bottom: none; }
+        .corner-tr { top: 20px; right: 20px; border-left: none; border-bottom: none; }
+        .corner-bl { bottom: 20px; left: 20px; border-right: none; border-top: none; }
+        .corner-br { bottom: 20px; right: 20px; border-left: none; border-top: none; }
+    </style>
+</head>
+<body>
+    <div class="glow-orb"></div>
+    <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
+    <div class="corner corner-bl"></div><div class="corner corner-br"></div>
+    
+    <div class="container">
+        <div class="shield-icon">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L3 7V12C3 17.55 6.84 22.74 12 24C17.16 22.74 21 17.55 21 12V7L12 2Z" 
+                      fill="url(#shieldGrad)" stroke="#dc2626" stroke-width="0.5"/>
+                <path d="M12 8V13M12 16V16.01" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+                <defs><linearGradient id="shieldGrad" x1="12" y1="2" x2="12" y2="24" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#7f1d1d"/><stop offset="100%" stop-color="#450a0a"/></linearGradient></defs>
+            </svg>
+        </div>
+        
+        <div class="error-code">403 Forbidden</div>
+        <h1>Access Denied</h1>
+        <p class="subtitle">You are not authorized to view the Console logs.</p>
+        
+        <div class="warning-box">
+            <p>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Console permission required
+            </p>
+        </div>
+        
+        <p class="info-text">
+            To view system logs, your client ID must be explicitly authorized. 
+            Please contact your administrator to request access.
+        </p>
+    </div>
+    
+    <div class="brand">WIRESHIELD SECURITY</div>
+</body>
+</html>
+        """
+        return HTMLResponse(content=html_error, status_code=403)
         
     html = """
 <!DOCTYPE html>
