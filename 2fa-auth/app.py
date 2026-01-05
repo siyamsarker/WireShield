@@ -752,7 +752,7 @@ async def console_dashboard(request: Request):
     <div class="layout">
         <header>
             <div class="brand">
-                <div style="width:24px;height:24px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">WS</div>
+                <img src="/static/logo.svg" alt="WireShield" style="width:28px;height:28px;">
                 Wire<span>Shield</span> Console
             </div>
             <div style="font-size: 0.875rem; color: var(--text-secondary); background: var(--bg); padding: 0.25rem 0.75rem; border-radius: 9999px; border: 1px solid var(--border); font-weight: 500;">Authenticated</div>
@@ -2417,7 +2417,7 @@ def get_2fa_ui_html(client_id: str) -> HTMLResponse:
     <div class="wrapper">
         <div class="header">
             <div class="brand">
-                <div class="logo">WS</div>
+                <img src="/static/logo.svg" alt="WireShield" style="width:42px;height:42px;">
                 <div class="brand-text">
                     <h1>WireShield 2FA Setup</h1>
                     <p>Configure two-factor authentication for VPN access</p>
@@ -2768,7 +2768,7 @@ def get_2fa_verify_only_html(client_id: str) -> HTMLResponse:
 <body onload="init()">
     <div class="container">
         <div class="header">
-            <div class="logo">WS</div>
+            <img src="/static/logo.svg" alt="WireShield" style="width:48px;height:48px;">
             <div class="header-text">
                 <h1>WireShield Verification</h1>
                 <p>Enter your authenticator code to connect</p>

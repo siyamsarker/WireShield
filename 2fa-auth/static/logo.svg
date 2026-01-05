@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220" width="200" height="220">
+  <defs>
+    <!-- Gradient for the shield -->
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#22c55e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16a34a;stop-opacity:1" />
+    </linearGradient>
+    <!-- Glow effect -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Dark gradient for inner shield -->
+    <linearGradient id="innerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f2937;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#111827;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Shield Shape -->
+  <path d="M100 10 
+           L175 40 
+           C180 45, 185 70, 180 100 
+           C175 140, 140 180, 100 205 
+           C60 180, 25 140, 20 100 
+           C15 70, 20 45, 25 40 
+           Z" 
+        fill="url(#shieldGrad)" 
+        filter="url(#glow)"/>
+  
+  <!-- Inner Shield (dark background) -->
+  <path d="M100 25 
+           L160 50 
+           C165 55, 168 75, 165 100 
+           C160 135, 130 165, 100 185 
+           C70 165, 40 135, 35 100 
+           C32 75, 35 55, 40 50 
+           Z" 
+        fill="url(#innerGrad)"/>
+  
+  <!-- Wire/Network Lines - representing VPN tunnel -->
+  <g stroke="#4ade80" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.9">
+    <!-- Central vertical wire -->
+    <path d="M100 55 L100 160"/>
+    
+    <!-- Left diagonal wires -->
+    <path d="M60 75 L100 100"/>
+    <path d="M55 115 L100 130"/>
+    
+    <!-- Right diagonal wires -->
+    <path d="M140 75 L100 100"/>
+    <path d="M145 115 L100 130"/>
+  </g>
+  
+  <!-- Connection nodes (circles at intersections) -->
+  <g fill="#4ade80" filter="url(#glow)">
+    <circle cx="100" cy="55" r="6"/>
+    <circle cx="100" cy="100" r="8"/>
+    <circle cx="100" cy="130" r="6"/>
+    <circle cx="100" cy="160" r="5"/>
+    
+    <!-- Outer nodes -->
+    <circle cx="60" cy="75" r="4"/>
+    <circle cx="140" cy="75" r="4"/>
+    <circle cx="55" cy="115" r="4"/>
+    <circle cx="145" cy="115" r="4"/>
+  </g>
+  
+  <!-- Lock symbol in center node -->
+  <g transform="translate(100, 100)">
+    <rect x="-5" y="-2" width="10" height="8" rx="1" fill="#111827"/>
+    <path d="M-3 -2 L-3 -5 A3 3 0 0 1 3 -5 L3 -2" 
+          stroke="#111827" stroke-width="2" fill="none"/>
+  </g>
+</svg>
