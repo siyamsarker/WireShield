@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="WireShield Logo" width="120" height="132">
+</p>
+<div align="center">
+
 # WireShield
 
 **Secure WireGuard VPN with pre-connection 2FA authentication**
@@ -7,6 +12,7 @@
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 
 ---
+</div>
 
 ## Table of Contents
 

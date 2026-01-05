@@ -357,6 +357,7 @@ async def console_dashboard(request: Request):
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Access Denied | WireShield</title>
@@ -475,6 +476,7 @@ async def console_dashboard(request: Request):
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield Console</title>
@@ -1515,6 +1517,7 @@ async def root(request: Request, client_id: Optional[str] = None):
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Access Denied | WireShield</title>
@@ -1996,6 +1999,7 @@ async def success_page(client_id: Optional[str] = None):
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield — Connected</title>
@@ -2110,6 +2114,7 @@ def get_2fa_ui_html(client_id: str) -> HTMLResponse:
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield — 2FA Setup</title>
@@ -2568,6 +2573,7 @@ def get_2fa_verify_only_html(client_id: str) -> HTMLResponse:
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield — Verify Access</title>
@@ -2768,7 +2774,7 @@ def get_2fa_verify_only_html(client_id: str) -> HTMLResponse:
 <body onload="init()">
     <div class="container">
         <div class="header">
-            <img src="/static/logo.svg" alt="WireShield" style="width:48px;height:48px;">
+            <img src="/static/logo.svg" alt="WireShield" style="width:60px;height:60px;">
             <div class="header-text">
                 <h1>WireShield Verification</h1>
                 <p>Enter your authenticator code to connect</p>
