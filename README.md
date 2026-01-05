@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="WireShield Logo" width="120" height="132">
+<img src="assets/logo.svg" alt="WireShield Logo" width="120" height="120">
 
 # WireShield
 
