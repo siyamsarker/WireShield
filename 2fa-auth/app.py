@@ -798,6 +798,10 @@ async def console_dashboard(request: Request):
                     </div>
                     <div class="footer">
                         <span id="act-info">Showing recent logs</span>
+                        <div class="pagination">
+                            <button class="btn btn-outline" id="act-prev" onclick="changeActivityPage(currentActivityPage - 1)" disabled>Previous</button>
+                            <button class="btn btn-outline" id="act-next" onclick="changeActivityPage(currentActivityPage + 1)" disabled>Next</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -851,6 +855,7 @@ async def console_dashboard(request: Request):
     <script>
         // State
         let currentTab = 'activity';
+        let currentActivityPage = 1;
         let currentAccessPage = 1;
         let debounceTimer;
         
@@ -885,6 +890,12 @@ async def console_dashboard(request: Request):
             
             actSortOrder = actSortOrder === 'desc' ? 'asc' : 'desc';
             updateHeaders('activity', col, actSortOrder);
+            changeActivityPage(1);
+        }
+        
+        function changeActivityPage(page) {
+            if (page < 1) return;
+            currentActivityPage = page;
             fetchActivityLogs();
         }
 
@@ -898,7 +909,7 @@ async def console_dashboard(request: Request):
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">Loading...</td></tr>';
             
             try {
-                const params = new URLSearchParams({ limit, search, order: actSortOrder });
+            const params = new URLSearchParams({ page: currentActivityPage, limit, search, order: actSortOrder });
                 const res = await fetch(`/api/console/activity-logs?${params}`);
                 if (!res.ok) throw new Error('Failed to fetch');
                 const data = await res.json();
@@ -919,7 +930,7 @@ async def console_dashboard(request: Request):
                     </tr>
                 `).join('');
                 
-                document.getElementById('act-info').innerText = `Showing ${data.items.length} records (Limit: ${data.limit})`;
+                updateActivityPagination(data);
                 
             } catch (e) {
                 tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger); padding: 2rem;">Error: ${e.message}</td></tr>`;
@@ -1027,6 +1038,24 @@ async def console_dashboard(request: Request):
             document.getElementById('acc-next').disabled = data.page >= data.pages;
         }
         
+        function updateActivityPagination(data) {
+            const page = data.page || 1;
+            const pages = data.pages || 1;
+            const total = data.total || data.items.length;
+            const limit = data.limit;
+            const start = (page - 1) * limit + 1;
+            const end = Math.min(start + limit - 1, total);
+            
+            if (total === 0) {
+                document.getElementById('act-info').innerText = 'No results';
+            } else {
+                document.getElementById('act-info').innerText = `Showing ${start}-${end} of ${total}`;
+            }
+            
+            document.getElementById('act-prev').disabled = page <= 1;
+            document.getElementById('act-next').disabled = page >= pages;
+        }
+        
         // Initial load
         fetchActivityLogs();
     </script>
@@ -1108,14 +1137,17 @@ async def get_audit_logs(
 
 @app.get("/api/console/activity-logs")
 async def get_activity_logs(
+    page: int = 1,
     limit: int = 50,
     search: str = None,
     order: str = 'desc',
     client_id: str = Depends(_check_console_access)
 ):
-    """Fetch parsed activity logs from journalctl with filtering."""
+    """Fetch parsed activity logs from journalctl with filtering and pagination."""
     try:
-        cmd = ["journalctl", "-k", "-n", str(limit), "--output=short-iso", "--no-pager"]
+        # Fetch more logs to support pagination (up to 10x limit for practical browsing)
+        fetch_limit = min(limit * 10, 5000)
+        cmd = ["journalctl", "-k", "-n", str(fetch_limit), "--output=short-iso", "--no-pager"]
         
         # Add search filter (grep pattern)
         if search:
@@ -1128,7 +1160,7 @@ async def get_activity_logs(
         proc = subprocess.run(cmd, capture_output=True, text=True)
         
         if proc.returncode != 0:
-            return {"items": [], "limit": limit}
+            return {"items": [], "limit": limit, "page": 1, "pages": 1, "total": 0}
             
         lines = proc.stdout.strip().splitlines()
         logs = []
@@ -1146,6 +1178,7 @@ async def get_activity_logs(
             if row["wg_ipv4"]: ip_map[row["wg_ipv4"]] = row["client_id"]
             if row["wg_ipv6"]: ip_map[row["wg_ipv6"]] = row["client_id"]
             
+        import re
         for line in lines:
             try:
                 # Format: 2023-12-01T12:00:00+0000 hostname kernel: [WS-Audit] ... SRC=... DST=...
@@ -1160,7 +1193,6 @@ async def get_activity_logs(
                 dpt = ""
                 proto = ""
                 
-                import re
                 src_m = re.search(r'SRC=([^\s]+)', line)
                 dst_m = re.search(r'DST=([^\s]+)', line)
                 dpt_m = re.search(r'DPT=([^\s]+)', line)
@@ -1189,12 +1221,18 @@ async def get_activity_logs(
         # If order is asc, keep original order
         if order.lower() == 'desc':
             logs = logs[::-1]
+        
+        # Pagination
+        total = len(logs)
+        pages = (total + limit - 1) // limit if limit > 0 else 1
+        offset = (page - 1) * limit
+        paginated_logs = logs[offset:offset + limit]
             
-        return {"items": logs, "limit": limit}
+        return {"items": paginated_logs, "limit": limit, "page": page, "pages": pages, "total": total}
         
     except Exception as e:
         print(f"Error fetching logs: {e}")
-        return {"items": [], "error": str(e), "limit": limit}
+        return {"items": [], "error": str(e), "limit": limit, "page": 1, "pages": 1, "total": 0}
 
 # ============================================================================
 # Traffic Gating via ipset
