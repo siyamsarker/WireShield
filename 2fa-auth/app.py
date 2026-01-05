@@ -772,14 +772,17 @@ async def console_dashboard(request: Request):
                     <div class="toolbar">
                         <h3>System Activity</h3>
                         <div class="filters">
-                            <input type="text" class="form-control" id="act-search" placeholder="Search logs..." onkeyup="debounce(fetchActivityLogs, 500)">
-                            <select class="form-control" id="act-limit" onchange="fetchActivityLogs()">
+                            <select class="form-control" id="act-user" onchange="changeActivityPage(1)">
+                                <option value="all">All Users</option>
+                            </select>
+                            <input type="text" class="form-control" id="act-search" placeholder="Search logs..." onkeyup="debounce(() => changeActivityPage(1), 500)">
+                            <select class="form-control" id="act-limit" onchange="changeActivityPage(1)">
                                 <option value="50">50 Rows</option>
                                 <option value="100">100 Rows</option>
                                 <option value="200">200 Rows</option>
                                 <option value="500">500 Rows</option>
                             </select>
-                            <button class="btn" onclick="fetchActivityLogs()">Refresh</button>
+                            <button class="btn" onclick="changeActivityPage(1)">Refresh</button>
                         </div>
                     </div>
                     <div class="table-container">
@@ -812,6 +815,9 @@ async def console_dashboard(request: Request):
                     <div class="toolbar">
                         <h3>Authentication Events</h3>
                         <div class="filters">
+                            <select class="form-control" id="acc-user" onchange="changeAccessPage(1)">
+                                <option value="all">All Users</option>
+                            </select>
                             <input type="text" class="form-control" id="acc-search" placeholder="Search..." onkeyup="debounce(() => changeAccessPage(1), 500)">
                             <select class="form-control" id="acc-status" onchange="changeAccessPage(1)">
                                 <option value="all">All Status</option>
@@ -860,10 +866,43 @@ async def console_dashboard(request: Request):
         let debounceTimer;
         
         // Sorting State
-        let actSortOrder = 'desc'; // Activity logs only support time sort really, effectively reversing list
+        let actSortOrder = 'desc'; 
         
         let accSortBy = 'timestamp';
         let accSortOrder = 'desc';
+
+        // Initial load
+        init();
+
+        async function init() {
+            await fetchUsers();
+            fetchActivityLogs();
+        }
+
+        async function fetchUsers() {
+            try {
+                const res = await fetch('/api/console/users');
+                if (!res.ok) return;
+                const users = await res.json();
+                
+                const actSelect = document.getElementById('act-user');
+                const accSelect = document.getElementById('acc-user');
+                
+                users.forEach(u => {
+                    const opt1 = document.createElement('option');
+                    opt1.value = u.client_id;
+                    opt1.innerText = `${u.client_id} (${u.ip})`;
+                    actSelect.appendChild(opt1);
+                    
+                    const opt2 = document.createElement('option');
+                    opt2.value = u.client_id;
+                    opt2.innerText = `${u.client_id}`;
+                    accSelect.appendChild(opt2);
+                });
+            } catch (e) {
+                console.error("Failed to load users", e);
+            }
+        }
 
         // Utils
         const debounce = (func, delay) => {
@@ -903,13 +942,20 @@ async def console_dashboard(request: Request):
             const tbody = document.getElementById('activity-tbody');
             const limit = document.getElementById('act-limit').value;
             const search = document.getElementById('act-search').value;
+            const user = document.getElementById('act-user').value;
             
             updateHeaders('activity', 'timestamp', actSortOrder);
             
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem;">Loading...</td></tr>';
             
             try {
-            const params = new URLSearchParams({ page: currentActivityPage, limit, search, order: actSortOrder });
+                const params = new URLSearchParams({ 
+                    page: currentActivityPage, 
+                    limit, 
+                    search, 
+                    order: actSortOrder,
+                    client_filter: user
+                });
                 const res = await fetch(`/api/console/activity-logs?${params}`);
                 if (!res.ok) throw new Error('Failed to fetch');
                 const data = await res.json();
@@ -959,6 +1005,7 @@ async def console_dashboard(request: Request):
             const limit = document.getElementById('acc-limit').value;
             const search = document.getElementById('acc-search').value;
             const status = document.getElementById('acc-status').value;
+            const user = document.getElementById('acc-user').value;
             
             updateHeaders('access', accSortBy, accSortOrder);
             
@@ -971,7 +1018,8 @@ async def console_dashboard(request: Request):
                     search, 
                     status,
                     sort_by: accSortBy,
-                    order: accSortOrder
+                    order: accSortOrder,
+                    client_filter: user
                 });
                 
                 const res = await fetch(`/api/console/audit-logs?${params}`);
@@ -1057,12 +1105,28 @@ async def console_dashboard(request: Request):
         }
         
         // Initial load
-        fetchActivityLogs();
+       // fetchActivityLogs(); // Called by init() now
     </script>
 </body>
 </html>
     """
     return html
+
+@app.get("/api/console/users")
+async def get_console_users(client_id: str = Depends(_check_console_access)):
+    """Fetch list of users for filter dropdowns."""
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users ORDER BY client_id ASC")
+    rows = c.fetchall()
+    conn.close()
+    
+    users = []
+    for r in rows:
+        ip = r['wg_ipv4'] or r['wg_ipv6'] or 'No IP'
+        users.append({"client_id": r['client_id'], "ip": ip})
+    return users
 
 @app.get("/api/console/audit-logs")
 async def get_audit_logs(
@@ -1141,6 +1205,7 @@ async def get_activity_logs(
     limit: int = 50,
     search: str = None,
     order: str = 'desc',
+    client_filter: str = None,
     client_id: str = Depends(_check_console_access)
 ):
     """Fetch parsed activity logs from journalctl with filtering and pagination."""
@@ -1204,6 +1269,11 @@ async def get_activity_logs(
                 if proto_m: proto = proto_m.group(1)
                 
                 client_name = ip_map.get(src, '')
+                
+                # Filter by client if requested
+                if client_filter and client_filter != 'all':
+                    if client_name != client_filter:
+                        continue
                 
                 if src and dst:
                     logs.append({
