@@ -589,14 +589,6 @@ EOF
 
 	# Copy 2FA files from the current repository if available
 	if [[ -d "${SCRIPT_DIR}/2fa-auth" ]]; then
-		cp -f "${SCRIPT_DIR}/2fa-auth/app.py" /etc/wireshield/2fa/ 2>/dev/null || true
-		cp -f "${SCRIPT_DIR}/2fa-auth/requirements.txt" /etc/wireshield/2fa/ 2>/dev/null || true
-		cp -f "${SCRIPT_DIR}/2fa-auth/2fa-helper.sh" /etc/wireshield/2fa/ 2>/dev/null || true
-		cp -f "${SCRIPT_DIR}/2fa-auth/generate-certs.sh" /etc/wireshield/2fa/ 2>/dev/null || true
-		# Copy static assets (fonts, etc)
-		if [[ -d "${SCRIPT_DIR}/2fa-auth/static" ]]; then
-			cp -fr "${SCRIPT_DIR}/2fa-auth/static" /etc/wireshield/2fa/ 2>/dev/null || true
-		fi
 		# Optional: bundled service file (we still write one below for consistency)
 		cp -f "${SCRIPT_DIR}/2fa-auth/wireshield-2fa.service" /etc/wireshield/2fa/ 2>/dev/null || true
 	elif [[ -d /opt/wireshield/2fa-auth ]]; then
