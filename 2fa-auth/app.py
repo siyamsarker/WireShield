@@ -754,8 +754,8 @@ async def console_dashboard(request: Request):
     <div class="layout">
         <header>
             <div class="brand">
-                <img src="/static/logo.svg" alt="WireShield" style="width:28px;height:28px;">
-                Wire<span>Shield</span> Console
+                <img src="/static/logo.svg" alt="WireShield" style="width:40px;height:40px;">
+                WireShield Console
             </div>
             <div style="font-size: 0.875rem; color: var(--text-secondary); background: var(--bg); padding: 0.25rem 0.75rem; border-radius: 9999px; border: 1px solid var(--border); font-weight: 500;">Authenticated</div>
         </header>
