@@ -960,9 +960,19 @@ WireShield/
 ├── LICENSE                 # GPLv3 license
 ├── README.md               # This file
 └── 2fa-auth/
-    ├── app.py              # FastAPI 2FA service
+    ├── run.py              # Service entry point
+    ├── app/                # Application package
+    │   ├── main.py         # Application factory & startup
+    │   ├── templates.py    # Embedded HTML templates
+    │   ├── core/           # Core logic
+    │   │   ├── config.py   # Configuration loading
+    │   │   ├── database.py # Database interactions
+    │   │   └── security.py # Authentication & rate limiting
+    │   └── routers/        # API endpoints
+    │       ├── auth.py     # Authentication routes
+    │       ├── setup.py    # 2FA setup routes
+    │       └── console.py  # Admin console routes
     ├── requirements.txt    # Python dependencies
-    ├── generate-certs.sh   # Certificate generation helper
     ├── 2fa-helper.sh       # Management helper scripts
     └── tests/
         ├── test_rate_limit.py       # Rate limiter tests
