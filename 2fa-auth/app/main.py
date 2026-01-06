@@ -35,12 +35,14 @@ app = FastAPI(
     redoc_url=None
 )
 
-# mount static files
-# We assume static/ exists at the root of 2fa-auth (same directory as where app.py IS)
-# Since we are moving app code to app/, we need to be careful about relative paths.
-# If running main.py directly, paths might differ. 
-# But we will run from 2fa-auth/ root via `python3 app.py` shim.
-app.mount("/static", StaticFiles(directory="static"), name="static")
+from pathlib import Path
+
+# ... (inside file)
+
+# Resolve static path relative to this file
+# app/main.py -> app/ -> 2fa-auth/ -> static
+static_path = Path(__file__).parent.parent / "static"
+app.mount("/static", StaticFiles(directory=str(static_path), check_dir=False), name="static")
 
 # Include Routers
 app.include_router(auth.router)
