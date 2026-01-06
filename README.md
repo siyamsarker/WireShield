@@ -70,7 +70,7 @@ WireShield is an automated WireGuard VPN deployment tool with integrated two-fac
 - ✅ **Session monitoring** with WireGuard handshake-aware revocation
 - ✅ **ipset-based allowlisting** for verified clients
 - ✅ **User activity logging** with configurable retention
-
+- ✅ **Admin Console** for granular access control and log viewing
 
 ### Deployment
 - ✅ **One-command installation** via interactive CLI
@@ -83,7 +83,8 @@ WireShield is an automated WireGuard VPN deployment tool with integrated two-fac
 - ✅ **QR code setup** for easy authenticator enrollment
 - ✅ **Responsive web UI** for authentication
 - ✅ **Automatic captive portal** redirection
-- ✅ **Client configuration generation** with WireGuard QR codes
+- ✅ **Client configuration generation** with optimized QR codes
+- ✅ **Web Console** for user and log management
 
 ---
 
@@ -193,7 +194,12 @@ sudo journalctl -u wireshield-2fa.service -f
 └── params                # Installation parameters
 
 /etc/wireshield/2fa/
-├── app.py                # FastAPI 2FA service
+├── run.py                # Service entry point
+├── app/                  # Application package
+│   ├── main.py           # Application factory
+│   ├── core/             # Core logic (config, db, security)
+│   ├── routers/          # API endpoints
+│   └── templates.py      # HTML templates
 ├── requirements.txt      # Python dependencies
 ├── auth.db               # SQLite database (users, sessions, audit logs)
 ├── config.env            # Environment configuration
@@ -516,9 +522,35 @@ sudo ./wireshield.sh
 # - ipset allowlist entries
 ```
 
-### 2FA Management
+### 2FA & Console Management
 
-#### View All Users
+#### Remove Client 2FA
+
+If a user loses their authenticator device, you can reset their 2FA status without revoking their VPN access.
+
+```bash
+# Via interactive menu
+sudo ./wireshield.sh
+# Select option: "Remove Client 2FA"
+# Select the client from the list
+```
+This will:
+- Clear the TOTP secret and session
+- Remove the client from the allowlist
+- Prompt the user to re-register on their next connection
+
+#### Console Access Management
+
+Control which users can access the web-based Admin Console (`/console`).
+
+```bash
+# Via interactive menu
+sudo ./wireshield.sh
+# Select option: "Console Access Management"
+# Toggle access for specific clients
+```
+
+#### View All Users (Raw)
 
 ```bash
 # Via SQLite
@@ -539,19 +571,9 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
 #### View Audit Logs
 
 ```bash
-# Last 20 authentication events
-sudo sqlite3 /etc/wireshield/2fa/auth.db \
-  "SELECT timestamp, client_id, action, status, ip_address 
-   FROM audit_log 
-   ORDER BY timestamp DESC 
-   LIMIT 20;"
-
-# Failed authentication attempts
-sudo sqlite3 /etc/wireshield/2fa/auth.db \
-  "SELECT * FROM audit_log 
-   WHERE status LIKE '%invalid%' OR status LIKE '%failed%' 
-   ORDER BY timestamp DESC 
-   LIMIT 50;"
+# Via interactive menu
+sudo ./wireshield.sh
+# Select option: "View Audit Logs"
 ```
 
 #### Manually Revoke Session
@@ -586,9 +608,9 @@ When enabled, the system logs every **NEW** connection made by authenticated cli
 sudo ./wireshield.sh
 # Select option: "User Activity Logs" -> "View User Logs"
 ```
-The unified log viewer combines:
-- Real-time logs from the system journal
-- Archived historical logs
+You can choose to:
+1. **View all logs:** Stream combined logs for all users.
+2. **Filter by user:** View logs for a specific client IP.
 
 **Output format:**
 ```text
