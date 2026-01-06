@@ -118,14 +118,23 @@ async def console_dashboard(request: Request):
                 const res = await fetch(url);
                 const data = await res.json();
                 
+                if (!res.ok) {
+                    throw new Error(data.detail || `Server error: ${res.status}`);
+                }
+                
                 renderTable(data, page);
             } catch (e) {
-                main.innerHTML = `<div style="color:red">Error loading data: ${e.message}</div>`;
+                main.innerHTML = `<div style="color:red; padding:20px;">Error loading data: ${e.message}</div>`;
             }
         }
         
         function renderTable(data, page) {
             const main = document.getElementById('content');
+            if (!data || !data.items) {
+                main.innerHTML = '<div style="color:red; padding:20px;">Invalid data format received</div>';
+                return;
+            }
+
             let html = `
                 <div class="card">
                     <div class="filters">
@@ -135,13 +144,13 @@ async def console_dashboard(request: Request):
                     <table>
                         <thead>${getHeaders()}</thead>
                         <tbody>
-                            ${data.items.map(row => getRowRequest(row)).join('')}
+                            ${data.items.length > 0 ? data.items.map(row => getRowRequest(row)).join('') : '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">No records found</td></tr>'}
                         </tbody>
                     </table>
                     <div class="pagination">
                         <button ${page <= 1 ? 'disabled' : ''} onclick="loadData(${page-1})">Prev</button>
-                        <span>Page ${page} of ${data.pages}</span>
-                        <button ${page >= data.pages ? 'disabled' : ''} onclick="loadData(${page+1})">Next</button>
+                        <span>Page ${page} of ${data.pages || 1}</span>
+                        <button ${page >= (data.pages || 1) ? 'disabled' : ''} onclick="loadData(${page+1})">Next</button>
                     </div>
                 </div>
             `;
@@ -195,39 +204,43 @@ async def get_users(
     search: str = None, 
     client_id: str = Depends(_check_console_access)
 ):
-    offset = (page - 1) * limit
-    conn = get_db()
-    c = conn.cursor()
-    
-    query = "SELECT * FROM users"
-    params = []
-    if search:
-        query += " WHERE client_id LIKE ?"
-        params.append(f"%{search}%")
+    try:
+        offset = (page - 1) * limit
+        conn = get_db()
+        c = conn.cursor()
         
-    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-    
-    c.execute(query, tuple(params))
-    rows = [dict(row) for row in c.fetchall()]
-    
-    # Count total
-    count_query = "SELECT COUNT(*) FROM users"
-    if search:
-        count_query += " WHERE client_id LIKE ?"
-        c.execute(count_query, (f"%{search}%",))
-    else:
-        c.execute(count_query)
+        query = "SELECT * FROM users"
+        params = []
+        if search:
+            query += " WHERE client_id LIKE ?"
+            params.append(f"%{search}%")
+            
+        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
         
-    total = c.fetchone()[0]
-    conn.close()
-    
-    return {
-        "items": rows,
-        "page": page,
-        "pages": math.ceil(total / limit),
-        "total": total
-    }
+        c.execute(query, tuple(params))
+        rows = [dict(row) for row in c.fetchall()]
+        
+        # Count total
+        count_query = "SELECT COUNT(*) FROM users"
+        if search:
+            count_query += " WHERE client_id LIKE ?"
+            c.execute(count_query, (f"%{search}%",))
+        else:
+            c.execute(count_query)
+            
+        total = c.fetchone()[0]
+        conn.close()
+        
+        return {
+            "items": rows,
+            "page": page,
+            "pages": math.ceil(total / limit) if limit > 0 else 1,
+            "total": total
+        }
+    except Exception as e:
+        logger.error(f"Error fetching users: {e}")
+        return {"items": [], "page": 1, "pages": 0, "total": 0}
 
 @router.get("/api/console/audit-logs")
 async def get_audit_logs(
@@ -236,39 +249,43 @@ async def get_audit_logs(
     search: str = None,
     client_id: str = Depends(_check_console_access)
 ):
-    offset = (page - 1) * limit
-    conn = get_db()
-    c = conn.cursor()
-    
-    query = "SELECT * FROM audit_log"
-    params = []
-    if search:
-        query += " WHERE client_id LIKE ? OR action LIKE ?"
-        params.extend([f"%{search}%", f"%{search}%"])
+    try:
+        offset = (page - 1) * limit
+        conn = get_db()
+        c = conn.cursor()
         
-    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-    
-    c.execute(query, tuple(params))
-    rows = [dict(row) for row in c.fetchall()]
-    
-    # Count total
-    count_query = "SELECT COUNT(*) FROM audit_log"
-    if search:
-        count_query += " WHERE client_id LIKE ? OR action LIKE ?"
-        c.execute(count_query, (f"%{search}%", f"%{search}%"))
-    else:
-        c.execute(count_query)
+        query = "SELECT * FROM audit_log"
+        params = []
+        if search:
+            query += " WHERE client_id LIKE ? OR action LIKE ?"
+            params.extend([f"%{search}%", f"%{search}%"])
+            
+        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
         
-    total = c.fetchone()[0]
-    conn.close()
-    
-    return {
-        "items": rows,
-        "page": page,
-        "pages": math.ceil(total / limit),
-        "total": total
-    }
+        c.execute(query, tuple(params))
+        rows = [dict(row) for row in c.fetchall()]
+        
+        # Count total
+        count_query = "SELECT COUNT(*) FROM audit_log"
+        if search:
+            count_query += " WHERE client_id LIKE ? OR action LIKE ?"
+            c.execute(count_query, (f"%{search}%", f"%{search}%"))
+        else:
+            c.execute(count_query)
+            
+        total = c.fetchone()[0]
+        conn.close()
+        
+        return {
+            "items": rows,
+            "page": page,
+            "pages": math.ceil(total / limit) if limit > 0 else 1,
+            "total": total
+        }
+    except Exception as e:
+        logger.error(f"Error fetching audit logs: {e}")
+        return {"items": [], "page": 1, "pages": 0, "total": 0}
 
 @router.get("/api/console/activity-logs")
 async def get_activity_logs(
