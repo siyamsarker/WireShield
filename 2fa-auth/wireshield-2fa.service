@@ -5,7 +5,7 @@ Requires=network-online.target
 After=network-online.target
 
 [Service]
-Type=notify
+Type=simple
 User=root
 Group=root
 WorkingDirectory=/etc/wireshield/2fa
@@ -19,7 +19,7 @@ Environment="2FA_LOG_LEVEL=INFO"
 Environment="2FA_RATE_LIMIT_MAX_REQUESTS=30"
 Environment="2FA_RATE_LIMIT_WINDOW=60"
 ExecStartPre=/bin/bash -c 'mkdir -p /etc/wireshield/2fa && chmod 700 /etc/wireshield/2fa'
-ExecStart=/etc/wireshield/2fa/.venv/bin/python /etc/wireshield/2fa/app.py
+ExecStart=/etc/wireshield/2fa/.venv/bin/python /etc/wireshield/2fa/run.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
