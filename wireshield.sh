@@ -589,8 +589,8 @@ EOF
 
 	# Copy 2FA files from the current repository if available
 	if [[ -d "${SCRIPT_DIR}/2fa-auth" ]]; then
-		# Optional: bundled service file (we still write one below for consistency)
-		cp -f "${SCRIPT_DIR}/2fa-auth/wireshield-2fa.service" /etc/wireshield/2fa/ 2>/dev/null || true
+		echo "Copying 2FA service files..."
+		cp -fr "${SCRIPT_DIR}/2fa-auth/"* /etc/wireshield/2fa/ || true
 	elif [[ -d /opt/wireshield/2fa-auth ]]; then
 		cp /opt/wireshield/2fa-auth/* /etc/wireshield/2fa/ 2>/dev/null || true
 	fi
@@ -599,11 +599,6 @@ EOF
 	if [[ -f /etc/systemd/system/wireshield-2fa.service ]]; then
 		echo -e "${GREEN}2FA service already installed${NC}"
 		return 0
-	fi
-	
-	# Copy 2FA files from source (assumes they exist)
-	if [[ -d /opt/wireshield/2fa-auth ]]; then
-		cp /opt/wireshield/2fa-auth/* /etc/wireshield/2fa/ 2>/dev/null || true
 	fi
 	
 	# Configure SSL/TLS
@@ -656,6 +651,12 @@ EOF
 		fi
 		if [[ -d "${SCRIPT_DIR}/2fa-auth/static" ]]; then
 			cp -fr "${SCRIPT_DIR}/2fa-auth/static" /etc/wireshield/2fa/ || true
+		fi
+		if [[ -d "${SCRIPT_DIR}/2fa-auth/app" ]]; then
+			cp -fr "${SCRIPT_DIR}/2fa-auth/app" /etc/wireshield/2fa/ || true
+		fi
+		if [[ -f "${SCRIPT_DIR}/2fa-auth/requirements.txt" ]]; then
+			cp -f "${SCRIPT_DIR}/2fa-auth/requirements.txt" /etc/wireshield/2fa/ || true
 		fi
 	fi
 
