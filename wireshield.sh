@@ -649,10 +649,10 @@ EOF
 	fi
 	
 	# Verify app presence (robustness)
-	if [[ ! -f /etc/wireshield/2fa/app.py ]]; then
-		echo -e "${ORANGE}app.py missing in /etc/wireshield/2fa, attempting copy from repo...${NC}"
-		if [[ -f "${SCRIPT_DIR}/2fa-auth/app.py" ]]; then
-			cp -f "${SCRIPT_DIR}/2fa-auth/app.py" /etc/wireshield/2fa/ || true
+	if [[ ! -f /etc/wireshield/2fa/run.py ]]; then
+		echo -e "${ORANGE}run.py missing in /etc/wireshield/2fa, attempting copy from repo...${NC}"
+		if [[ -f "${SCRIPT_DIR}/2fa-auth/run.py" ]]; then
+			cp -f "${SCRIPT_DIR}/2fa-auth/run.py" /etc/wireshield/2fa/ || true
 		fi
 		if [[ -d "${SCRIPT_DIR}/2fa-auth/static" ]]; then
 			cp -fr "${SCRIPT_DIR}/2fa-auth/static" /etc/wireshield/2fa/ || true
@@ -688,7 +688,7 @@ WorkingDirectory=/etc/wireshield/2fa
 	Environment=WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA:-127.0.0.1}
 	Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=${WS_2FA_RATE_LIMIT_MAX_REQUESTS:-30}
 	Environment=WS_2FA_RATE_LIMIT_WINDOW=${WS_2FA_RATE_LIMIT_WINDOW:-60}
-ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/app.py
+ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/run.py
 Restart=on-failure
 RestartSec=5
 
@@ -714,7 +714,7 @@ WorkingDirectory=/etc/wireshield/2fa
 	Environment=WS_2FA_HTTP_PORT=80
 	Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
 	Environment=WS_2FA_RATE_LIMIT_WINDOW=60
-ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/app.py
+ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/run.py
 Restart=on-failure
 RestartSec=5
 
