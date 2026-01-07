@@ -66,19 +66,29 @@ async def console_dashboard(request: Request):
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-body: #0f172a;
-            --bg-nav: #1e293b;
-            --bg-card: #1e293b;
-            --bg-card-hover: #334155;
-            --border: #334155;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --accent: #3b82f6;
-            --accent-hover: #2563eb;
-            --success: #22c55e;
-            --warning: #eab308;
-            --error: #ef4444;
-            --glass: rgba(30, 41, 59, 0.7);
+            /* Premium Light Theme */
+            --bg-body: #f8fafc;        /* Slate 50 */
+            --bg-nav: #ffffff;         /* White */
+            --bg-card: #ffffff;        /* White */
+            --bg-card-hover: #f1f5f9;  /* Slate 100 */
+            --border: #e2e8f0;         /* Slate 200 */
+            
+            --text-main: #0f172a;      /* Slate 900 */
+            --text-muted: #64748b;     /* Slate 500 */
+            
+            --accent: #2563eb;         /* Blue 600 */
+            --accent-hover: #1d4ed8;   /* Blue 700 */
+            --accent-light: #eff6ff;   /* Blue 50 */
+            
+            --success: #16a34a;        /* Green 600 */
+            --success-bg: #dcfce7;     /* Green 100 */
+            --warning: #ca8a04;        /* Yellow 600 */
+            --warning-bg: #fef9c3;     /* Yellow 100 */
+            --error: #dc2626;          /* Red 600 */
+            --error-bg: #fee2e2;       /* Red 100 */
+            
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -118,16 +128,14 @@ async def console_dashboard(request: Request):
             font-weight: 700;
             font-size: 18px;
             letter-spacing: -0.02em;
-            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            color: var(--text-main);
         }
 
         .nav-item {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 12px 16px;
+            padding: 10px 16px;
             color: var(--text-muted);
             text-decoration: none;
             border-radius: 8px;
@@ -138,14 +146,14 @@ async def console_dashboard(request: Request):
         }
 
         .nav-item:hover {
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--bg-card-hover);
             color: var(--text-main);
         }
 
         .nav-item.active {
-            background: rgba(59, 130, 246, 0.1);
+            background: var(--accent-light);
             color: var(--accent);
-            border-color: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(37, 99, 235, 0.1);
         }
 
         .nav-item svg { width: 18px; height: 18px; }
@@ -166,16 +174,17 @@ async def console_dashboard(request: Request):
             align-items: center;
             justify-content: space-between;
             padding: 0 32px;
-            background: rgba(15, 23, 42, 0.8);
+            background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(12px);
             position: relative;
             z-index: 10;
         }
 
         .page-title {
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 18px;
+            font-weight: 700;
             color: var(--text-main);
+            letter-spacing: -0.02em;
         }
 
         .header-controls {
@@ -185,9 +194,7 @@ async def console_dashboard(request: Request):
         }
 
         /* Search */
-        .search-wrapper {
-            position: relative;
-        }
+        .search-wrapper { position: relative; }
         
         .search-icon {
             position: absolute;
@@ -199,24 +206,25 @@ async def console_dashboard(request: Request):
         }
 
         input[type="text"] {
-            background: var(--bg-nav);
+            background: white;
             border: 1px solid var(--border);
             color: var(--text-main);
-            padding: 8px 12px 8px 36px;
+            padding: 9px 12px 9px 38px;
             border-radius: 8px;
             font-size: 13px;
             width: 320px;
             outline: none;
             transition: all 0.2s;
             font-family: 'Inter', sans-serif;
+            box-shadow: var(--shadow-sm);
         }
 
         input[type="text"]:focus {
             border-color: var(--accent);
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            box-shadow: 0 0 0 3px var(--accent-light);
         }
 
-        /* Toolbar Buttons */
+        /* Buttons */
         .btn {
             display: flex;
             align-items: center;
@@ -228,10 +236,11 @@ async def console_dashboard(request: Request):
             cursor: pointer;
             transition: all 0.2s;
             border: 1px solid transparent;
+            box-shadow: var(--shadow-sm);
         }
 
         .btn-secondary {
-            background: var(--bg-nav);
+            background: white;
             border: 1px solid var(--border);
             color: var(--text-main);
         }
@@ -244,20 +253,22 @@ async def console_dashboard(request: Request):
         .btn-primary {
             background: var(--accent);
             color: white;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
         
         .btn-primary:hover {
             background: var(--accent-hover);
-            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
         }
         
         .btn.active {
-            background: rgba(34, 197, 94, 0.1);
+            background: var(--success-bg);
             color: var(--success);
-            border-color: rgba(34, 197, 94, 0.3);
+            border-color: var(--success);
         }
 
-        /* Content Area */
+        /* Content */
         .content-scroll {
             flex: 1;
             padding: 32px;
@@ -267,10 +278,10 @@ async def console_dashboard(request: Request):
         .card {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border-radius: 16px;
+            box-shadow: var(--shadow-md);
             overflow: hidden;
-            animation: fadeIn 0.3s ease-out;
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         table {
@@ -283,9 +294,9 @@ async def console_dashboard(request: Request):
             text-align: left;
             padding: 16px 24px;
             color: var(--text-muted);
-            font-weight: 500;
+            font-weight: 600;
             border-bottom: 1px solid var(--border);
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-card-hover);
             text-transform: uppercase;
             font-size: 11px;
             letter-spacing: 0.05em;
@@ -298,7 +309,10 @@ async def console_dashboard(request: Request):
         }
 
         tr:last-child td { border-bottom: none; }
-        tr:hover td { background: rgba(255, 255, 255, 0.01); }
+        
+        tr:hover td { 
+            background: var(--bg-card-hover); 
+        }
 
         .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 
@@ -306,11 +320,10 @@ async def console_dashboard(request: Request):
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 4px 8px;
+            padding: 4px 10px;
             border-radius: 20px;
             font-size: 11px;
-            font-weight: 500;
-            border: 1px solid transparent;
+            font-weight: 600;
         }
 
         .badge::before {
@@ -321,9 +334,9 @@ async def console_dashboard(request: Request):
             background: currentColor;
         }
 
-        .badge.success { background: rgba(34, 197, 94, 0.1); color: var(--success); border-color: rgba(34, 197, 94, 0.1); }
-        .badge.warning { background: rgba(234, 179, 8, 0.1); color: var(--warning); border-color: rgba(234, 179, 8, 0.1); }
-        .badge.error { background: rgba(239, 68, 68, 0.1); color: var(--error); border-color: rgba(239, 68, 68, 0.1); }
+        .badge.success { background: var(--success-bg); color: var(--success); }
+        .badge.warning { background: var(--warning-bg); color: var(--warning); }
+        .badge.error { background: var(--error-bg); color: var(--error); }
 
         .footer {
             padding: 16px 24px;
@@ -331,26 +344,26 @@ async def console_dashboard(request: Request):
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-body);
         }
 
-        .footer-info { font-size: 12px; color: var(--text-muted); }
+        .footer-info { font-size: 12px; color: var(--text-muted); font-weight: 500; }
         .pagination { display: flex; gap: 8px; }
 
         .status-dot {
             width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted);
             transition: all 0.3s;
         }
-        .status-dot.live { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 2s infinite; }
+        .status-dot.live { background: var(--success); box-shadow: 0 0 0 2px var(--success-bg); animation: pulse 2s infinite; }
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         
         /* Scrollbar */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body>
@@ -502,7 +515,13 @@ async def console_dashboard(request: Request):
                 }
 
                 try {
-                    let url = `/api/console/${this.state.view}?page=${page}`;
+                    // Map views to API endpoints
+                    const endpoints = {
+                        'users': 'users',
+                        'activity': 'activity-logs',
+                        'audit': 'audit-logs'
+                    };
+                    let url = `/api/console/${endpoints[this.state.view]}?page=${page}`;
                     if (this.state.search) url += `&search=${encodeURIComponent(this.state.search)}`;
                     
                     const res = await fetch(url);
