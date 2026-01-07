@@ -900,8 +900,17 @@ async def get_activity_logs(
         for line in wg_lines:
             # Parse timestamp: 2023-10-20T10:00:00+00:00 hostname kernel: ...
             parts = line.split(" ", 3)
-            ts = parts[0] if parts else ""
+            ts_raw = parts[0] if parts else ""
             msg = parts[3] if len(parts) > 3 else line
+            
+            # Convert ISO timestamp to readable format (YYYY-MM-DD HH:MM:SS)
+            ts = ts_raw
+            try:
+                if 'T' in ts_raw:
+                    dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
+                    ts = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
             
             # Extract fields from iptables/nftables log format
             # Example: [WS-Audit] IN=wg0 OUT=eth0 MAC=... SRC=10.66.66.2 DST=1.1.1.1 ...
