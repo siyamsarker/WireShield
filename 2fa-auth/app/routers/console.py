@@ -64,6 +64,7 @@ async def console_dashboard(request: Request):
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             /* Premium Light Theme */
@@ -415,6 +416,256 @@ async def console_dashboard(request: Request):
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* ============ Dashboard Styles ============ */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 600px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            box-shadow: var(--shadow-md);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), #8b5cf6);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px -8px rgba(0,0,0,0.15);
+        }
+
+        .stat-card:hover::before { opacity: 1; }
+
+        .stat-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .stat-content { flex: 1; min-width: 0; }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1;
+            margin-bottom: 6px;
+            letter-spacing: -0.02em;
+        }
+
+        .stat-detail {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .charts-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .charts-row { grid-template-columns: 1fr; }
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .chart-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chart-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+            letter-spacing: -0.01em;
+        }
+
+        .chart-body {
+            padding: 20px 24px 24px;
+            height: 280px;
+            position: relative;
+        }
+
+        .events-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .events-row { grid-template-columns: 1fr; }
+        }
+
+        .events-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            animation: fadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .events-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .events-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .events-link {
+            font-size: 12px;
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .events-link:hover { color: var(--accent-hover); }
+
+        .events-list {
+            max-height: 320px;
+            overflow-y: auto;
+        }
+
+        .events-loading {
+            padding: 32px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .event-item {
+            padding: 14px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+
+        .event-item:last-child { border-bottom: none; }
+        .event-item:hover { background: var(--bg-card-hover); }
+
+        .event-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .event-dot.success { background: var(--success); }
+        .event-dot.warning { background: var(--warning); }
+        .event-dot.error { background: var(--error); }
+        .event-dot.info { background: var(--accent); }
+
+        .event-content { flex: 1; min-width: 0; }
+
+        .event-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-main);
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .event-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .event-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+        }
+
+        .empty-state {
+            padding: 40px 24px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 13px;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200px 0; }
+            100% { background-position: calc(200px + 100%) 0; }
+        }
+
+        .loading-skeleton {
+            background: linear-gradient(90deg, var(--bg-card-hover) 0px, #e2e8f0 40px, var(--bg-card-hover) 80px);
+            background-size: 200px 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -423,7 +674,11 @@ async def console_dashboard(request: Request):
             <img src="/static/logo.svg" alt="WS" style="width: 24px;">
             <span class="brand-text">WireShield</span>
         </div>
-        <a href="#" class="nav-item active" data-view="users" onclick="app.setView('users')">
+        <a href="#" class="nav-item active" data-view="dashboard" onclick="app.setView('dashboard')">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+            Dashboard
+        </a>
+        <a href="#" class="nav-item" data-view="users" onclick="app.setView('users')">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
             Users & Sessions
         </a>
@@ -478,14 +733,106 @@ async def console_dashboard(request: Request):
         </div>
 
         <div class="content-scroll">
-            <div class="card">
-                <table id="dataTable">
-                    <thead id="tableHead"></thead>
-                    <tbody id="tableBody"></tbody>
-                </table>
-                <div class="footer">
-                    <div class="footer-info" id="footerInfo">Loading...</div>
-                    <div class="pagination" id="pagination"></div>
+            <!-- Dashboard View -->
+            <div id="dashboardView" style="display:none">
+                <div class="dashboard-grid">
+                    <!-- Stats Row -->
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: var(--accent-light); color: var(--accent);">
+                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">Total Users</div>
+                            <div class="stat-value" id="statUsers">-</div>
+                            <div class="stat-detail" id="statUsersDetail">Loading...</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: var(--success-bg); color: var(--success);">
+                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">2FA Success Rate</div>
+                            <div class="stat-value" id="stat2FA">-</div>
+                            <div class="stat-detail" id="stat2FADetail">Last 24 hours</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: var(--warning-bg); color: var(--warning);">
+                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">Security Alerts</div>
+                            <div class="stat-value" id="statAlerts">-</div>
+                            <div class="stat-detail" id="statAlertsDetail">Failed attempts</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: #f3e8ff; color: #9333ea;">
+                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">System Status</div>
+                            <div class="stat-value" id="statStatus">-</div>
+                            <div class="stat-detail" id="statStatusDetail">Checking...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="charts-row">
+                    <div class="card chart-card">
+                        <div class="chart-header">
+                            <h3>Activity Trend (Last 7 Days)</h3>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="activityChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card chart-card">
+                        <div class="chart-header">
+                            <h3>Action Distribution</h3>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="actionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Events Row -->
+                <div class="events-row">
+                    <div class="card events-card">
+                        <div class="events-header">
+                            <h3>Recent Security Events</h3>
+                            <a href="#" onclick="app.setView('audit'); return false;" class="events-link">View All →</a>
+                        </div>
+                        <div class="events-list" id="recentAudit">
+                            <div class="events-loading">Loading...</div>
+                        </div>
+                    </div>
+                    <div class="card events-card">
+                        <div class="events-header">
+                            <h3>Latest Traffic</h3>
+                            <a href="#" onclick="app.setView('activity'); return false;" class="events-link">View All →</a>
+                        </div>
+                        <div class="events-list" id="recentActivity">
+                            <div class="events-loading">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table View (for other pages) -->
+            <div id="tableView">
+                <div class="card">
+                    <table id="dataTable">
+                        <thead id="tableHead"></thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                    <div class="footer">
+                        <div class="footer-info" id="footerInfo">Loading...</div>
+                        <div class="pagination" id="pagination"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -494,16 +841,21 @@ async def console_dashboard(request: Request):
     <script>
         const app = {
             state: { 
-                view: 'users', 
+                view: 'dashboard', 
                 page: 1, 
                 search: '', 
                 loading: false, 
                 live: false, 
                 timer: null,
+                dashboardTimer: null,
                 startDate: '',
                 endDate: '',
                 clientFilter: '',
                 clients: []
+            },
+            charts: {
+                activity: null,
+                action: null
             },
             headers: {
                 users: ['Client ID', 'Status', 'IP (Internal)', 'Last Active'],
@@ -514,7 +866,7 @@ async def console_dashboard(request: Request):
             async init() {
                 // Load clients for filter dropdown
                 await this.loadClients();
-                this.setView('users');
+                this.setView('dashboard');
             },
 
             async loadClients() {
@@ -541,6 +893,11 @@ async def console_dashboard(request: Request):
                 this.state.endDate = '';
                 this.state.clientFilter = '';
                 if (this.state.timer) clearInterval(this.state.timer);
+                if (this.state.dashboardTimer) clearInterval(this.state.dashboardTimer);
+                
+                // Destroy existing charts to prevent memory leaks
+                if (this.charts.activity) { this.charts.activity.destroy(); this.charts.activity = null; }
+                if (this.charts.action) { this.charts.action.destroy(); this.charts.action = null; }
                 
                 // Update Nav UI
                 document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -548,9 +905,27 @@ async def console_dashboard(request: Request):
                 if (activeLink) activeLink.classList.add('active');
                 
                 // Update Header
-                const titles = { users: 'Users & Sessions', activity: 'Activity Logs', audit: 'Audit Logs' };
+                const titles = { dashboard: 'Dashboard', users: 'Users & Sessions', activity: 'Activity Logs', audit: 'Audit Logs' };
                 document.getElementById('pageTitle').textContent = titles[view];
                 document.getElementById('searchInput').value = '';
+                
+                // Show/Hide Dashboard vs Table View
+                const dashboardView = document.getElementById('dashboardView');
+                const tableView = document.getElementById('tableView');
+                
+                if (view === 'dashboard') {
+                    dashboardView.style.display = 'block';
+                    tableView.style.display = 'none';
+                    document.getElementById('filterBar').style.display = 'none';
+                    document.getElementById('liveToggle').style.display = 'none';
+                    this.loadDashboard();
+                    // Auto-refresh dashboard every 30 seconds
+                    this.state.dashboardTimer = setInterval(() => this.loadDashboard(), 30000);
+                    return;
+                }
+                
+                dashboardView.style.display = 'none';
+                tableView.style.display = 'block';
                 
                 // Show/Hide Filter Bar (only for logs views)
                 const filterBar = document.getElementById('filterBar');
@@ -726,6 +1101,221 @@ async def console_dashboard(request: Request):
                             <td class="mono">${row.ip_address}</td>
                         </tr>`;
                 }
+            },
+
+            // ============ Dashboard Methods ============
+            async loadDashboard() {
+                await Promise.all([
+                    this.loadDashboardStats(),
+                    this.loadDashboardCharts()
+                ]);
+            },
+
+            async loadDashboardStats() {
+                try {
+                    const res = await fetch('/api/console/dashboard-stats');
+                    const data = await res.json();
+                    
+                    // Update stat cards
+                    document.getElementById('statUsers').textContent = data.users.total;
+                    document.getElementById('statUsersDetail').textContent = data.users.detail;
+                    
+                    document.getElementById('stat2FA').textContent = data.twofa.success_rate + '%';
+                    document.getElementById('stat2FADetail').textContent = data.twofa.detail;
+                    
+                    document.getElementById('statAlerts').textContent = data.alerts.count;
+                    document.getElementById('statAlertsDetail').textContent = data.alerts.detail;
+                    
+                    document.getElementById('statStatus').textContent = data.system.status;
+                    document.getElementById('statStatusDetail').textContent = data.system.detail;
+                } catch (e) {
+                    console.error('Failed to load dashboard stats:', e);
+                }
+            },
+
+            async loadDashboardCharts() {
+                try {
+                    const res = await fetch('/api/console/dashboard-charts');
+                    const data = await res.json();
+                    
+                    // Initialize or update Activity Trend Chart
+                    this.renderActivityChart(data.activity_trend);
+                    
+                    // Initialize or update Action Distribution Chart
+                    this.renderActionChart(data.action_distribution);
+                    
+                    // Render Recent Events
+                    this.renderRecentEvents(data.recent_events);
+                    
+                    // Render Latest Traffic
+                    this.renderLatestTraffic(data.latest_traffic);
+                } catch (e) {
+                    console.error('Failed to load dashboard charts:', e);
+                }
+            },
+
+            renderActivityChart(trendData) {
+                const ctx = document.getElementById('activityChart').getContext('2d');
+                const labels = trendData.map(d => d.label);
+                const values = trendData.map(d => d.count);
+                
+                if (this.charts.activity) {
+                    // Update existing chart
+                    this.charts.activity.data.labels = labels;
+                    this.charts.activity.data.datasets[0].data = values;
+                    this.charts.activity.update();
+                    return;
+                }
+                
+                this.charts.activity = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Events',
+                            data: values,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: '#2563eb',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: '#0f172a',
+                                titleFont: { family: 'Inter', size: 12 },
+                                bodyFont: { family: 'Inter', size: 11 },
+                                padding: 12,
+                                cornerRadius: 8
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#e2e8f0' },
+                                ticks: { font: { family: 'Inter', size: 11 }, color: '#64748b' }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { font: { family: 'Inter', size: 11 }, color: '#64748b' }
+                            }
+                        },
+                        interaction: { mode: 'index', intersect: false }
+                    }
+                });
+            },
+
+            renderActionChart(actionData) {
+                const ctx = document.getElementById('actionChart').getContext('2d');
+                const labels = actionData.map(d => d.action.replace('_', ' '));
+                const values = actionData.map(d => d.count);
+                const colors = ['#2563eb', '#16a34a', '#ca8a04', '#dc2626', '#8b5cf6', '#ec4899'];
+                
+                if (this.charts.action) {
+                    this.charts.action.data.labels = labels;
+                    this.charts.action.data.datasets[0].data = values;
+                    this.charts.action.update();
+                    return;
+                }
+                
+                this.charts.action = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: values,
+                            backgroundColor: colors.slice(0, values.length),
+                            borderWidth: 0,
+                            hoverOffset: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '65%',
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    font: { family: 'Inter', size: 11 },
+                                    color: '#64748b',
+                                    padding: 16,
+                                    usePointStyle: true,
+                                    pointStyle: 'circle'
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: '#0f172a',
+                                titleFont: { family: 'Inter', size: 12 },
+                                bodyFont: { family: 'Inter', size: 11 },
+                                padding: 12,
+                                cornerRadius: 8
+                            }
+                        }
+                    }
+                });
+            },
+
+            renderRecentEvents(events) {
+                const container = document.getElementById('recentAudit');
+                if (!events || events.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <div class="empty-state-text">No recent events</div>
+                        </div>`;
+                    return;
+                }
+                
+                container.innerHTML = events.map(e => {
+                    const dotClass = (e.status === 'success' || e.status === 'granted') ? 'success' : 
+                                     (e.status === 'failed' || e.status === 'denied') ? 'error' : 'info';
+                    const time = e.timestamp ? e.timestamp.split(' ')[1] || e.timestamp : '';
+                    return `
+                        <div class="event-item" onclick="app.setView('audit')">
+                            <div class="event-dot ${dotClass}"></div>
+                            <div class="event-content">
+                                <div class="event-title">${e.action} - ${e.client_id}</div>
+                                <div class="event-meta">${e.status} • ${e.ip_address}</div>
+                            </div>
+                            <div class="event-time">${time}</div>
+                        </div>`;
+                }).join('');
+            },
+
+            renderLatestTraffic(traffic) {
+                const container = document.getElementById('recentActivity');
+                if (!traffic || traffic.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            <div class="empty-state-text">No recent traffic</div>
+                        </div>`;
+                    return;
+                }
+                
+                container.innerHTML = traffic.map(t => {
+                    const dotClass = t.direction === 'IN' ? 'success' : 'warning';
+                    return `
+                        <div class="event-item" onclick="app.setView('activity')">
+                            <div class="event-dot ${dotClass}"></div>
+                            <div class="event-content">
+                                <div class="event-title">${t.client} - ${t.direction}</div>
+                                <div class="event-meta">${t.details}</div>
+                            </div>
+                            <div class="event-time">${t.time}</div>
+                        </div>`;
+                }).join('');
             }
         };
 
@@ -980,3 +1570,223 @@ async def get_activity_logs(
     except Exception as e:
         logger.error(f"Failed to fetch logs: {e}")
         return {"items": [], "page": 1, "pages": 0, "total": 0}
+
+@router.get("/api/console/dashboard-stats")
+async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
+    """Get dashboard statistics for the console."""
+    from datetime import datetime, timedelta
+    
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        
+        # --- User Statistics ---
+        c.execute("SELECT COUNT(*) FROM users")
+        total_users = c.fetchone()[0]
+        
+        c.execute("SELECT COUNT(*) FROM users WHERE enabled = 1")
+        active_users = c.fetchone()[0]
+        
+        c.execute("SELECT COUNT(*) FROM users WHERE console_access = 1")
+        admin_users = c.fetchone()[0]
+        
+        # --- Session Statistics ---
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("SELECT COUNT(*) FROM sessions WHERE expires_at > ?", (now,))
+        active_sessions = c.fetchone()[0]
+        
+        # --- 2FA Statistics (Last 24 hours) ---
+        yesterday = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        c.execute("""
+            SELECT COUNT(*) FROM audit_log 
+            WHERE action = 'TOTP_VERIFY' AND status = 'success' AND timestamp >= ?
+        """, (yesterday,))
+        successful_2fa = c.fetchone()[0]
+        
+        c.execute("""
+            SELECT COUNT(*) FROM audit_log 
+            WHERE action = 'TOTP_VERIFY' AND status = 'failed' AND timestamp >= ?
+        """, (yesterday,))
+        failed_2fa = c.fetchone()[0]
+        
+        total_2fa = successful_2fa + failed_2fa
+        success_rate = round((successful_2fa / total_2fa * 100), 1) if total_2fa > 0 else 100.0
+        
+        # --- Security Alerts (Failed attempts in last 24h) ---
+        c.execute("""
+            SELECT COUNT(*) FROM audit_log 
+            WHERE status IN ('failed', 'denied') AND timestamp >= ?
+        """, (yesterday,))
+        security_alerts = c.fetchone()[0]
+        
+        conn.close()
+        
+        # --- System Status (Check WireGuard) ---
+        system_status = "Operational"
+        status_detail = "All systems running"
+        try:
+            wg_check = subprocess.run(["wg", "show"], capture_output=True, text=True, timeout=5)
+            if wg_check.returncode != 0:
+                system_status = "Degraded"
+                status_detail = "WireGuard offline"
+        except Exception:
+            system_status = "Unknown"
+            status_detail = "Cannot verify"
+        
+        return {
+            "users": {
+                "total": total_users,
+                "active": active_users,
+                "admins": admin_users,
+                "detail": f"{active_users} active, {admin_users} admins"
+            },
+            "sessions": {
+                "active": active_sessions,
+                "detail": f"{active_sessions} active sessions"
+            },
+            "twofa": {
+                "success_rate": success_rate,
+                "successful": successful_2fa,
+                "failed": failed_2fa,
+                "total": total_2fa,
+                "detail": f"{successful_2fa}/{total_2fa} successful"
+            },
+            "alerts": {
+                "count": security_alerts,
+                "detail": f"{security_alerts} in last 24h"
+            },
+            "system": {
+                "status": system_status,
+                "detail": status_detail
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching dashboard stats: {e}")
+        return {
+            "users": {"total": 0, "active": 0, "admins": 0, "detail": "Error loading"},
+            "sessions": {"active": 0, "detail": "Error loading"},
+            "twofa": {"success_rate": 0, "successful": 0, "failed": 0, "total": 0, "detail": "Error loading"},
+            "alerts": {"count": 0, "detail": "Error loading"},
+            "system": {"status": "Error", "detail": "Failed to load stats"}
+        }
+
+@router.get("/api/console/dashboard-charts")
+async def get_dashboard_charts(client_id: str = Depends(_check_console_access)):
+    """Get chart data for the dashboard."""
+    import re
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        
+        # --- 7-Day Activity Trend ---
+        activity_trend = []
+        for i in range(6, -1, -1):
+            date = (datetime.utcnow() - timedelta(days=i)).strftime("%Y-%m-%d")
+            c.execute("""
+                SELECT COUNT(*) FROM audit_log 
+                WHERE timestamp LIKE ?
+            """, (f"{date}%",))
+            count = c.fetchone()[0]
+            activity_trend.append({
+                "date": date,
+                "label": (datetime.utcnow() - timedelta(days=i)).strftime("%a"),
+                "count": count
+            })
+        
+        # --- Action Distribution ---
+        c.execute("""
+            SELECT action, COUNT(*) as count FROM audit_log 
+            GROUP BY action ORDER BY count DESC LIMIT 6
+        """)
+        actions = [{"action": row[0], "count": row[1]} for row in c.fetchall()]
+        
+        # --- Recent Security Events (last 8) ---
+        c.execute("""
+            SELECT client_id, action, status, ip_address, timestamp 
+            FROM audit_log ORDER BY id DESC LIMIT 8
+        """)
+        recent_events = [{
+            "client_id": row[0] or "System",
+            "action": row[1],
+            "status": row[2],
+            "ip_address": row[3],
+            "timestamp": row[4]
+        } for row in c.fetchall()]
+        
+        conn.close()
+        
+        # --- Latest Traffic (from journalctl) ---
+        latest_traffic = []
+        try:
+            cmd = ["journalctl", "-k", "-n", "100", "--output=short-iso", "--no-pager"]
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=5)
+            lines = proc.stdout.strip().splitlines()
+            
+            # Filter for WireGuard/WS-Audit related
+            wg_lines = [l for l in lines if "wireguard:" in l or "WS-Audit" in l]
+            wg_lines.reverse()
+            
+            # Load IP mapping
+            ip_to_client = {}
+            try:
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users")
+                for row in c.fetchall():
+                    if row[1]: ip_to_client[row[1]] = row[0]
+                    if row[2]: ip_to_client[row[2]] = row[0]
+                conn.close()
+            except Exception:
+                pass
+            
+            for line in wg_lines[:8]:
+                parts = line.split(" ", 3)
+                ts_raw = parts[0] if parts else ""
+                msg = parts[3] if len(parts) > 3 else line
+                
+                # Parse timestamp
+                ts = ts_raw
+                try:
+                    if 'T' in ts_raw:
+                        dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
+                        ts = dt.strftime("%H:%M:%S")
+                except Exception:
+                    pass
+                
+                # Extract source IP
+                src_match = re.search(r'SRC=(\S+)', msg)
+                src_ip = src_match.group(1) if src_match else None
+                client = ip_to_client.get(src_ip, "Unknown")
+                
+                # Extract direction
+                in_match = re.search(r'IN=(\S*)', msg)
+                direction = "IN" if in_match and in_match.group(1) else "OUT"
+                
+                latest_traffic.append({
+                    "time": ts,
+                    "client": client,
+                    "direction": direction,
+                    "details": msg[:60] + "..." if len(msg) > 60 else msg
+                })
+        except Exception as e:
+            logger.error(f"Error fetching traffic: {e}")
+        
+        return {
+            "activity_trend": activity_trend,
+            "action_distribution": actions,
+            "recent_events": recent_events,
+            "latest_traffic": latest_traffic
+        }
+    except Exception as e:
+        logger.error(f"Error fetching dashboard charts: {e}")
+        return {
+            "activity_trend": [],
+            "action_distribution": [],
+            "recent_events": [],
+            "latest_traffic": []
+        }
+
