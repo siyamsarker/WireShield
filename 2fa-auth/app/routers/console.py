@@ -417,6 +417,9 @@ async def console_dashboard(request: Request):
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
+        .clickable { cursor: pointer; }
+        .clickable:hover { background: var(--bg-card-hover); }
+
         /* ============ Dashboard Styles ============ */
         .dashboard-grid {
             display: grid;
@@ -693,7 +696,7 @@ async def console_dashboard(request: Request):
     </nav>
 
     <main>
-        <header>
+        <header id="mainHeader">
             <div class="page-title" id="pageTitle">Users & Sessions</div>
             <div class="header-controls">
                 <div class="search-wrapper">
@@ -757,7 +760,7 @@ async def console_dashboard(request: Request):
                             <div class="stat-detail" id="stat2FADetail">Last 24 hours</div>
                         </div>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card clickable" onclick="app.viewSecurityAlerts()">
                         <div class="stat-icon" style="background: var(--warning-bg); color: var(--warning);">
                             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                         </div>
@@ -916,6 +919,7 @@ async def console_dashboard(request: Request):
                 if (view === 'dashboard') {
                     dashboardView.style.display = 'block';
                     tableView.style.display = 'none';
+                    document.getElementById('mainHeader').style.display = 'none';
                     document.getElementById('filterBar').style.display = 'none';
                     document.getElementById('liveToggle').style.display = 'none';
                     this.loadDashboard();
@@ -926,6 +930,7 @@ async def console_dashboard(request: Request):
                 
                 dashboardView.style.display = 'none';
                 tableView.style.display = 'block';
+                document.getElementById('mainHeader').style.display = 'flex';
                 
                 // Show/Hide Filter Bar (only for logs views)
                 const filterBar = document.getElementById('filterBar');
@@ -1316,6 +1321,13 @@ async def console_dashboard(request: Request):
                             <div class="event-time">${t.time}</div>
                         </div>`;
                 }).join('');
+            },
+
+            viewSecurityAlerts() {
+                this.setView('audit');
+                const searchInput = document.getElementById('searchInput');
+                searchInput.value = 'failed';
+                this.handleSearch('failed');
             }
         };
 
@@ -1393,8 +1405,8 @@ async def get_audit_logs(
         params = []
         
         if search:
-            conditions.append("(client_id LIKE ? OR action LIKE ?)")
-            params.extend([f"%{search}%", f"%{search}%"])
+            conditions.append("(client_id LIKE ? OR action LIKE ? OR status LIKE ?)")
+            params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
         
         if client_filter:
             conditions.append("client_id = ?")
