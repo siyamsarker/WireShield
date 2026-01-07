@@ -338,6 +338,57 @@ async def console_dashboard(request: Request):
         .badge.warning { background: var(--warning-bg); color: var(--warning); }
         .badge.error { background: var(--error-bg); color: var(--error); }
 
+        /* Filter Bar */
+        .filter-bar {
+            padding: 16px 32px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: flex-end;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-group label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .filter-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type="date"], select {
+            background: white;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            box-shadow: var(--shadow-sm);
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        input[type="date"]:focus, select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+
+        select { min-width: 180px; cursor: pointer; }
+
         .footer {
             padding: 16px 24px;
             border-top: 1px solid var(--border);
@@ -407,6 +458,25 @@ async def console_dashboard(request: Request):
             </div>
         </header>
 
+        <!-- Filter Bar (visible for logs views) -->
+        <div class="filter-bar" id="filterBar" style="display:none">
+            <div class="filter-group">
+                <label>Date Range</label>
+                <div class="filter-row">
+                    <input type="date" id="startDate" onchange="app.applyFilters()">
+                    <span style="color:var(--text-muted)">to</span>
+                    <input type="date" id="endDate" onchange="app.applyFilters()">
+                </div>
+            </div>
+            <div class="filter-group">
+                <label>Client</label>
+                <select id="clientFilter" onchange="app.applyFilters()">
+                    <option value="">All Clients</option>
+                </select>
+            </div>
+            <button class="btn btn-secondary" onclick="app.clearFilters()">Clear Filters</button>
+        </div>
+
         <div class="content-scroll">
             <div class="card">
                 <table id="dataTable">
@@ -423,15 +493,43 @@ async def console_dashboard(request: Request):
 
     <script>
         const app = {
-            state: { view: 'users', page: 1, search: '', loading: false, live: false, timer: null },
+            state: { 
+                view: 'users', 
+                page: 1, 
+                search: '', 
+                loading: false, 
+                live: false, 
+                timer: null,
+                startDate: '',
+                endDate: '',
+                clientFilter: '',
+                clients: []
+            },
             headers: {
                 users: ['Client ID', 'Status', 'IP (Internal)', 'Last Active'],
-                activity: ['Timestamp', 'Client', 'Message'],
+                activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination', 'Details'],
                 audit: ['Timestamp', 'Client', 'Action', 'Status', 'Origin IP']
             },
             
-            init() {
+            async init() {
+                // Load clients for filter dropdown
+                await this.loadClients();
                 this.setView('users');
+            },
+
+            async loadClients() {
+                try {
+                    const res = await fetch('/api/console/users?limit=1000');
+                    const data = await res.json();
+                    if (data.items) {
+                        this.state.clients = data.items;
+                        const select = document.getElementById('clientFilter');
+                        select.innerHTML = '<option value="">All Clients</option>' + 
+                            data.items.map(c => `<option value="${c.client_id}">${c.client_id}</option>`).join('');
+                    }
+                } catch (e) {
+                    console.error('Failed to load clients:', e);
+                }
             },
 
             setView(view) {
@@ -439,6 +537,9 @@ async def console_dashboard(request: Request):
                 this.state.page = 1;
                 this.state.search = '';
                 this.state.live = false;
+                this.state.startDate = '';
+                this.state.endDate = '';
+                this.state.clientFilter = '';
                 if (this.state.timer) clearInterval(this.state.timer);
                 
                 // Update Nav UI
@@ -450,6 +551,15 @@ async def console_dashboard(request: Request):
                 const titles = { users: 'Users & Sessions', activity: 'Activity Logs', audit: 'Audit Logs' };
                 document.getElementById('pageTitle').textContent = titles[view];
                 document.getElementById('searchInput').value = '';
+                
+                // Show/Hide Filter Bar (only for logs views)
+                const filterBar = document.getElementById('filterBar');
+                filterBar.style.display = (view === 'activity' || view === 'audit') ? 'flex' : 'none';
+                
+                // Reset filter inputs
+                document.getElementById('startDate').value = '';
+                document.getElementById('endDate').value = '';
+                document.getElementById('clientFilter').value = '';
                 
                 // Show/Hide Live Button
                 const liveDiv = document.getElementById('liveToggle');
@@ -501,6 +611,25 @@ async def console_dashboard(request: Request):
                 }
             },
 
+            applyFilters() {
+                this.state.startDate = document.getElementById('startDate').value;
+                this.state.endDate = document.getElementById('endDate').value;
+                this.state.clientFilter = document.getElementById('clientFilter').value;
+                this.state.page = 1;
+                this.loadData();
+            },
+
+            clearFilters() {
+                document.getElementById('startDate').value = '';
+                document.getElementById('endDate').value = '';
+                document.getElementById('clientFilter').value = '';
+                this.state.startDate = '';
+                this.state.endDate = '';
+                this.state.clientFilter = '';
+                this.state.page = 1;
+                this.loadData();
+            },
+
             refresh() {
                 this.loadData(this.state.page);
             },
@@ -523,6 +652,9 @@ async def console_dashboard(request: Request):
                     };
                     let url = `/api/console/${endpoints[this.state.view]}?page=${page}`;
                     if (this.state.search) url += `&search=${encodeURIComponent(this.state.search)}`;
+                    if (this.state.startDate) url += `&start_date=${this.state.startDate}`;
+                    if (this.state.endDate) url += `&end_date=${this.state.endDate}`;
+                    if (this.state.clientFilter) url += `&client_filter=${encodeURIComponent(this.state.clientFilter)}`;
                     
                     const res = await fetch(url);
                     const data = await res.json();
@@ -571,11 +703,16 @@ async def console_dashboard(request: Request):
                         </tr>`;
                 }
                 if (this.state.view === 'activity') {
+                    const dirClass = row.direction === 'IN' ? 'success' : 'warning';
                     return `
                         <tr>
-                            <td class="mono" style="color:var(--accent); width: 180px;">${row.timestamp}</td>
-                            <td class="mono" style="font-weight:600; width: 150px;">${row.client_id || 'System'}</td>
-                            <td>${row.message}</td>
+                            <td class="mono" style="color:var(--accent); white-space:nowrap">${row.timestamp}</td>
+                            <td class="mono" style="font-weight:600">${row.client_id || 'System'}</td>
+                            <td><span class="badge ${dirClass}">${row.direction || '-'}</span></td>
+                            <td class="mono">${row.protocol || '-'}</td>
+                            <td class="mono" style="font-size:11px">${row.src_ip || '-'}${row.src_port ? ':' + row.src_port : ''}</td>
+                            <td class="mono" style="font-size:11px">${row.dst_ip || '-'}${row.dst_port ? ':' + row.dst_port : ''}</td>
+                            <td style="color:var(--text-muted); font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis">${row.details || '-'}</td>
                         </tr>`;
                 }
                 if (this.state.view === 'audit') {
@@ -651,6 +788,9 @@ async def get_audit_logs(
     page: int = 1,
     limit: int = 50,
     search: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    client_filter: str = None,
     client_id: str = Depends(_check_console_access)
 ):
     try:
@@ -659,10 +799,27 @@ async def get_audit_logs(
         c = conn.cursor()
         
         query = "SELECT * FROM audit_log"
+        conditions = []
         params = []
+        
         if search:
-            query += " WHERE client_id LIKE ? OR action LIKE ?"
+            conditions.append("(client_id LIKE ? OR action LIKE ?)")
             params.extend([f"%{search}%", f"%{search}%"])
+        
+        if client_filter:
+            conditions.append("client_id = ?")
+            params.append(client_filter)
+        
+        if start_date:
+            conditions.append("timestamp >= ?")
+            params.append(f"{start_date} 00:00:00")
+        
+        if end_date:
+            conditions.append("timestamp <= ?")
+            params.append(f"{end_date} 23:59:59")
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
             
         query += " ORDER BY id DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -672,9 +829,9 @@ async def get_audit_logs(
         
         # Count total
         count_query = "SELECT COUNT(*) FROM audit_log"
-        if search:
-            count_query += " WHERE client_id LIKE ? OR action LIKE ?"
-            c.execute(count_query, (f"%{search}%", f"%{search}%"))
+        if conditions:
+            count_query += " WHERE " + " AND ".join(conditions)
+            c.execute(count_query, tuple(params[:-2]))  # Exclude LIMIT/OFFSET params
         else:
             c.execute(count_query)
             
@@ -696,12 +853,24 @@ async def get_activity_logs(
     page: int = 1,
     limit: int = 50,
     search: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    client_filter: str = None,
     client_id: str = Depends(_check_console_access)
 ):
-    """Fetch WireGuard kernel logs via journalctl."""
-    # We need to parse journalctl output
-    cmd = ["journalctl", "-k", "-n", "1000", "--output=short-iso", "--no-pager"]
-    # If search provided, grep it first to reduce parsing load
+    """Fetch WireGuard/iptables kernel logs via journalctl with enhanced parsing."""
+    import re
+    from datetime import datetime
+    
+    # Build journalctl command
+    cmd = ["journalctl", "-k", "-n", "5000", "--output=short-iso", "--no-pager"]
+    
+    # Add date filters to journalctl if provided
+    if start_date:
+        cmd.extend(["--since", f"{start_date} 00:00:00"])
+    if end_date:
+        cmd.extend(["--until", f"{end_date} 23:59:59"])
+    
     if search:
         cmd.extend(["--grep", search])
         
@@ -709,26 +878,91 @@ async def get_activity_logs(
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         lines = proc.stdout.strip().splitlines()
         
-        # Filter for WireGuard related logs only
-        wg_lines = [l for l in lines if "wireguard:" in l or "wg" in l]
-        wg_lines.reverse() # Newest first
+        # Filter for WireGuard/WS-Audit related logs
+        wg_lines = [l for l in lines if "wireguard:" in l or "WS-Audit" in l or "wg" in l.lower()]
+        wg_lines.reverse()  # Newest first
+        
+        # Load client IP mapping for identification
+        ip_to_client = {}
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users")
+            for row in c.fetchall():
+                if row[1]: ip_to_client[row[1]] = row[0]
+                if row[2]: ip_to_client[row[2]] = row[0]
+            conn.close()
+        except Exception:
+            pass
+        
+        # Parse logs into structured format
+        structured = []
+        for line in wg_lines:
+            # Parse timestamp: 2023-10-20T10:00:00+00:00 hostname kernel: ...
+            parts = line.split(" ", 3)
+            ts = parts[0] if parts else ""
+            msg = parts[3] if len(parts) > 3 else line
+            
+            # Extract fields from iptables/nftables log format
+            # Example: [WS-Audit] IN=wg0 OUT=eth0 MAC=... SRC=10.66.66.2 DST=1.1.1.1 ...
+            entry = {
+                "timestamp": ts,
+                "client_id": None,
+                "direction": None,
+                "protocol": None,
+                "src_ip": None,
+                "src_port": None,
+                "dst_ip": None,
+                "dst_port": None,
+                "details": msg[:100] if len(msg) > 100 else msg
+            }
+            
+            # Parse IN/OUT
+            in_match = re.search(r'IN=(\S*)', msg)
+            out_match = re.search(r'OUT=(\S*)', msg)
+            if in_match and in_match.group(1):
+                entry["direction"] = "IN"
+            elif out_match and out_match.group(1):
+                entry["direction"] = "OUT"
+            
+            # Parse SRC/DST
+            src_match = re.search(r'SRC=(\S+)', msg)
+            dst_match = re.search(r'DST=(\S+)', msg)
+            if src_match:
+                entry["src_ip"] = src_match.group(1)
+                # Map to client
+                if entry["src_ip"] in ip_to_client:
+                    entry["client_id"] = ip_to_client[entry["src_ip"]]
+            if dst_match:
+                entry["dst_ip"] = dst_match.group(1)
+                # Also check dst for client
+                if not entry["client_id"] and entry["dst_ip"] in ip_to_client:
+                    entry["client_id"] = ip_to_client[entry["dst_ip"]]
+            
+            # Parse ports
+            spt_match = re.search(r'SPT=(\d+)', msg)
+            dpt_match = re.search(r'DPT=(\d+)', msg)
+            if spt_match: entry["src_port"] = spt_match.group(1)
+            if dpt_match: entry["dst_port"] = dpt_match.group(1)
+            
+            # Parse protocol
+            proto_match = re.search(r'PROTO=(\S+)', msg)
+            if proto_match: entry["protocol"] = proto_match.group(1)
+            
+            # Apply client filter
+            if client_filter and entry["client_id"] != client_filter:
+                continue
+            
+            structured.append(entry)
         
         # Pagination
-        start = (page - 1) * limit
-        end = start + limit
-        total = len(wg_lines)
-        page_items = wg_lines[start:end]
-        
-        structured = []
-        for line in page_items:
-            # Basic parsing: 2023-10-20T10:00:00+00:00 hostname kernel: wireguard: ...
-            parts = line.split(" ", 3)
-            ts = parts[0]
-            msg = parts[3] if len(parts) > 3 else line
-            structured.append({"timestamp": ts, "message": msg, "client_id": None})
+        total = len(structured)
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        page_items = structured[start_idx:end_idx]
             
         return {
-            "items": structured,
+            "items": page_items,
             "page": page,
             "pages": math.ceil(total / limit) if limit > 0 else 1,
             "total": total
