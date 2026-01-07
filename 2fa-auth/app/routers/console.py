@@ -63,7 +63,7 @@ async def console_dashboard(request: Request):
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-body: #0f172a;
@@ -359,15 +359,15 @@ async def console_dashboard(request: Request):
             <img src="/static/logo.svg" alt="WS" style="width: 24px;">
             <span class="brand-text">WireShield</span>
         </div>
-        <a href="#" class="nav-item active" onclick="app.setView('users')">
+        <a href="#" class="nav-item active" data-view="users" onclick="app.setView('users')">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
             Users & Sessions
         </a>
-        <a href="#" class="nav-item" onclick="app.setView('activity')">
+        <a href="#" class="nav-item" data-view="activity" onclick="app.setView('activity')">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
             Activity Logs
         </a>
-        <a href="#" class="nav-item" onclick="app.setView('audit')">
+        <a href="#" class="nav-item" data-view="audit" onclick="app.setView('audit')">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             Audit Logs
         </a>
@@ -430,7 +430,8 @@ async def console_dashboard(request: Request):
                 
                 // Update Nav UI
                 document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-                event.target.closest('.nav-item')?.classList.add('active'); // Safe checking
+                const activeLink = document.querySelector(`.nav-item[data-view="${view}"]`);
+                if (activeLink) activeLink.classList.add('active');
                 
                 // Update Header
                 const titles = { users: 'Users & Sessions', activity: 'Activity Logs', audit: 'Audit Logs' };
