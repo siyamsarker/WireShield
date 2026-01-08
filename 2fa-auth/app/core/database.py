@@ -27,14 +27,27 @@ def init_db():
     
     # Sessions table: tracks active 2FA sessions
     c.execute('''
-        CREATE TABLE IF NOT EXISTS sessions (
+        create table if not exists sessions (
+            id integer primary key autoincrement,
+            client_id text not null,
+            session_token text unique not null,
+            expires_at timestamp not null,
+            device_ip text,
+            created_at timestamp default current_timestamp,
+            foreign key (client_id) references users(client_id)
+        )
+    ''')
+
+    # Bandwidth Usage table: tracks daily RX/TX bytes per client
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS bandwidth_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             client_id TEXT NOT NULL,
-            session_token TEXT UNIQUE NOT NULL,
-            expires_at TIMESTAMP NOT NULL,
-            device_ip TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (client_id) REFERENCES users(client_id)
+            scan_date DATE NOT NULL,
+            rx_bytes INTEGER DEFAULT 0,
+            tx_bytes INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(client_id, scan_date)
         )
     ''')
     

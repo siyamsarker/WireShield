@@ -127,11 +127,16 @@ def _monitor_wireguard_sessions():
                     handshake_ts = 0
                 
                 try:
-                    rx_bytes = int(parts[5])
+                    rx_bytes = int(parts[5]) # Server RX (Client Upload)
                 except ValueError:
                     rx_bytes = 0
                 
-                stats = {'handshake_ts': handshake_ts, 'rx': rx_bytes}
+                try:
+                    tx_bytes = int(parts[6]) # Server TX (Client Download)
+                except ValueError:
+                    tx_bytes = 0
+                
+                stats = {'handshake_ts': handshake_ts, 'rx': rx_bytes, 'tx': tx_bytes}
                 
                 for ip in _extract_ips_from_allowed_field(allowed_field):
                     ip_stats[ip] = stats
@@ -183,53 +188,82 @@ def _monitor_wireguard_sessions():
                         pass
 
                     # 3. Determine last activity time
-                    if not hasattr(_monitor_wireguard_sessions, "client_state"):
-                        _monitor_wireguard_sessions.client_state = {}
+                    # if active_updates:
+                    #      pass # handled in loop below
+
+                    # 5. Bandwidth Tracking
+                    # We track deltas for Server RX (Client Upload) and Server TX (Client Download)
+                    curr_server_rx = 0
+                    curr_server_tx = 0
+                    curr_handshake = 0
                     
+                    for s in current_stats:
+                         if s['rx'] > curr_server_rx: curr_server_rx = s['rx']
+                         if s['tx'] > curr_server_tx: curr_server_tx = s['tx']
+                         if s['handshake_ts'] > curr_handshake: curr_handshake = s['handshake_ts']
+                    
+                    if not hasattr(_monitor_wireguard_sessions, "bw_state"):
+                        _monitor_wireguard_sessions.bw_state = {}
+                    
+                    bw_state = _monitor_wireguard_sessions.bw_state.get(client_id, {
+                        'prev_server_rx': curr_server_rx,
+                        'prev_server_tx': curr_server_tx
+                    })
+                    
+                    # Calculate Deltas
+                    delta_rx = curr_server_rx - bw_state['prev_server_rx'] # Client Upload
+                    delta_tx = curr_server_tx - bw_state['prev_server_tx'] # Client Download
+                    
+                    # Handle restart/reset (curr < prev)
+                    if delta_rx < 0: delta_rx = curr_server_rx
+                    if delta_tx < 0: delta_tx = curr_server_tx
+                    
+                    # Update State
+                    bw_state['prev_server_rx'] = curr_server_rx
+                    bw_state['prev_server_tx'] = curr_server_tx
+                    _monitor_wireguard_sessions.bw_state[client_id] = bw_state
+
+                    # Persist if there is activity
+                    if delta_rx > 0 or delta_tx > 0:
+                        today = datetime.now().strftime("%Y-%m-%d")
+                        # DB Mapping: rx_bytes (Client Download/Server TX), tx_bytes (Client Upload/Server RX)
+                        # Note: We are using standard ISP terminology for the DB columns where RX is what client receives.
+                        try:
+                            c.execute("""
+                                INSERT INTO bandwidth_usage (client_id, scan_date, rx_bytes, tx_bytes)
+                                VALUES (?, ?, ?, ?)
+                                ON CONFLICT(client_id, scan_date) DO UPDATE SET
+                                rx_bytes = rx_bytes + ?,
+                                tx_bytes = tx_bytes + ?,
+                                updated_at = CURRENT_TIMESTAMP
+                            """, (client_id, today, delta_tx, delta_rx, delta_tx, delta_rx))
+                        except Exception as e:
+                            logger.error(f"Failed to update bandwidth for {client_id}: {e}")
+
+                    # 6. Idle Check (using Session Monitor Logic)
                     state = _monitor_wireguard_sessions.client_state.get(client_id, {
                         'last_rx': 0,
                         'last_handshake': 0,
                         'last_seen_active': time.time()
                     })
                     
-                    # Calculate max current values across IPs
-                    curr_rx = 0
-                    curr_handshake = 0
-                    for s in current_stats:
-                         if s['rx'] > curr_rx: curr_rx = s['rx']
-                         if s['handshake_ts'] > curr_handshake: curr_handshake = s['handshake_ts']
-                    
                     is_active = False
-                    
-                    # Check for RX increase
-                    if curr_rx > state['last_rx']:
+                    if curr_server_rx > state['last_rx']:
                         is_active = True
-                        state['last_rx'] = curr_rx
-                    
-                    # Check for Handshake update
+                        state['last_rx'] = curr_server_rx
                     if curr_handshake > state['last_handshake']:
                         is_active = True
                         state['last_handshake'] = curr_handshake
-                        
+                    
                     if is_active:
-                        state['last_seen_active'] = time.time()
+                         state['last_seen_active'] = time.time()
                     
                     _monitor_wireguard_sessions.client_state[client_id] = state
-                    
-                    # 4. Check for Timeout
-                    time_since_active = time.time() - state['last_seen_active']
-                    
-                    if time_since_active > DISCONNECT_GRACE_SECONDS:
+
+                    if (time.time() - state['last_seen_active']) > DISCONNECT_GRACE_SECONDS:
                          stale_clients.append(client_id)
-
-                if stale_clients:
-                    for cid in stale_clients:
-                        c.execute("DELETE FROM sessions WHERE client_id = ?", (cid,))
-                        # Cleanup state
-                        if cid in _monitor_wireguard_sessions.client_state:
-                            del _monitor_wireguard_sessions.client_state[cid]
-
-                    conn.commit()
+                         
+                    conn.commit() # Commit active updates
             finally:
                 conn.close()
 

@@ -803,6 +803,18 @@ async def console_dashboard(request: Request):
                     </div>
                 </div>
 
+                </div>
+
+                <!-- Bandwidth Chart (Full Width) -->
+                <div class="card chart-card" style="margin-bottom: 24px;">
+                    <div class="chart-header">
+                        <h3>Bandwidth Usage (Last 30 Days)</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="bandwidthChart" style="max-height: 300px;"></canvas>
+                    </div>
+                </div>
+
                 <!-- Recent Events Row -->
                 <div class="events-row">
                     <div class="card events-card">
@@ -859,7 +871,8 @@ async def console_dashboard(request: Request):
             },
             charts: {
                 activity: null,
-                action: null
+                action: null,
+                bandwidth: null
             },
             headers: {
                 users: ['Client ID', 'Role', 'Status', '2FA', 'Active Session', 'IP (Internal)', 'Last Active', 'Created'],
@@ -1129,7 +1142,8 @@ async def console_dashboard(request: Request):
             async loadDashboard() {
                 await Promise.all([
                     this.loadDashboardStats(),
-                    this.loadDashboardCharts()
+                    this.loadDashboardCharts(),
+                    this.loadBandwidthChart()
                 ]);
             },
 
@@ -1166,13 +1180,91 @@ async def console_dashboard(request: Request):
                     // Initialize or update Action Distribution Chart
                     this.renderActionChart(data.action_distribution);
                     
-                    // Render Recent Events
+                    // Render Lists
                     this.renderRecentEvents(data.recent_events);
-                    
-                    // Render Latest Traffic
                     this.renderLatestTraffic(data.latest_traffic);
+                    
                 } catch (e) {
                     console.error('Failed to load dashboard charts:', e);
+                }
+            },
+
+            async loadBandwidthChart() {
+                try {
+                    const res = await fetch('/api/console/bandwidth-usage');
+                    const data = await res.json();
+                    
+                    const ctx = document.getElementById('bandwidthChart').getContext('2d');
+                    if (this.charts.bandwidth) {
+                        this.charts.bandwidth.destroy();
+                    }
+                    
+                    // Colors for datasets
+                    const colors = [
+                        { bg: 'rgba(37, 99, 235, 0.7)', border: '#2563eb' }, // Blue
+                        { bg: 'rgba(22, 163, 74, 0.7)', border: '#16a34a' }, // Green
+                        { bg: 'rgba(219, 39, 119, 0.7)', border: '#db2777' }, // Pink
+                        { bg: 'rgba(147, 51, 234, 0.7)', border: '#9333ea' }, // Purple
+                        { bg: 'rgba(234, 88, 12, 0.7)', border: '#ea580c' }, // Orange
+                    ];
+
+                    const datasets = data.datasets.map((ds, index) => {
+                        const color = colors[index % colors.length];
+                        return {
+                            label: ds.label,
+                            data: ds.data.map(val => parseFloat(val.toFixed(4))), // 4 decimals for GB
+                            backgroundColor: color.bg,
+                            borderColor: color.border,
+                            borderWidth: 1,
+                            borderRadius: 4,
+                            barPercentage: 0.6,
+                        };
+                    });
+
+                    this.charts.bandwidth = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.dates,
+                            datasets: datasets
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: { 
+                                    stacked: true,
+                                    grid: { display: false }
+                                },
+                                y: { 
+                                    stacked: true,
+                                    beginAtZero: true,
+                                    title: { display: true, text: 'Usage (GB)' },
+                                    grid: { borderDash: [2, 2] }
+                                }
+                            },
+                            plugins: {
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.parsed.y !== null) {
+                                                label += context.parsed.y + ' GB';
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                } catch (e) {
+                    console.error('Failed to load bandwidth chart:', e);
                 }
             },
 
@@ -1721,6 +1813,51 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
             "alerts": {"count": 0, "detail": "Error loading"},
             "system": {"status": "Error", "detail": "Failed to load stats"}
         }
+
+@router.get("/api/console/bandwidth-usage")
+async def get_bandwidth_usage(days: int = 30, client_id: str = Depends(_check_console_access)):
+    """Fetch daily bandwidth usage (RX+TX) per client for the last N days."""
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        # Fetch records for last 'days' days
+        c.execute(f"SELECT scan_date, client_id, rx_bytes, tx_bytes FROM bandwidth_usage WHERE scan_date >= date('now', '-{days} days') ORDER BY scan_date ASC")
+        rows = [dict(row) for row in c.fetchall()]
+        conn.close()
+
+        # Structure: { dates: [d1, d2], datasets: [{label: c1, data: [...]}] }
+        data_map = {} # date -> { client: total_gb }
+        clients = set()
+        dates = set()
+
+        for r in rows:
+            date_str = r['scan_date']
+            client = r['client_id']
+            # Convert bytes to GB. 1 GB = 1024^3 bytes
+            # Sum RX (Download) + TX (Upload) for total usage
+            total_bytes = (r['rx_bytes'] or 0) + (r['tx_bytes'] or 0)
+            total_gb = total_bytes / (1024**3)
+            
+            if date_str not in data_map: data_map[date_str] = {}
+            data_map[date_str][client] = total_gb
+            clients.add(client)
+            dates.add(date_str)
+        
+        sorted_dates = sorted(list(dates))
+        datasets = []
+        
+        for client in sorted(list(clients)):
+            data_points = []
+            for d in sorted_dates:
+                # Get usage for this date, default 0
+                val = data_map.get(d, {}).get(client, 0)
+                data_points.append(val)
+            datasets.append({'label': client, 'data': data_points})
+            
+        return {'dates': sorted_dates, 'datasets': datasets}
+    except Exception as e:
+        logger.error(f"Bandwidth API error: {e}")
+        return {'dates': [], 'datasets': []}
 
 @router.get("/api/console/dashboard-charts")
 async def get_dashboard_charts(client_id: str = Depends(_check_console_access)):
