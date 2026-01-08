@@ -760,14 +760,14 @@ async def console_dashboard(request: Request):
                             <div class="stat-detail" id="stat2FADetail">Last 24 hours</div>
                         </div>
                     </div>
-                    <div class="stat-card clickable" onclick="app.viewSecurityAlerts()">
-                        <div class="stat-icon" style="background: var(--warning-bg); color: var(--warning);">
-                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    <div class="stat-card clickable" onclick="app.setView('users')">
+                        <div class="stat-icon" style="background: #e0f2fe; color: #0284c7;">
+                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                         </div>
                         <div class="stat-content">
-                            <div class="stat-label">Security Alerts</div>
-                            <div class="stat-value" id="statAlerts">-</div>
-                            <div class="stat-detail" id="statAlertsDetail">Failed attempts</div>
+                            <div class="stat-label">Active Sessions</div>
+                            <div class="stat-value" id="statSessions">-</div>
+                            <div class="stat-detail" id="statSessionsDetail">Currently active</div>
                         </div>
                     </div>
                     <div class="stat-card">
@@ -1128,8 +1128,8 @@ async def console_dashboard(request: Request):
                     document.getElementById('stat2FA').textContent = data.twofa.success_rate + '%';
                     document.getElementById('stat2FADetail').textContent = data.twofa.detail;
                     
-                    document.getElementById('statAlerts').textContent = data.alerts.count;
-                    document.getElementById('statAlertsDetail').textContent = data.alerts.detail;
+                    document.getElementById('statSessions').textContent = data.sessions.active;
+                    document.getElementById('statSessionsDetail').textContent = data.sessions.detail;
                     
                     document.getElementById('statStatus').textContent = data.system.status;
                     document.getElementById('statStatusDetail').textContent = data.system.detail;
