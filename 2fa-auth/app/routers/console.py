@@ -803,7 +803,7 @@ async def console_dashboard(request: Request):
                     </div>
                 </div>
 
-                </div>
+
 
                 <!-- Bandwidth Chart (Full Width) -->
                 <div class="card chart-card" style="margin-bottom: 24px;">
