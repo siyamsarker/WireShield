@@ -861,7 +861,7 @@ async def console_dashboard(request: Request):
                 action: null
             },
             headers: {
-                users: ['Client ID', 'Status', 'IP (Internal)', 'Last Active'],
+                users: ['Client ID', 'Role', 'Status', '2FA', 'IP (Internal)', 'Last Active', 'Created'],
                 activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination', 'Details'],
                 audit: ['Timestamp', 'Client', 'Action', 'Status', 'Origin IP']
             },
@@ -869,7 +869,9 @@ async def console_dashboard(request: Request):
             async init() {
                 // Load clients for filter dropdown
                 await this.loadClients();
-                this.setView('dashboard');
+                
+                // Initial view
+                this.setView(this.state.view);
             },
 
             async loadClients() {
@@ -1074,12 +1076,25 @@ async def console_dashboard(request: Request):
 
             getRowHtml(row) {
                 if (this.state.view === 'users') {
+                    // Role Badge
+                    const roleBadge = row.console_access ? 
+                        '<span class="badge" style="background:#dbeafe; color:#1e40af">Admin</span>' : 
+                        '<span class="badge" style="background:#f1f5f9; color:#475569">VPN User</span>';
+                        
+                    // 2FA Badge
+                    const twofaBadge = row.totp_secret ? 
+                        '<span class="badge success">Enabled</span>' : 
+                        '<span class="badge warning">Not Setup</span>';
+
                     return `
                         <tr>
                             <td class="mono" style="font-weight:600">${row.client_id}</td>
+                            <td>${roleBadge}</td>
                             <td><span class="badge ${row.enabled ? 'success' : 'warning'}">${row.enabled ? 'Active' : 'Disabled'}</span></td>
+                            <td>${twofaBadge}</td>
                             <td class="mono" style="color:var(--text-muted)">${row.wg_ipv4 || '-'}<br>${row.wg_ipv6 || ''}</td>
                             <td style="color:var(--text-muted)">${row.updated_at}</td>
+                            <td class="mono" style="color:var(--text-muted); font-size:11px">${row.created_at || '-'}</td>
                         </tr>`;
                 }
                 if (this.state.view === 'activity') {
