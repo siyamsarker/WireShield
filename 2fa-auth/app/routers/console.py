@@ -876,7 +876,7 @@ async def console_dashboard(request: Request):
             },
             headers: {
                 users: ['Client ID', 'Role', 'Status', '2FA', 'Active Session', 'IP (Internal)', 'Last Active', 'Created'],
-                activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination', 'Details'],
+                activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination (Domain)', 'Details'],
                 audit: ['Timestamp', 'Client', 'Action', 'Status', 'Origin IP']
             },
             
@@ -1121,7 +1121,10 @@ async def console_dashboard(request: Request):
                             <td><span class="badge ${dirClass}">${row.direction || '-'}</span></td>
                             <td class="mono">${row.protocol || '-'}</td>
                             <td class="mono" style="font-size:11px">${row.src_ip || '-'}${row.src_port ? ':' + row.src_port : ''}</td>
-                            <td class="mono" style="font-size:11px">${row.dst_ip || '-'}${row.dst_port ? ':' + row.dst_port : ''}</td>
+                            <td class="mono" style="font-size:11px">
+                                ${row.dst_ip || '-'}${row.dst_port ? ':' + row.dst_port : ''}
+                                ${row.dst_domain && row.dst_domain !== '-' ? `<br><span style="color:var(--text-secondary)">${row.dst_domain}</span>` : ''}
+                            </td>
                             <td style="color:var(--text-muted); font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis">${row.details || '-'}</td>
                         </tr>`;
                 }
@@ -1593,6 +1596,8 @@ async def get_activity_logs(
 ):
     """Fetch WireGuard/iptables kernel logs via journalctl with enhanced parsing."""
     import re
+    import socket
+    import asyncio
     from datetime import datetime
     
     # Build journalctl command
@@ -1702,6 +1707,26 @@ async def get_activity_logs(
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
         page_items = structured[start_idx:end_idx]
+
+        # Resolve domains for visible items (async)
+        async def resolve_domain(item):
+            if item['direction'] == 'IN' and item['dst_ip']:
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Run blocking socket call in executor
+                    domain_info = await loop.run_in_executor(None, socket.gethostbyaddr, item['dst_ip'])
+                    item['dst_domain'] = domain_info[0]
+                except Exception:
+                    item['dst_domain'] = "-"
+            else:
+                item['dst_domain'] = "-"
+            return item
+
+        # Run lookups concurrently
+        if page_items:
+            page_items = await asyncio.gather(*[resolve_domain(item) for item in page_items])
+        else:
+            page_items = []
             
         return {
             "items": page_items,
