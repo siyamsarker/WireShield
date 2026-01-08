@@ -3,6 +3,7 @@ import subprocess
 import logging
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Depends, HTTPException
+from datetime import datetime
 from fastapi.responses import HTMLResponse
 
 from app.core.database import get_db
@@ -861,7 +862,7 @@ async def console_dashboard(request: Request):
                 action: null
             },
             headers: {
-                users: ['Client ID', 'Role', 'Status', '2FA', 'IP (Internal)', 'Last Active', 'Created'],
+                users: ['Client ID', 'Role', 'Status', '2FA', 'Active Session', 'IP (Internal)', 'Last Active', 'Created'],
                 activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination', 'Details'],
                 audit: ['Timestamp', 'Client', 'Action', 'Status', 'Origin IP']
             },
@@ -1092,6 +1093,7 @@ async def console_dashboard(request: Request):
                             <td>${roleBadge}</td>
                             <td><span class="badge ${row.enabled ? 'success' : 'warning'}">${row.enabled ? 'Active' : 'Disabled'}</span></td>
                             <td>${twofaBadge}</td>
+                            <td class="mono" style="font-weight:600; color: ${row.active_duration !== '-' ? 'var(--accent)' : 'var(--text-muted)'}">${row.active_duration}</td>
                             <td class="mono" style="color:var(--text-muted)">${row.wg_ipv4 || '-'}<br>${row.wg_ipv6 || ''}</td>
                             <td style="color:var(--text-muted)">${row.updated_at}</td>
                             <td class="mono" style="color:var(--text-muted); font-size:11px">${row.created_at || '-'}</td>
@@ -1367,17 +1369,39 @@ async def get_users(
         conn = get_db()
         c = conn.cursor()
         
-        query = "SELECT * FROM users"
+        # Subquery to get active session start time
+        query = """
+            SELECT u.*, 
+            (SELECT MAX(created_at) FROM sessions s WHERE s.client_id = u.client_id) as session_start
+            FROM users u
+        """
         params = []
         if search:
-            query += " WHERE client_id LIKE ?"
+            query += " WHERE u.client_id LIKE ?"
             params.append(f"%{search}%")
             
-        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY u.id DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         
         c.execute(query, tuple(params))
-        rows = [dict(row) for row in c.fetchall()]
+        rows = []
+        for row in c.fetchall():
+            item = dict(row)
+            # Calculate active duration
+            duration = "-"
+            if item.get('session_start'):
+                try:
+                    start = datetime.strptime(item['session_start'], "%Y-%m-%d %H:%M:%S")
+                    diff = datetime.utcnow() - start
+                    total_seconds = int(diff.total_seconds())
+                    if total_seconds > 0:
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        duration = f"{hours}h {minutes}m"
+                except Exception:
+                    pass
+            item['active_duration'] = duration
+            rows.append(item)
         
         # Count total
         count_query = "SELECT COUNT(*) FROM users"
