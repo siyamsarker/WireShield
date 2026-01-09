@@ -876,7 +876,7 @@ async def console_dashboard(request: Request):
             },
             headers: {
                 users: ['Client ID', 'Role', 'Status', '2FA', 'Active Session', 'IP (Internal)', 'Last Active', 'Created'],
-                activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination (Domain)', 'Details'],
+                activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination', 'Domain', 'Details'],
                 audit: ['Timestamp', 'Client', 'Action', 'Status', 'Origin IP']
             },
             
@@ -1121,10 +1121,8 @@ async def console_dashboard(request: Request):
                             <td><span class="badge ${dirClass}">${row.direction || '-'}</span></td>
                             <td class="mono">${row.protocol || '-'}</td>
                             <td class="mono" style="font-size:11px">${row.src_ip || '-'}${row.src_port ? ':' + row.src_port : ''}</td>
-                            <td class="mono" style="font-size:11px">
-                                ${row.dst_ip || '-'}${row.dst_port ? ':' + row.dst_port : ''}
-                                ${row.dst_domain && row.dst_domain !== '-' ? `<br><span style="color:var(--text-secondary)">${row.dst_domain}</span>` : ''}
-                            </td>
+                            <td class="mono" style="font-size:11px">${row.dst_ip || '-'}${row.dst_port ? ':' + row.dst_port : ''}</td>
+                            <td class="mono" style="font-size:11px; color:var(--text-secondary)">${row.dst_domain && row.dst_domain !== '-' ? row.dst_domain : '-'}</td>
                             <td style="color:var(--text-muted); font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis">${row.details || '-'}</td>
                         </tr>`;
                 }
