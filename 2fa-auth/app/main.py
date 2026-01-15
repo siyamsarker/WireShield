@@ -7,9 +7,22 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import LOG_LEVEL
 from app.core.database import init_db
 from app.core.tasks import start_background_tasks
+from app.core.sniffer import DNSSniffer
 from app.routers import auth, health, console
 
-# Setup logging
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle events: startup and shutdown."""
+    init_db()
+    start_background_tasks()
+    
+    # Start DNS Sniffer for domain logging
+    sniffer = DNSSniffer()
+    sniffer.start()
+    
+    yield
+    
+    sniffer.stop()
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -24,8 +37,14 @@ async def lifespan(app: FastAPI):
     """Lifecycle events: startup and shutdown."""
     init_db()
     start_background_tasks()
+    
+    # Start DNS Sniffer for domain logging
+    sniffer = DNSSniffer()
+    sniffer.start()
+    
     yield
-    # Cleanup if needed
+    
+    sniffer.stop()
 
 app = FastAPI(
     title="WireShield 2FA",
