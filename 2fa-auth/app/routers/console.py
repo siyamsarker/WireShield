@@ -1710,6 +1710,20 @@ async def get_activity_logs(
         async def resolve_domain(item):
             if item['direction'] == 'IN' and item['dst_ip']:
                 try:
+                    # 1. Try DNS Cache from Sniffer
+                    try:
+                        conn_cache = get_db()
+                        cc = conn_cache.cursor()
+                        cc.execute("SELECT domain FROM dns_cache WHERE ip_address = ?", (item['dst_ip'],))
+                        row = cc.fetchone()
+                        conn_cache.close()
+                        if row and row[0]:
+                            item['dst_domain'] = row[0]
+                            return item
+                    except Exception:
+                        pass
+                        
+                    # 2. Fallback to Reverse DNS
                     loop = asyncio.get_running_loop()
                     # Run blocking socket call in executor
                     domain_info = await loop.run_in_executor(None, socket.gethostbyaddr, item['dst_ip'])
