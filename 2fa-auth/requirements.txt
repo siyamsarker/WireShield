@@ -8,3 +8,4 @@ pydantic==2.9.2
 sqlalchemy==2.0.23
 pytest==9.0.2
 httpx==0.24.1
+scapy==2.5.0
