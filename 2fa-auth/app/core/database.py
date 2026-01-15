@@ -62,6 +62,15 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # DNS Cache table: stores IP->Domain mappings from sniffer
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS dns_cache (
+            ip_address TEXT PRIMARY KEY,
+            domain TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
     conn.commit()
     # Migrations: add wg_ipv4/wg_ipv6 columns if missing
