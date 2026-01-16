@@ -204,6 +204,8 @@ def _monitor_wireguard_sessions():
                     
                     if not hasattr(_monitor_wireguard_sessions, "bw_state"):
                         _monitor_wireguard_sessions.bw_state = {}
+                    if not hasattr(_monitor_wireguard_sessions, "client_state"):
+                        _monitor_wireguard_sessions.client_state = {}
                     
                     bw_state = _monitor_wireguard_sessions.bw_state.get(client_id, {
                         'prev_server_rx': curr_server_rx,
