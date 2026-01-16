@@ -743,10 +743,13 @@ async def console_dashboard(request: Request):
                 </div>
             </div>
             <div class="filter-group">
-                <label>Client</label>
                 <select id="clientFilter" onchange="app.applyFilters()">
                     <option value="">All Clients</option>
                 </select>
+            </div>
+            <div class="filter-group">
+                <label>Domain</label>
+                <input type="text" id="domainFilter" placeholder="Filter domain..." oninput="app.handleFilterDebounce(this.value)">
             </div>
             <button class="btn btn-secondary" onclick="app.clearFilters()">Clear Filters</button>
         </div>
@@ -891,7 +894,7 @@ async def console_dashboard(request: Request):
             },
             headers: {
                 users: ['Client ID', 'Role', 'Status', '2FA', 'Active Session', 'IP (Internal)', 'Last Active', 'Created'],
-                activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination', 'Domain', 'Details'],
+                activity: ['Timestamp', 'Client', 'Direction', 'Protocol', 'Source', 'Destination', 'Domain'],
                 audit: ['Timestamp', 'Client', 'Action', 'Status', 'Origin IP']
             },
             
@@ -926,6 +929,7 @@ async def console_dashboard(request: Request):
                 this.state.startDate = '';
                 this.state.endDate = '';
                 this.state.clientFilter = '';
+                this.state.domainFilter = '';
                 if (this.state.timer) clearInterval(this.state.timer);
                 if (this.state.dashboardTimer) clearInterval(this.state.dashboardTimer);
                 
@@ -971,6 +975,8 @@ async def console_dashboard(request: Request):
                 document.getElementById('startDate').value = '';
                 document.getElementById('endDate').value = '';
                 document.getElementById('clientFilter').value = '';
+                const domFilter = document.getElementById('domainFilter');
+                if (domFilter) domFilter.value = '';
                 
                 // Show/Hide Live Button
                 const liveDiv = document.getElementById('liveToggle');
@@ -1022,10 +1028,21 @@ async def console_dashboard(request: Request):
                 }
             },
 
+            handleFilterDebounce: (function() {
+                let timeout;
+                return function(val) {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => {
+                        app.applyFilters();
+                    }, 500);
+                };
+            })(),
+
             applyFilters() {
                 this.state.startDate = document.getElementById('startDate').value;
                 this.state.endDate = document.getElementById('endDate').value;
                 this.state.clientFilter = document.getElementById('clientFilter').value;
+                this.state.domainFilter = document.getElementById('domainFilter') ? document.getElementById('domainFilter').value : '';
                 this.state.page = 1;
                 this.loadData();
             },
@@ -1034,9 +1051,11 @@ async def console_dashboard(request: Request):
                 document.getElementById('startDate').value = '';
                 document.getElementById('endDate').value = '';
                 document.getElementById('clientFilter').value = '';
+                if(document.getElementById('domainFilter')) document.getElementById('domainFilter').value = '';
                 this.state.startDate = '';
                 this.state.endDate = '';
                 this.state.clientFilter = '';
+                this.state.domainFilter = '';
                 this.state.page = 1;
                 this.loadData();
             },
@@ -1066,6 +1085,7 @@ async def console_dashboard(request: Request):
                     if (this.state.startDate) url += `&start_date=${this.state.startDate}`;
                     if (this.state.endDate) url += `&end_date=${this.state.endDate}`;
                     if (this.state.clientFilter) url += `&client_filter=${encodeURIComponent(this.state.clientFilter)}`;
+                    if (this.state.domainFilter) url += `&domain_filter=${encodeURIComponent(this.state.domainFilter)}`;
                     
                     const res = await fetch(url);
                     const data = await res.json();
@@ -1138,7 +1158,6 @@ async def console_dashboard(request: Request):
                             <td class="mono" style="font-size:11px">${row.src_ip || '-'}${row.src_port ? ':' + row.src_port : ''}</td>
                             <td class="mono" style="font-size:11px">${row.dst_ip || '-'}${row.dst_port ? ':' + row.dst_port : ''}</td>
                             <td class="mono" style="font-size:11px; color:var(--text-secondary)">${row.dst_domain && row.dst_domain !== '-' ? row.dst_domain : '-'}</td>
-                            <td style="color:var(--text-muted); font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis">${row.details || '-'}</td>
                         </tr>`;
                 }
                 if (this.state.view === 'audit') {
@@ -1605,6 +1624,7 @@ async def get_activity_logs(
     start_date: str = None,
     end_date: str = None,
     client_filter: str = None,
+    domain_filter: str = None,
     client_id: str = Depends(_check_console_access)
 ):
     """Fetch WireGuard/iptables kernel logs via journalctl with enhanced parsing."""
@@ -1623,7 +1643,21 @@ async def get_activity_logs(
         cmd.extend(["--until", f"{end_date} 23:59:59"])
     
     if search:
-        cmd.extend(["--grep", search])
+        # Improved search: grep for term OR any IP associated with term
+        search_terms = [search]
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT ip_address FROM dns_cache WHERE domain LIKE ?", (f"%{search}%",))
+            ips = [r[0] for r in c.fetchall()]
+            conn.close()
+            search_terms.extend(ips)
+        except Exception as e:
+            logger.error(f"Search cache lookup failed: {e}")
+            
+        # Join with OR operator for pcre2 grep
+        grep_pattern = "|".join(search_terms)
+        cmd.extend(["--grep", grep_pattern])
         
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -1710,9 +1744,30 @@ async def get_activity_logs(
             if proto_match: entry["protocol"] = proto_match.group(1)
             
             # Apply client filter
+                if not entry["client_id"] and entry["dst_ip"] in ip_to_client:
+                    entry["client_id"] = ip_to_client[entry["dst_ip"]]
+            
+            # Apply client filter
             if client_filter and entry["client_id"] != client_filter:
                 continue
-            
+
+            # Apply domain filter (requires DB lookup)
+            if domain_filter:
+                try:
+                    # Quick check: does this dst_ip map to the requested domain?
+                    # We can't do this efficiently in batch inside the loop easily without pre-fetching.
+                    # Optimization: Pre-fetch filtering logic is better, but cache lookup is fast.
+                    conn = get_db()
+                    c = conn.cursor()
+                    # Check if IP maps to a domain containing the filter string
+                    c.execute("SELECT 1 FROM dns_cache WHERE ip_address = ? AND domain LIKE ?", (entry["dst_ip"], f"%{domain_filter}%"))
+                    match = c.fetchone()
+                    conn.close()
+                    if not match:
+                        continue
+                except Exception:
+                   pass
+
             structured.append(entry)
         
         # Pagination
