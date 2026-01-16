@@ -62,11 +62,37 @@ async def console_dashboard(request: Request):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield Console</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* Local Font Faces */
+        @font-face {
+            font-family: 'Inter';
+            font-weight: 400;
+            font-style: normal;
+            src: url('/static/fonts/Inter-Regular.woff2') format('woff2');
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Inter';
+            font-weight: 600;
+            font-style: normal;
+            src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2');
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Inter';
+            font-weight: 700;
+            font-style: normal;
+            src: url('/static/fonts/Inter-Bold.woff2') format('woff2');
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Inter';
+            font-weight: 900;
+            font-style: normal;
+            src: url('/static/fonts/Inter-Black.woff2') format('woff2');
+            font-display: swap;
+        }
         :root {
             /* Premium Light Theme */
             --bg-body: #f8fafc;        /* Slate 50 */
@@ -321,7 +347,7 @@ async def console_dashboard(request: Request):
             transition: opacity 0.2s ease;
         }
 
-        .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+        .mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; }
 
         .badge {
             display: inline-flex;
@@ -658,7 +684,7 @@ async def console_dashboard(request: Request):
         .event-time {
             font-size: 11px;
             color: var(--text-muted);
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
             white-space: nowrap;
         }
 
