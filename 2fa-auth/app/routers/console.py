@@ -743,6 +743,7 @@ async def console_dashboard(request: Request):
                 </div>
             </div>
             <div class="filter-group">
+                <label>Client</label>
                 <select id="clientFilter" onchange="app.applyFilters()">
                     <option value="">All Clients</option>
                 </select>
@@ -1707,8 +1708,7 @@ async def get_activity_logs(
                 "src_ip": None,
                 "src_port": None,
                 "dst_ip": None,
-                "dst_port": None,
-                "details": msg[:100] if len(msg) > 100 else msg
+                "dst_port": None
             }
             
             # Parse IN/OUT
@@ -1742,10 +1742,6 @@ async def get_activity_logs(
             # Parse protocol
             proto_match = re.search(r'PROTO=(\S+)', msg)
             if proto_match: entry["protocol"] = proto_match.group(1)
-            
-            # Apply client filter
-                if not entry["client_id"] and entry["dst_ip"] in ip_to_client:
-                    entry["client_id"] = ip_to_client[entry["dst_ip"]]
             
             # Apply client filter
             if client_filter and entry["client_id"] != client_filter:
