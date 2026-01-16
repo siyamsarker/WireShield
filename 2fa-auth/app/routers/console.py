@@ -308,12 +308,17 @@ async def console_dashboard(request: Request):
             padding: 16px 24px;
             color: var(--text-main);
             border-bottom: 1px solid var(--border);
+            transition: background 0.15s ease, transform 0.15s ease;
         }
 
         tr:last-child td { border-bottom: none; }
         
         tr:hover td { 
-            background: var(--bg-card-hover); 
+            background: var(--bg-card-hover);
+        }
+        
+        tbody tr {
+            transition: opacity 0.2s ease;
         }
 
         .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
@@ -684,6 +689,55 @@ async def console_dashboard(request: Request):
             background-size: 200px 100%;
             animation: shimmer 1.5s infinite;
             border-radius: 4px;
+        }
+        
+        .skeleton-row td {
+            padding: 16px 24px;
+        }
+        
+        .skeleton-cell {
+            height: 16px;
+            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
+        
+        .empty-state-container {
+            padding: 60px 24px;
+            text-align: center;
+            animation: fadeIn 0.4s ease;
+        }
+        
+        .empty-state-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: var(--bg-card-hover);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .empty-state-icon svg {
+            width: 40px;
+            height: 40px;
+            color: var(--text-muted);
+        }
+        
+        .empty-state-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 8px;
+        }
+        
+        .empty-state-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            max-width: 300px;
+            margin: 0 auto;
         }
     </style>
 </head>
@@ -1071,7 +1125,15 @@ async def console_dashboard(request: Request):
                 const tbody = document.getElementById('tableBody');
                 
                 if (!this.state.live) {
-                    tbody.style.opacity = '0.5';
+                tbody.style.opacity = '0.5';
+                    // Show skeleton loader
+                    const colCount = (this.headers[this.state.view] || []).length || 5;
+                    let skeletonHtml = '';
+                    for (let i = 0; i < 5; i++) {
+                        skeletonHtml += `<tr class="skeleton-row">${'<td><div class="skeleton-cell" style="width: ' + (60 + Math.random() * 40) + '%"></div></td>'.repeat(colCount)}</tr>`;
+                    }
+                    tbody.innerHTML = skeletonHtml;
+                    tbody.style.opacity = '1';
                 }
 
                 try {
@@ -1081,7 +1143,7 @@ async def console_dashboard(request: Request):
                         'activity': 'activity-logs',
                         'audit': 'audit-logs'
                     };
-                    let url = `/api/console/${endpoints[this.state.view]}?page=${page}`;
+                    let url = `/api/console/${endpoints[this.state.view]}?page=${page}&limit=50`;
                     if (this.state.search) url += `&search=${encodeURIComponent(this.state.search)}`;
                     if (this.state.startDate) url += `&start_date=${this.state.startDate}`;
                     if (this.state.endDate) url += `&end_date=${this.state.endDate}`;
@@ -1105,7 +1167,21 @@ async def console_dashboard(request: Request):
             renderTable(data) {
                 const tbody = document.getElementById('tableBody');
                 if (!data.items || data.items.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding: 32px;">No records found</td></tr>`;
+                    const colCount = (this.headers[this.state.view] || []).length || 5;
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="${colCount}">
+                                <div class="empty-state-container">
+                                    <div class="empty-state-icon">
+                                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                        </svg>
+                                    </div>
+                                    <div class="empty-state-title">No Records Found</div>
+                                    <div class="empty-state-desc">There are no entries matching your current filters. Try adjusting your search criteria.</div>
+                                </div>
+                            </td>
+                        </tr>`;
                     document.getElementById('footerInfo').textContent = '0 items';
                     document.getElementById('pagination').innerHTML = '';
                     return;
