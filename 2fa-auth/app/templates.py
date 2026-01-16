@@ -10,6 +10,9 @@ def get_2fa_ui_html(client_id: str) -> HTMLResponse:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield — 2FA Setup</title>
     <style>
+        @font-face {{ font-family: 'Inter'; font-weight: 400; src: url('/static/fonts/Inter-Regular.woff2') format('woff2'); font-display: swap; }}
+        @font-face {{ font-family: 'Inter'; font-weight: 600; src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2'); font-display: swap; }}
+        @font-face {{ font-family: 'Inter'; font-weight: 700; src: url('/static/fonts/Inter-Bold.woff2') format('woff2'); font-display: swap; }}
         :root {{
             --bg: #f1f5f9;
             --card: #ffffff;
@@ -25,7 +28,7 @@ def get_2fa_ui_html(client_id: str) -> HTMLResponse:
         }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
@@ -465,6 +468,9 @@ def get_2fa_verify_only_html(client_id: str) -> HTMLResponse:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield — Verify Access</title>
     <style>
+        @font-face {{ font-family: 'Inter'; font-weight: 400; src: url('/static/fonts/Inter-Regular.woff2') format('woff2'); font-display: swap; }}
+        @font-face {{ font-family: 'Inter'; font-weight: 600; src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2'); font-display: swap; }}
+        @font-face {{ font-family: 'Inter'; font-weight: 700; src: url('/static/fonts/Inter-Bold.woff2') format('woff2'); font-display: swap; }}
         :root {{
             --bg: #f1f5f9;
             --card: #ffffff;
@@ -480,7 +486,7 @@ def get_2fa_verify_only_html(client_id: str) -> HTMLResponse:
         }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
@@ -748,6 +754,9 @@ def get_success_html() -> HTMLResponse:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireShield — Connected</title>
     <style>
+        @font-face { font-family: 'Inter'; font-weight: 400; src: url('/static/fonts/Inter-Regular.woff2') format('woff2'); font-display: swap; }
+        @font-face { font-family: 'Inter'; font-weight: 600; src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2'); font-display: swap; }
+        @font-face { font-family: 'Inter'; font-weight: 700; src: url('/static/fonts/Inter-Bold.woff2') format('woff2'); font-display: swap; }
         :root {
             --bg: #f8fafc;
             --card: #ffffff;
@@ -760,7 +769,7 @@ def get_success_html() -> HTMLResponse:
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
