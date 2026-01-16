@@ -440,69 +440,84 @@ async def console_dashboard(request: Request):
         .stat-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 24px;
+            border-radius: 20px;
+            padding: 24px 28px;
             display: flex;
-            align-items: flex-start;
-            gap: 16px;
-            box-shadow: var(--shadow-md);
+            align-items: center;
+            gap: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
             overflow: hidden;
+            z-index: 1;
         }
 
         .stat-card::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, var(--accent), #8b5cf6);
-            opacity: 0;
+            top: -50%;
+            right: -50%;
+            width: 80%;
+            height: 150%;
+            background: radial-gradient(circle, var(--glow-color) 0%, transparent 70%);
+            opacity: 0.12;
+            transform: rotate(-15deg);
+            z-index: -1;
             transition: opacity 0.3s;
+            pointer-events: none;
         }
 
         .stat-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 12px 24px -8px rgba(0,0,0,0.15);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.03);
+            border-color: var(--border-hover, var(--border));
         }
+        
+        .stat-card:hover::before { opacity: 0.25; }
 
-        .stat-card:hover::before { opacity: 1; }
+        /* Card Variants */
+        .card-users { --glow-color: var(--accent); --border-hover: rgba(37, 99, 235, 0.3); }
+        .card-success { --glow-color: var(--success); --border-hover: rgba(22, 163, 74, 0.3); }
+        .card-sessions { --glow-color: #0ea5e9; --border-hover: rgba(14, 165, 233, 0.3); }
+        .card-system { --glow-color: #a855f7; --border-hover: rgba(168, 85, 247, 0.3); }
 
         .stat-icon {
-            width: 52px;
-            height: 52px;
-            border-radius: 14px;
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
         }
+        
+        .card-users .stat-icon { background: #eff6ff; color: #2563eb; }
+        .card-success .stat-icon { background: #f0fdf4; color: #16a34a; }
+        .card-sessions .stat-icon { background: #e0f2fe; color: #0284c7; }
+        .card-system .stat-icon { background: #f3e8ff; color: #9333ea; }
 
         .stat-content { flex: 1; min-width: 0; }
 
         .stat-label {
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 600;
             color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
+            letter-spacing: 0.02em;
         }
 
         .stat-value {
-            font-size: 32px;
-            font-weight: 700;
+            font-size: 36px;
+            font-weight: 800;
             color: var(--text-main);
-            line-height: 1;
-            margin-bottom: 6px;
-            letter-spacing: -0.02em;
+            line-height: 1.1;
+            margin-bottom: 4px;
+            letter-spacing: -0.03em;
         }
 
         .stat-detail {
-            font-size: 12px;
+            font-size: 13px;
+            font-weight: 500;
             color: var(--text-muted);
         }
 
@@ -741,8 +756,8 @@ async def console_dashboard(request: Request):
             <div id="dashboardView" style="display:none">
                 <div class="dashboard-grid">
                     <!-- Stats Row -->
-                    <div class="stat-card">
-                        <div class="stat-icon" style="background: var(--accent-light); color: var(--accent);">
+                    <div class="stat-card card-users">
+                        <div class="stat-icon">
                             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                         </div>
                         <div class="stat-content">
@@ -751,8 +766,8 @@ async def console_dashboard(request: Request):
                             <div class="stat-detail" id="statUsersDetail">Loading...</div>
                         </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-icon" style="background: var(--success-bg); color: var(--success);">
+                    <div class="stat-card card-success">
+                        <div class="stat-icon">
                             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
                         </div>
                         <div class="stat-content">
@@ -761,8 +776,8 @@ async def console_dashboard(request: Request):
                             <div class="stat-detail" id="stat2FADetail">Last 24 hours</div>
                         </div>
                     </div>
-                    <div class="stat-card clickable" onclick="app.setView('users')">
-                        <div class="stat-icon" style="background: #e0f2fe; color: #0284c7;">
+                    <div class="stat-card card-sessions clickable" onclick="app.setView('users')">
+                        <div class="stat-icon">
                             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                         </div>
                         <div class="stat-content">
@@ -771,8 +786,8 @@ async def console_dashboard(request: Request):
                             <div class="stat-detail" id="statSessionsDetail">Currently active</div>
                         </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-icon" style="background: #f3e8ff; color: #9333ea;">
+                    <div class="stat-card card-system">
+                        <div class="stat-icon">
                             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         </div>
                         <div class="stat-content">
