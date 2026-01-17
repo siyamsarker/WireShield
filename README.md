@@ -85,6 +85,7 @@ WireShield is an automated WireGuard VPN deployment tool with integrated two-fac
 - ✅ **Automatic captive portal** redirection
 - ✅ **Client configuration generation** with optimized QR codes
 - ✅ **Web Console** for user and log management
+- ✅ **Jinja2 template architecture** for maintainable UI components
 
 ---
 
@@ -200,7 +201,14 @@ sudo journalctl -u wireshield.service -f
 │   ├── main.py           # Application factory
 │   ├── core/             # Core logic (config, db, security)
 │   ├── routers/          # API endpoints
-│   └── templates.py      # HTML templates
+│   └── templates.py      # Template rendering functions
+├── templates/            # Jinja2 HTML templates
+│   ├── base.html         # Base template
+│   ├── 2fa_setup.html    # 2FA setup page
+│   ├── 2fa_verify.html   # 2FA verification page
+│   ├── success.html      # Success page
+│   ├── access_denied.html # Access denied page
+│   └── console.html      # Admin console dashboard
 ├── requirements.txt      # Python dependencies
 ├── auth.db               # SQLite database (users, sessions, audit logs)
 ├── config.env            # Environment configuration
@@ -1011,6 +1019,15 @@ WireShield/
 - `POST /api/verify` - Verify TOTP code for existing users
 - `POST /api/validate-session` - Check session token validity
 
+**Admin Console API:**
+- `GET /console` - Admin console dashboard interface
+- `GET /api/console/users` - User management with pagination and search
+- `GET /api/console/audit-logs` - Audit logs with filtering
+- `GET /api/console/activity-logs` - Real-time activity monitoring via journalctl
+- `GET /api/console/dashboard-stats` - Dashboard statistics and metrics
+- `GET /api/console/bandwidth-usage` - Bandwidth usage charts and data
+- `GET /api/console/dashboard-charts` - Chart data for visualization
+
 ### Database Schema
 
 **users table:**
@@ -1113,6 +1130,3 @@ For issues, questions, or contributions:
 - **Documentation:** This README
 - **Security Issues:** Please report privately via GitHub Security Advisories
 
----
-
-**Last Updated:** December 2025
