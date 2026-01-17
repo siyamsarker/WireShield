@@ -69,7 +69,7 @@ echo ""
 
 # Test 5: Check if 2FA service is running
 echo "Test 5: Checking 2FA service status"
-if systemctl is-active --quiet wireshield-2fa; then
+if systemctl is-active --quiet wireshield; then
     echo "  ✓ 2FA service is active"
 else
     echo "  ❌ 2FA service is not running"

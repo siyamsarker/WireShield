@@ -33,7 +33,7 @@ echo ""
 
 # Test 3: Check service file
 echo "[Test 3] Checking systemd service..."
-if systemctl list-unit-files | grep -q wireshield-2fa; then
+if systemctl list-unit-files | awk '{print $1}' | grep -q '^wireshield\.service$'; then
     echo "✓ Service unit installed"
 else
     echo "⚠ Service unit not installed (not critical for testing)"
@@ -133,13 +133,13 @@ echo ""
 
 # Test 8: Service status (if installed)
 echo "[Test 8] Checking service status..."
-if systemctl list-unit-files | grep -q wireshield-2fa; then
-    STATUS=$(systemctl is-active wireshield-2fa 2>/dev/null || echo "inactive")
+if systemctl list-unit-files | awk '{print $1}' | grep -q '^wireshield\.service$'; then
+    STATUS=$(systemctl is-active wireshield 2>/dev/null || echo "inactive")
     if [ "$STATUS" = "active" ]; then
         echo "✓ Service is running"
-        systemctl status wireshield-2fa --no-pager | head -n 5
+        systemctl status wireshield --no-pager | head -n 5
     else
-        echo "⚠ Service is not running (start with: sudo systemctl start wireshield-2fa)"
+        echo "⚠ Service is not running (start with: sudo systemctl start wireshield)"
     fi
 else
     echo "⚠ Service not yet installed"
@@ -153,7 +153,7 @@ echo ""
 echo "Next steps:"
 echo "1. Install dependencies: pip3 install -r requirements.txt"
 echo "2. Generate SSL certs: bash generate-certs.sh"
-echo "3. Install service: sudo cp wireshield-2fa.service /etc/systemd/system/"
-echo "4. Start service: sudo systemctl start wireshield-2fa"
+echo "3. Install service: sudo cp wireshield.service /etc/systemd/system/"
+echo "4. Start service: sudo systemctl start wireshield"
 echo "5. Access UI: https://127.0.0.1:8443/?client_id=YOUR_CLIENT"
 echo "=========================================="

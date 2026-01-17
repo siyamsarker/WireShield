@@ -179,11 +179,12 @@ The installer will prompt for:
 # Check WireGuard status
 sudo wg show
 
+
 # Check 2FA service
-sudo systemctl status wireshield-2fa.service
+sudo systemctl status wireshield.service
 
 # View logs
-sudo journalctl -u wireshield-2fa.service -f
+sudo journalctl -u wireshield.service -f
 ```
 
 ### Installation Layout
@@ -210,7 +211,7 @@ sudo journalctl -u wireshield-2fa.service -f
 └── 2fa-helper.sh         # Management helper script
 
 /etc/systemd/system/
-├── wireshield-2fa.service       # 2FA service
+├── wireshield.service       # 2FA service
 └── wireshield-2fa-renew.timer   # Let's Encrypt renewal timer (if applicable)
 ```
 
@@ -365,19 +366,19 @@ All `config.env` settings can be overridden via environment variables. The servi
 WS_2FA_SESSION_IDLE_TIMEOUT=7200
 
 # Restart service
-sudo systemctl restart wireshield-2fa.service
+sudo systemctl restart wireshield.service
 ```
 
 **Scenario 2: Faster disconnect detection (10 seconds)**
 ```bash
 WS_2FA_DISCONNECT_GRACE_SECONDS=10
-sudo systemctl restart wireshield-2fa.service
+sudo systemctl restart wireshield.service
 ```
 
 **Scenario 3: Extend session validity to 7 days**
 ```bash
 WS_2FA_SESSION_TIMEOUT=10080  # 7 days in minutes
-sudo systemctl restart wireshield-2fa.service
+sudo systemctl restart wireshield.service
 ```
 
 ---
@@ -447,22 +448,22 @@ sudo systemctl restart wireshield-2fa.service
 
 ```bash
 # Start/stop/restart 2FA service
-sudo systemctl start wireshield-2fa.service
-sudo systemctl stop wireshield-2fa.service
-sudo systemctl restart wireshield-2fa.service
+sudo systemctl start wireshield.service
+sudo systemctl stop wireshield.service
+sudo systemctl restart wireshield.service
 
 # Enable/disable auto-start
-sudo systemctl enable wireshield-2fa.service
-sudo systemctl disable wireshield-2fa.service
+sudo systemctl enable wireshield.service
+sudo systemctl disable wireshield.service
 
 # Check status
-sudo systemctl status wireshield-2fa.service
+sudo systemctl status wireshield.service
 
 # View logs (real-time)
-sudo journalctl -u wireshield-2fa.service -f
+sudo journalctl -u wireshield.service -f
 
 # View logs (last 100 lines)
-sudo journalctl -u wireshield-2fa.service -n 100
+sudo journalctl -u wireshield.service -n 100
 ```
 
 ### WireGuard Management
@@ -645,7 +646,7 @@ sudo systemctl status wireshield-2fa-renew.timer
 sudo journalctl -u wireshield-2fa-renew.service
 
 # Manually renew certificates
-sudo certbot renew --quiet --post-hook "systemctl reload wireshield-2fa"
+sudo certbot renew --quiet --post-hook "systemctl reload wireshield"
 
 # Test renewal (dry run)
 sudo certbot renew --dry-run
@@ -668,7 +669,7 @@ sudo openssl req -x509 -newkey rsa:4096 \
   -subj "/CN=<your-ip-or-hostname>"
 
 # Restart service
-sudo systemctl restart wireshield-2fa.service
+sudo systemctl restart wireshield.service
 ```
 
 ### Firewall Inspection
@@ -692,7 +693,7 @@ sudo ip6tables -L FORWARD -v -n | grep -A 2 wg0
 
 ```bash
 # Real-time 2FA service logs
-sudo journalctl -u wireshield-2fa.service -f
+sudo journalctl -u wireshield.service -f
 
 # Monitor WireGuard handshakes
 watch -n 2 'sudo wg show'
@@ -701,7 +702,7 @@ watch -n 2 'sudo wg show'
 watch -n 5 'sudo ipset list ws_2fa_allowed_v4 | grep -v "^Name:"'
 
 # Check service resource usage
-sudo systemctl status wireshield-2fa.service | grep -E "Memory|CPU"
+sudo systemctl status wireshield.service | grep -E "Memory|CPU"
 ```
 
 ---
@@ -726,7 +727,7 @@ sudo ipset list ws_2fa_allowed_v4 | grep <client-wg-ip>
 sudo wg show | grep -A 5 <client-public-key>
 
 # Check recent 2FA logs
-sudo journalctl -u wireshield-2fa.service -n 50 | grep -i session
+sudo journalctl -u wireshield.service -n 50 | grep -i session
 ```
 
 **Solutions:**
@@ -758,7 +759,7 @@ sudo journalctl -u wireshield-2fa.service -n 50 | grep -i session
 **Diagnosis:**
 ```bash
 # Check 2FA service status
-sudo systemctl status wireshield-2fa.service
+sudo systemctl status wireshield.service
 
 # Check if ports are listening
 sudo ss -tlnp | grep -E ':80|:443'
@@ -771,7 +772,7 @@ sudo iptables -L INPUT -n | grep -E '80|443'
 
 1. **Restart 2FA service:**
    ```bash
-   sudo systemctl restart wireshield-2fa.service
+   sudo systemctl restart wireshield.service
    ```
 
 2. **Verify SSL certificate exists:**
@@ -796,7 +797,7 @@ sudo iptables -L INPUT -n | grep -E '80|443'
 grep -E "IDLE_TIMEOUT|DISCONNECT_GRACE" /etc/wireshield/2fa/config.env
 
 # Check monitor logs
-sudo journalctl -u wireshield-2fa.service | grep "SESSION_MONITOR"
+sudo journalctl -u wireshield.service | grep "SESSION_MONITOR"
 
 # Check WireGuard handshake frequency
 sudo wg show wg0 | grep "latest handshake"
@@ -808,7 +809,7 @@ sudo wg show wg0 | grep "latest handshake"
    ```bash
    sudo nano /etc/wireshield/2fa/config.env
    # Change: WS_2FA_SESSION_IDLE_TIMEOUT=7200  # 2 hours
-   sudo systemctl restart wireshield-2fa.service
+   sudo systemctl restart wireshield.service
    ```
 
 2. **Enable PersistentKeepalive on client:**
@@ -822,7 +823,7 @@ sudo wg show wg0 | grep "latest handshake"
    ```bash
    # In /etc/wireshield/2fa/config.env
    WS_2FA_DISCONNECT_GRACE_SECONDS=60  # More lenient
-   sudo systemctl restart wireshield-2fa.service
+   sudo systemctl restart wireshield.service
    ```
 
 #### 4. Let's Encrypt Renewal Failures
@@ -845,13 +846,13 @@ sudo certbot renew --dry-run
 1. **Ensure ports 80/443 are accessible:**
    ```bash
    # Temporarily stop 2FA service
-   sudo systemctl stop wireshield-2fa.service
+   sudo systemctl stop wireshield.service
    
    # Test renewal
    sudo certbot renew --force-renewal
    
    # Restart service
-   sudo systemctl start wireshield-2fa.service
+   sudo systemctl start wireshield.service
    ```
 
 2. **Check DNS resolution:**
@@ -863,7 +864,7 @@ sudo certbot renew --dry-run
 3. **Manual renewal:**
    ```bash
    sudo certbot certonly --standalone -d <your-domain> --force-renewal
-   sudo systemctl restart wireshield-2fa.service
+   sudo systemctl restart wireshield.service
    ```
 
 #### 5. Database Corruption
@@ -886,14 +887,14 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db "PRAGMA integrity_check;"
    sudo cp /etc/wireshield/2fa/auth.db /etc/wireshield/2fa/auth.db.backup
    
    # Restart service (will recreate tables)
-   sudo systemctl restart wireshield-2fa.service
+   sudo systemctl restart wireshield.service
    ```
 
 2. **Restore from backup (if exists):**
    ```bash
-   sudo systemctl stop wireshield-2fa.service
+   sudo systemctl stop wireshield.service
    sudo cp /etc/wireshield/2fa/auth.db.backup /etc/wireshield/2fa/auth.db
-   sudo systemctl start wireshield-2fa.service
+   sudo systemctl start wireshield.service
    ```
 
 ### Performance Tuning
@@ -902,14 +903,14 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db "PRAGMA integrity_check;"
 
 ```bash
 # Increase file descriptor limits
-sudo nano /etc/systemd/system/wireshield-2fa.service
+sudo nano /etc/systemd/system/wireshield.service
 
 # Add under [Service]:
 LimitNOFILE=65535
 
 # Reload and restart
 sudo systemctl daemon-reload
-sudo systemctl restart wireshield-2fa.service
+sudo systemctl restart wireshield.service
 ```
 
 #### Reduce Monitor CPU Usage

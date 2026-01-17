@@ -23,7 +23,7 @@ openssl req \
     -out "$CERT_FILE" \
     -days "$DAYS" \
     -nodes \
-    -subj "/C=US/ST=State/L=City/O=WireShield/CN=wireshield-2fa" \
+    -subj "/C=US/ST=State/L=City/O=WireShield/CN=wireshield" \
     2>/dev/null
 
 chmod 600 "$KEY_FILE"
