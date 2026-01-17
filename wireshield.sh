@@ -547,10 +547,15 @@ function _ws_install_2fa_service() {
 	# Create 2FA directory and config file
 	mkdir -p /etc/wireshield/2fa
 	chmod 700 /etc/wireshield/2fa
-	cat > /etc/wireshield/2fa/config.env << 'EOF'
+	
+	# Generate a secure random SECRET_KEY for session security
+	SECRET_KEY=$(openssl rand -base64 32 | tr -d '\n')
+	
+	cat > /etc/wireshield/2fa/config.env << EOF
 # WireShield 2FA Configuration
 # Generated during installation
 # Use only WS_* prefixed names (systemd EnvironmentFile cannot parse 2FA_* or names starting with numbers)
+WS_2FA_SECRET_KEY=${SECRET_KEY}
 WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
 WS_2FA_HOST=0.0.0.0
 WS_2FA_PORT=443
@@ -684,18 +689,18 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/etc/wireshield/2fa
-	EnvironmentFile=-/etc/wireshield/2fa/config.env
-	# Use WS_* variables to satisfy systemd's environment parser
-	Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
-	Environment=WS_2FA_HOST=0.0.0.0
-	Environment=WS_2FA_PORT=443
-	Environment=WS_2FA_HTTP_PORT=80
-	Environment=WS_2FA_SSL_ENABLED=${WS_2FA_SSL_ENABLED:-false}
-	Environment=WS_2FA_SSL_TYPE=${WS_2FA_SSL_TYPE:-self-signed}
-	Environment=WS_2FA_DOMAIN=${WS_2FA_DOMAIN:-}
-	Environment=WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA:-127.0.0.1}
-	Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=${WS_2FA_RATE_LIMIT_MAX_REQUESTS:-30}
-	Environment=WS_2FA_RATE_LIMIT_WINDOW=${WS_2FA_RATE_LIMIT_WINDOW:-60}
+EnvironmentFile=-/etc/wireshield/2fa/config.env
+# Use WS_* variables to satisfy systemd's environment parser
+Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
+Environment=WS_2FA_HOST=0.0.0.0
+Environment=WS_2FA_PORT=443
+Environment=WS_2FA_HTTP_PORT=80
+Environment=WS_2FA_SSL_ENABLED=${WS_2FA_SSL_ENABLED:-false}
+Environment=WS_2FA_SSL_TYPE=${WS_2FA_SSL_TYPE:-self-signed}
+Environment=WS_2FA_DOMAIN=${WS_2FA_DOMAIN:-}
+Environment=WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA:-127.0.0.1}
+Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=${WS_2FA_RATE_LIMIT_MAX_REQUESTS:-30}
+Environment=WS_2FA_RATE_LIMIT_WINDOW=${WS_2FA_RATE_LIMIT_WINDOW:-60}
 ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/run.py
 Restart=on-failure
 RestartSec=5
@@ -715,13 +720,13 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/etc/wireshield/2fa
-	EnvironmentFile=-/etc/wireshield/2fa/config.env
-	Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
-	Environment=WS_2FA_HOST=0.0.0.0
-	Environment=WS_2FA_PORT=443
-	Environment=WS_2FA_HTTP_PORT=80
-	Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
-	Environment=WS_2FA_RATE_LIMIT_WINDOW=60
+EnvironmentFile=-/etc/wireshield/2fa/config.env
+Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
+Environment=WS_2FA_HOST=0.0.0.0
+Environment=WS_2FA_PORT=443
+Environment=WS_2FA_HTTP_PORT=80
+Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
+Environment=WS_2FA_RATE_LIMIT_WINDOW=60
 ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/run.py
 Restart=on-failure
 RestartSec=5

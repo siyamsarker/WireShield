@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Access Granted — WireShield{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .success-container {
+        max-width: 500px;
+        margin: 80px auto;
+        text-align: center;
+    }
+    .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 40px 32px;
+        box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+    }
+    .success-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: var(--success);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        animation: successPulse 2s ease-in-out infinite;
+    }
+    .success-icon svg {
+        width: 40px;
+        height: 40px;
+        color: white;
+    }
+    @keyframes successPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+    .title {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 12px;
+    }
+    .subtitle {
+        font-size: 16px;
+        color: var(--muted);
+        margin-bottom: 32px;
+        line-height: 1.5;
+    }
+    .status-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        margin-bottom: 32px;
+    }
+    .status-item {
+        background: var(--card-alt);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+    }
+    .status-item .label {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        margin-bottom: 4px;
+    }
+    .status-item .value {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--success);
+    }
+    .info-box {
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border: 1px solid #0ea5e9;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+    .info-box h3 {
+        font-size: 14px;
+        font-weight: 600;
+        color: #0369a1;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .info-box p {
+        font-size: 13px;
+        color: #0c4a6e;
+        line-height: 1.5;
+    }
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        text-decoration: none;
+        background: var(--accent);
+        color: #fff;
+        transition: all 0.2s ease;
+    }
+    .btn:hover {
+        background: var(--accent-hover);
+        transform: translateY(-1px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="success-container">
+    <div class="card">
+        <div class="success-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        </div>
+        
+        <h1 class="title">Access Granted!</h1>
+        <p class="subtitle">
+            Two-factor authentication successful.<br>
+            Your VPN connection is now active and secured.
+        </p>
+        
+        <div class="status-grid">
+            <div class="status-item">
+                <div class="label">2FA Status</div>
+                <div class="value">Verified</div>
+            </div>
+            <div class="status-item">
+                <div class="label">VPN Access</div>
+                <div class="value">Active</div>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <h3>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Session Information
+            </h3>
+            <p>
+                Your authenticated session is valid for 24 hours. If you disconnect for more than 1 hour, 
+                you'll need to re-authenticate. Keep this browser tab open or bookmark this page for future reference.
+            </p>
+        </div>
+        
+        <p style="font-size: 12px; color: var(--muted); margin-top: 20px;">
+            You can now safely close this browser tab and enjoy secure internet access through WireShield VPN.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Auto-close functionality (optional)
+    document.addEventListener('DOMContentLoaded', function() {
+        // Show a subtle notification that the tab can be closed
+        setTimeout(function() {
+            if (confirm('VPN access is now active. Would you like to close this tab?')) {
+                window.close();
+            }
+        }, 5000);
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}WireShield — 2FA Verification{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .auth-container {
+        max-width: 400px;
+        margin: 60px auto;
+        text-align: center;
+    }
+    .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 32px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .logo {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 24px;
+        color: #fff;
+        margin: 0 auto 20px;
+    }
+    .title {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 8px;
+    }
+    .subtitle {
+        font-size: 14px;
+        color: var(--muted);
+        margin-bottom: 24px;
+    }
+    .client-badge {
+        background: var(--card-alt);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        font-family: 'SF Mono', 'Consolas', monospace;
+        font-size: 13px;
+        margin-bottom: 24px;
+        color: var(--text);
+    }
+    .input-group {
+        text-align: left;
+        margin-bottom: 20px;
+    }
+    .input-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+    }
+    .code-input {
+        width: 100%;
+        padding: 16px;
+        border: 2px solid var(--border);
+        border-radius: 8px;
+        font-size: 18px;
+        text-align: center;
+        font-family: 'SF Mono', 'Consolas', monospace;
+        letter-spacing: 0.1em;
+        background: #fff;
+        transition: all 0.2s ease;
+    }
+    .code-input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    .btn {
+        width: 100%;
+        padding: 16px;
+        font-size: 16px;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        background: var(--accent);
+        color: #fff;
+    }
+    .btn:hover:not(:disabled) {
+        background: var(--accent-hover);
+        transform: translateY(-2px);
+    }
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .status {
+        margin: 16px 0;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        text-align: center;
+    }
+    .status.success {
+        background: #dcfce7;
+        border: 1px solid #16a34a;
+        color: #16a34a;
+    }
+    .status.error {
+        background: #fee2e2;
+        border: 1px solid #dc2626;
+        color: #dc2626;
+    }
+    .help-text {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 16px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="card">
+        <div class="logo">WS</div>
+        <h1 class="title">Two-Factor Authentication</h1>
+        <p class="subtitle">Enter the code from your authenticator app</p>
+        
+        <div class="client-badge">
+            Client: {{ client_id }}
+        </div>
+        
+        <div class="input-group">
+            <label for="authCode">6-Digit Code</label>
+            <input 
+                type="text" 
+                id="authCode" 
+                class="code-input" 
+                placeholder="000000" 
+                maxlength="6" 
+                pattern="[0-9]{6}"
+                autocomplete="one-time-code"
+            >
+        </div>
+        
+        <button id="verifyBtn" class="btn">Verify Access</button>
+        
+        <div id="statusMessage"></div>
+        
+        <p class="help-text">
+            Your authenticator app generates new codes every 30 seconds.<br>
+            Enter the current 6-digit code to access the VPN.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const CLIENT_ID = '{{ client_id }}';
+    
+    const elements = {
+        authCode: document.getElementById('authCode'),
+        verifyBtn: document.getElementById('verifyBtn'),
+        statusMessage: document.getElementById('statusMessage')
+    };
+    
+    function showStatus(message, type = 'success') {
+        elements.statusMessage.innerHTML = `<div class="status ${type}">${message}</div>`;
+        if (type !== 'error') {
+            setTimeout(() => {
+                elements.statusMessage.innerHTML = '';
+            }, 5000);
+        }
+    }
+    
+    async function verifyAuth() {
+        const code = elements.authCode.value.trim();
+        if (!/^\d{6}$/.test(code)) {
+            showStatus('Please enter a valid 6-digit code', 'error');
+            return;
+        }
+        
+        elements.verifyBtn.disabled = true;
+        elements.verifyBtn.textContent = 'Verifying...';
+        
+        try {
+            const response = await fetch('/api/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ client_id: CLIENT_ID, code: code })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showStatus('Access granted! Redirecting...', 'success');
+                setTimeout(() => {
+                    window.location.href = '/success';
+                }, 1500);
+            } else {
+                showStatus('Invalid code. Please try again.', 'error');
+                elements.verifyBtn.disabled = false;
+                elements.verifyBtn.textContent = 'Verify Access';
+                elements.authCode.value = '';
+                elements.authCode.focus();
+            }
+        } catch (error) {
+            showStatus('Network error. Please try again.', 'error');
+            elements.verifyBtn.disabled = false;
+            elements.verifyBtn.textContent = 'Verify Access';
+        }
+    }
+    
+    // Event listeners
+    elements.verifyBtn.addEventListener('click', verifyAuth);
+    elements.authCode.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') verifyAuth();
+    });
+    
+    // Auto-format input to numbers only
+    elements.authCode.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/\D/g, '').substring(0, 6);
+    });
+    
+    // Auto-focus
+    elements.authCode.focus();
+</script>
+{% endblock %}

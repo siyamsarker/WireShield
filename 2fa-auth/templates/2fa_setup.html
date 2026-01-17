@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}WireShield — 2FA Setup{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+    }
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .logo {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        background: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 16px;
+        color: #fff;
+    }
+    .brand-text h1 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text);
+    }
+    .brand-text p {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 2px;
+    }
+    .secure-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        background: var(--card);
+        padding: 6px 12px;
+        border-radius: 20px;
+        border: 1px solid var(--border);
+    }
+    .secure-badge svg { width: 14px; height: 14px; color: var(--success); }
+    .grid {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 20px;
+    }
+    .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+    }
+    .card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+    }
+    .card-header h2 {
+        font-size: 15px;
+        font-weight: 600;
+    }
+    .badge {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: #dbeafe;
+        color: var(--accent);
+    }
+    .client-info {
+        background: var(--card-alt);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-family: 'SF Mono', 'Consolas', monospace;
+        font-size: 13px;
+        color: var(--text);
+        margin-bottom: 16px;
+    }
+    .section-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 10px;
+    }
+    .section-label .num {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .btn {
+        width: 100%;
+        padding: 11px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        background: var(--accent);
+        color: #fff;
+    }
+    .btn:hover {
+        background: var(--accent-hover);
+        transform: translateY(-1px);
+    }
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .input-group {
+        margin-bottom: 16px;
+    }
+    .input-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+    }
+    .input-group input {
+        width: 100%;
+        padding: 11px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 14px;
+        background: #fff;
+        transition: all 0.2s ease;
+    }
+    .input-group input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    .qr-container {
+        text-align: center;
+        padding: 20px;
+        background: var(--card-alt);
+        border-radius: 8px;
+        margin-bottom: 16px;
+    }
+    .qr-placeholder {
+        width: 160px;
+        height: 160px;
+        margin: 0 auto 12px;
+        border: 2px dashed var(--border);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 12px;
+    }
+    .status { margin: 16px 0; padding: 12px; border-radius: 8px; font-size: 14px; }
+    .status.success { background: #dcfce7; border: 1px solid #16a34a; color: #16a34a; }
+    .status.error { background: #fee2e2; border: 1px solid #dc2626; color: #dc2626; }
+    .status.warning { background: #fef3c7; border: 1px solid #ca8a04; color: #ca8a04; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wrapper">
+    <div class="header">
+        <div class="brand">
+            <div class="logo">WS</div>
+            <div class="brand-text">
+                <h1>WireShield</h1>
+                <p>Secure VPN Access</p>
+            </div>
+        </div>
+        <div class="secure-badge">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            2FA Protected
+        </div>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <div class="card-header">
+                <h2>Two-Factor Authentication Setup</h2>
+                <div class="badge">Required</div>
+            </div>
+
+            <div class="client-info">
+                Client ID: {{ client_id }}
+            </div>
+
+            <div id="setupContainer">
+                <div class="section-label">
+                    <div class="num">1</div>
+                    Generate QR Code
+                </div>
+                
+                <div class="qr-container">
+                    <div id="qrPlaceholder" class="qr-placeholder">
+                        Click "Generate QR Code" to begin
+                    </div>
+                    <div id="qrCode" style="display: none;"></div>
+                </div>
+                
+                <button id="generateBtn" class="btn">Generate QR Code</button>
+                
+                <div id="verifySection" style="display: none;">
+                    <div class="section-label">
+                        <div class="num">2</div>
+                        Verify Your Setup
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="verifyCode">Enter 6-digit code from your authenticator app:</label>
+                        <input type="text" id="verifyCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}">
+                    </div>
+                    
+                    <button id="verifyBtn" class="btn">Verify & Complete Setup</button>
+                </div>
+                
+                <div id="statusMessage"></div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2>Instructions</h2>
+            </div>
+            
+            <div style="font-size: 14px; line-height: 1.6; color: var(--muted);">
+                <p style="margin-bottom: 12px;"><strong>Step 1:</strong> Install an authenticator app like Google Authenticator, Authy, or Microsoft Authenticator on your mobile device.</p>
+                
+                <p style="margin-bottom: 12px;"><strong>Step 2:</strong> Click "Generate QR Code" and scan it with your authenticator app.</p>
+                
+                <p style="margin-bottom: 12px;"><strong>Step 3:</strong> Enter the 6-digit code from your app to verify the setup.</p>
+                
+                <p><strong>Security Note:</strong> Your 2FA secret is generated uniquely and stored securely. You'll need to verify with your authenticator app every time you connect to the VPN.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const API_BASE = '';
+    const CLIENT_ID = '{{ client_id }}';
+    
+    let setupState = {
+        secret: null,
+        qrGenerated: false
+    };
+    
+    const elements = {
+        generateBtn: document.getElementById('generateBtn'),
+        verifyBtn: document.getElementById('verifyBtn'),
+        verifySection: document.getElementById('verifySection'),
+        verifyCode: document.getElementById('verifyCode'),
+        qrPlaceholder: document.getElementById('qrPlaceholder'),
+        qrCode: document.getElementById('qrCode'),
+        statusMessage: document.getElementById('statusMessage')
+    };
+    
+    function showStatus(message, type = 'success') {
+        elements.statusMessage.innerHTML = `<div class="status ${type}">${message}</div>`;
+        setTimeout(() => {
+            elements.statusMessage.innerHTML = '';
+        }, 5000);
+    }
+    
+    async function generateQR() {
+        elements.generateBtn.disabled = true;
+        elements.generateBtn.textContent = 'Generating...';
+        
+        try {
+            const response = await fetch('/api/setup-start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ client_id: CLIENT_ID })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                setupState.secret = result.secret;
+                setupState.qrGenerated = true;
+                
+                // Display QR code
+                elements.qrPlaceholder.style.display = 'none';
+                elements.qrCode.innerHTML = `<img src="${result.qr_code}" alt="QR Code" style="max-width: 200px;">`;
+                elements.qrCode.style.display = 'block';
+                
+                // Show verification section
+                elements.verifySection.style.display = 'block';
+                elements.generateBtn.style.display = 'none';
+                
+                showStatus('QR code generated! Scan with your authenticator app.', 'success');
+            } else {
+                showStatus(result.detail || 'Failed to generate QR code', 'error');
+                elements.generateBtn.disabled = false;
+                elements.generateBtn.textContent = 'Generate QR Code';
+            }
+        } catch (error) {
+            showStatus('Network error. Please try again.', 'error');
+            elements.generateBtn.disabled = false;
+            elements.generateBtn.textContent = 'Generate QR Code';
+        }
+    }
+    
+    async function verifySetup() {
+        const code = elements.verifyCode.value.trim();
+        if (!/^\d{6}$/.test(code)) {
+            showStatus('Please enter a valid 6-digit code', 'error');
+            return;
+        }
+        
+        elements.verifyBtn.disabled = true;
+        elements.verifyBtn.textContent = 'Verifying...';
+        
+        try {
+            const response = await fetch('/api/setup-verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ client_id: CLIENT_ID, code: code })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showStatus('2FA setup complete! Redirecting...', 'success');
+                setTimeout(() => {
+                    window.location.href = '/success';
+                }, 2000);
+            } else {
+                showStatus(result.detail || 'Invalid code. Please try again.', 'error');
+                elements.verifyBtn.disabled = false;
+                elements.verifyBtn.textContent = 'Verify & Complete Setup';
+                elements.verifyCode.value = '';
+                elements.verifyCode.focus();
+            }
+        } catch (error) {
+            showStatus('Network error. Please try again.', 'error');
+            elements.verifyBtn.disabled = false;
+            elements.verifyBtn.textContent = 'Verify & Complete Setup';
+        }
+    }
+    
+    // Event listeners
+    elements.generateBtn.addEventListener('click', generateQR);
+    elements.verifyBtn.addEventListener('click', verifySetup);
+    elements.verifyCode.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') verifySetup();
+    });
+    elements.verifyCode.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/\D/g, '').substring(0, 6);
+    });
+</script>
+{% endblock %}

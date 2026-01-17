@@ -83,8 +83,8 @@ class DNSSniffer:
                         domain = answer.rrname.decode('utf-8').rstrip('.')
                         ip = answer.rdata
                         self._cache_mapping(ip, domain)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"DNS packet processing failed: {e}")
 
     def _cache_mapping(self, ip, domain):
         try:
@@ -97,4 +97,4 @@ class DNSSniffer:
             conn.commit()
             conn.close()
         except Exception as e:
-            pass # Silent fail to avoid log spam
+            logger.debug(f"DNS cache update failed for {ip} -> {domain}: {e}")
