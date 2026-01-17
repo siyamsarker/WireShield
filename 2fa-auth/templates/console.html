@@ -1,0 +1,956 @@
+{% extends "base.html" %}
+
+{% block title %}WireShield Console{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* Console Dashboard Specific Styles */
+:root {
+    /* Premium Light Theme */
+    --bg-body: #f8fafc;        /* Slate 50 */
+    --bg-nav: #ffffff;         /* White */
+    --bg-card: #ffffff;        /* White */
+    --bg-card-hover: #f1f5f9;  /* Slate 100 */
+    --border: #e2e8f0;         /* Slate 200 */
+    
+    --text-main: #0f172a;      /* Slate 900 */
+    --text-muted: #64748b;     /* Slate 500 */
+    
+    --accent: #2563eb;         /* Blue 600 */
+    --accent-hover: #1d4ed8;   /* Blue 700 */
+    --accent-light: #eff6ff;   /* Blue 50 */
+    
+    --success: #16a34a;        /* Green 600 */
+    --success-bg: #dcfce7;     /* Green 100 */
+    --warning: #ca8a04;        /* Yellow 600 */
+    --warning-bg: #fef9c3;     /* Yellow 100 */
+    --error: #dc2626;          /* Red 600 */
+    --error-bg: #fee2e2;       /* Red 100 */
+    
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+body {
+    background: var(--bg-body);
+    color: var(--text-main);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+}
+
+/* Sidebar */
+nav {
+    width: 260px;
+    background: var(--bg-nav);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+    gap: 8px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 20;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+    padding: 0 12px;
+}
+
+.brand-text {
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.02em;
+    color: var(--text-main);
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.nav-item:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-main);
+}
+
+.nav-item.active {
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+.nav-item svg { width: 18px; height: 18px; }
+
+/* Main Content */
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+header {
+    height: 70px;
+    background: var(--bg-nav);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    flex-shrink: 0;
+}
+
+.page-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--success-bg);
+    color: var(--success);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.status-badge.offline {
+    background: var(--error-bg);
+    color: var(--error);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background: currentColor;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Content Area */
+.content {
+    flex: 1;
+    padding: 32px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.stat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.stat-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.stat-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--accent-light);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+}
+
+.stat-value {
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--text-main);
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.stat-change {
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.stat-change.positive {
+    color: var(--success);
+}
+
+.stat-change.negative {
+    color: var(--error);
+}
+
+/* Dashboard Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.chart-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+}
+
+.chart-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 16px;
+}
+
+.chart-container {
+    position: relative;
+    height: 300px;
+}
+
+/* Data Table */
+.data-table {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.table-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card-hover);
+}
+
+.table-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+thead {
+    background: var(--bg-card-hover);
+}
+
+th, td {
+    padding: 12px 24px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    font-size: 14px;
+    color: var(--text-main);
+}
+
+tr:hover {
+    background: var(--bg-card-hover);
+}
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.btn-secondary {
+    background: var(--bg-card);
+    color: var(--text-main);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-card-hover);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    nav {
+        width: 220px;
+    }
+    
+    .content {
+        padding: 20px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+}
+
+@media (max-width: 640px) {
+    body {
+        flex-direction: column;
+    }
+    
+    nav {
+        width: 100%;
+        flex-direction: row;
+        padding: 16px;
+        overflow-x: auto;
+    }
+    
+    .brand {
+        margin-bottom: 0;
+        margin-right: 24px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<nav>
+    <div class="brand">
+        <img src="/static/logo.svg" alt="WireShield" style="width:32px;height:32px;">
+        <span class="brand-text">WireShield</span>
+    </div>
+    
+    <a href="/console" class="nav-item active">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        Dashboard
+    </a>
+    
+    <a href="#" class="nav-item" onclick="showSection('users')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+        </svg>
+        Users
+    </a>
+    
+    <a href="#" class="nav-item" onclick="showSection('logs')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14,2 14,8 20,8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10,9 9,9 8,9"/>
+        </svg>
+        Audit Logs
+    </a>
+    
+    <a href="#" class="nav-item" onclick="showSection('activity')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+        </svg>
+        Activity
+    </a>
+    
+    <a href="#" class="nav-item" onclick="showSection('bandwidth')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+        </svg>
+        Bandwidth
+    </a>
+</nav>
+
+<main>
+    <header>
+        <h1 class="page-title" id="page-title">Dashboard</h1>
+        <div class="header-actions">
+            <div class="status-badge" id="service-status">
+                <div class="status-dot"></div>
+                <span>Service Online</span>
+            </div>
+            <button class="btn btn-secondary" onclick="refreshData()">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M1 4v6h6M23 20v-6h-6"/>
+                    <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                </svg>
+                Refresh
+            </button>
+        </div>
+    </header>
+    
+    <div class="content">
+        <!-- Dashboard Section -->
+        <div id="dashboard-section">
+            <div class="stats-grid" id="stats-grid">
+                <!-- Stats will be loaded here -->
+            </div>
+            
+            <div class="dashboard-grid">
+                <div class="chart-card">
+                    <h3 class="chart-title">Activity Trend (24h)</h3>
+                    <div class="chart-container">
+                        <canvas id="activityChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-card">
+                    <h3 class="chart-title">Actions Distribution</h3>
+                    <div class="chart-container">
+                        <canvas id="actionsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="data-table">
+                <div class="table-header">
+                    <h3 class="table-title">Recent Events</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Client</th>
+                            <th>Action</th>
+                            <th>Status</th>
+                            <th>IP</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-events">
+                        <!-- Recent events will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Users Section -->
+        <div id="users-section" style="display: none;">
+            <div class="data-table">
+                <div class="table-header">
+                    <h3 class="table-title">VPN Users</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Client ID</th>
+                            <th>IPv4</th>
+                            <th>IPv6</th>
+                            <th>2FA Status</th>
+                            <th>Console Access</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table">
+                        <!-- Users will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Logs Section -->
+        <div id="logs-section" style="display: none;">
+            <div class="data-table">
+                <div class="table-header">
+                    <h3 class="table-title">Audit Logs</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Client</th>
+                            <th>Action</th>
+                            <th>Status</th>
+                            <th>IP Address</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-logs">
+                        <!-- Audit logs will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Activity Section -->
+        <div id="activity-section" style="display: none;">
+            <div class="data-table">
+                <div class="table-header">
+                    <h3 class="table-title">Activity Logs</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Client</th>
+                            <th>Direction</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activity-logs">
+                        <!-- Activity logs will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Bandwidth Section -->
+        <div id="bandwidth-section" style="display: none;">
+            <div class="chart-card">
+                <h3 class="chart-title">Bandwidth Usage (24h)</h3>
+                <div class="chart-container">
+                    <canvas id="bandwidthChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+let activityChart, actionsChart, bandwidthChart;
+
+// Navigation
+function showSection(section) {
+    // Hide all sections
+    document.querySelectorAll('[id$="-section"]').forEach(el => el.style.display = 'none');
+    
+    // Remove active class from nav items
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    
+    // Show selected section
+    document.getElementById(section + '-section').style.display = 'block';
+    
+    // Add active class to clicked nav item
+    event.target.closest('.nav-item').classList.add('active');
+    
+    // Update page title
+    const titles = {
+        'dashboard': 'Dashboard',
+        'users': 'Users',
+        'logs': 'Audit Logs',
+        'activity': 'Activity Logs',
+        'bandwidth': 'Bandwidth Usage'
+    };
+    document.getElementById('page-title').textContent = titles[section] || 'Dashboard';
+    
+    // Load section data
+    if (section === 'users') {
+        loadUsers();
+    } else if (section === 'logs') {
+        loadAuditLogs();
+    } else if (section === 'activity') {
+        loadActivityLogs();
+    } else if (section === 'bandwidth') {
+        loadBandwidthData();
+    } else {
+        loadDashboardData();
+    }
+}
+
+// Data loading functions
+async function loadDashboardData() {
+    try {
+        // Load stats
+        const statsResponse = await fetch('/api/console/dashboard-stats');
+        const stats = await statsResponse.json();
+        
+        const statsGrid = document.getElementById('stats-grid');
+        statsGrid.innerHTML = `
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Total Users</span>
+                    <div class="stat-icon">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="stat-value">${stats.total_users || 0}</div>
+                <div class="stat-change positive">+${stats.new_users_24h || 0} last 24h</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Active Sessions</span>
+                    <div class="stat-icon">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12,6 12,12 16,14"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="stat-value">${stats.active_sessions || 0}</div>
+                <div class="stat-change positive">Real-time</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Failed Attempts</span>
+                    <div class="stat-icon">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="15" y1="9" x2="9" y2="15"/>
+                            <line x1="9" y1="9" x2="15" y2="15"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="stat-value">${stats.failed_attempts_24h || 0}</div>
+                <div class="stat-change negative">Last 24h</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Bandwidth</span>
+                    <div class="stat-icon">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <line x1="18" y1="20" x2="18" y2="10"/>
+                            <line x1="12" y1="20" x2="12" y2="4"/>
+                            <line x1="6" y1="20" x2="6" y2="14"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="stat-value">${formatBytes(stats.bandwidth_24h || 0)}</div>
+                <div class="stat-change positive">Last 24h</div>
+            </div>
+        `;
+        
+        // Load charts
+        const chartsResponse = await fetch('/api/console/dashboard-charts');
+        const charts = await chartsResponse.json();
+        
+        loadActivityChart(charts.activity_trend);
+        loadActionsChart(charts.action_distribution);
+        loadRecentEvents(charts.recent_events);
+        
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+    }
+}
+
+async function loadUsers() {
+    try {
+        const response = await fetch('/api/console/users');
+        const users = await response.json();
+        
+        const tbody = document.getElementById('users-table');
+        tbody.innerHTML = users.map(user => `
+            <tr>
+                <td>${user.client_id}</td>
+                <td>${user.wg_ipv4 || 'N/A'}</td>
+                <td>${user.wg_ipv6 || 'N/A'}</td>
+                <td>
+                    <span style="color: ${user.totp_setup ? 'var(--success)' : 'var(--error)'}">
+                        ${user.totp_setup ? 'Enabled' : 'Disabled'}
+                    </span>
+                </td>
+                <td>
+                    <span style="color: ${user.console_access ? 'var(--success)' : 'var(--text-muted)'}">
+                        ${user.console_access ? 'Yes' : 'No'}
+                    </span>
+                </td>
+                <td>${new Date(user.created_at).toLocaleString()}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading users:', error);
+    }
+}
+
+async function loadAuditLogs() {
+    try {
+        const response = await fetch('/api/console/audit-logs');
+        const logs = await response.json();
+        
+        const tbody = document.getElementById('audit-logs');
+        tbody.innerHTML = logs.map(log => `
+            <tr>
+                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <td>${log.client_id || 'System'}</td>
+                <td>${log.action}</td>
+                <td>
+                    <span style="color: ${getStatusColor(log.outcome)}">
+                        ${log.outcome}
+                    </span>
+                </td>
+                <td>${log.ip_address}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading audit logs:', error);
+    }
+}
+
+async function loadActivityLogs() {
+    try {
+        const response = await fetch('/api/console/activity-logs');
+        const logs = await response.json();
+        
+        const tbody = document.getElementById('activity-logs');
+        tbody.innerHTML = logs.map(log => `
+            <tr>
+                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <td>${log.client_id || 'Unknown'}</td>
+                <td>
+                    <span style="color: ${log.direction === 'IN' ? 'var(--success)' : 'var(--accent)'}">
+                        ${log.direction}
+                    </span>
+                </td>
+                <td>${log.details}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading activity logs:', error);
+    }
+}
+
+async function loadBandwidthData() {
+    try {
+        const response = await fetch('/api/console/bandwidth-usage');
+        const data = await response.json();
+        
+        if (bandwidthChart) {
+            bandwidthChart.destroy();
+        }
+        
+        const ctx = document.getElementById('bandwidthChart').getContext('2d');
+        bandwidthChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Upload (MB)',
+                    data: data.upload,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Download (MB)',
+                    data: data.download,
+                    borderColor: '#16a34a',
+                    backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading bandwidth data:', error);
+    }
+}
+
+function loadActivityChart(data) {
+    if (activityChart) {
+        activityChart.destroy();
+    }
+    
+    const ctx = document.getElementById('activityChart').getContext('2d');
+    activityChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.hour),
+            datasets: [{
+                label: 'Events',
+                data: data.map(d => d.count),
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+function loadActionsChart(data) {
+    if (actionsChart) {
+        actionsChart.destroy();
+    }
+    
+    const ctx = document.getElementById('actionsChart').getContext('2d');
+    actionsChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.action),
+            datasets: [{
+                data: data.map(d => d.count),
+                backgroundColor: [
+                    '#2563eb',
+                    '#16a34a',
+                    '#ca8a04',
+                    '#dc2626',
+                    '#7c3aed'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+}
+
+function loadRecentEvents(events) {
+    const tbody = document.getElementById('recent-events');
+    tbody.innerHTML = events.map(event => `
+        <tr>
+            <td>${new Date(event.timestamp).toLocaleString()}</td>
+            <td>${event.client_id || 'System'}</td>
+            <td>${event.action}</td>
+            <td>
+                <span style="color: ${getStatusColor(event.outcome)}">
+                    ${event.outcome}
+                </span>
+            </td>
+            <td>${event.ip_address}</td>
+        </tr>
+    `).join('');
+}
+
+// Helper functions
+function getStatusColor(status) {
+    switch (status.toLowerCase()) {
+        case 'success':
+        case 'granted':
+            return 'var(--success)';
+        case 'failed':
+        case 'denied':
+            return 'var(--error)';
+        case 'warning':
+            return 'var(--warning)';
+        default:
+            return 'var(--text-muted)';
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function refreshData() {
+    const activeSection = document.querySelector('[id$="-section"]:not([style*="none"])').id.replace('-section', '');
+    if (activeSection === 'dashboard') {
+        loadDashboardData();
+    } else {
+        showSection(activeSection);
+    }
+}
+
+// Initialize dashboard on load
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardData();
+    
+    // Auto-refresh every 30 seconds
+    setInterval(() => {
+        const activeSection = document.querySelector('[id$="-section"]:not([style*="none"])').id.replace('-section', '');
+        if (activeSection === 'dashboard') {
+            loadDashboardData();
+        }
+    }, 30000);
+});
+</script>
+{% endblock %}
