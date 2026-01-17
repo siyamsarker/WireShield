@@ -2,7 +2,13 @@ import threading
 import logging
 import sqlite3
 import time
+from importlib import import_module
+from typing import Optional, TYPE_CHECKING, Any
 from app.core.config import AUTH_DB_PATH, WG_INTERFACE
+
+if TYPE_CHECKING:
+    from scapy.all import sniff as scapy_sniff
+    from scapy.layers.dns import DNS as ScapyDNS, DNSRR as ScapyDNSRR
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +19,16 @@ class DNSSniffer:
         self.thread = None
         self._db_path = AUTH_DB_PATH
         self.scapy_available = False
+        self._sniff = None
+        self._DNS = None
+        self._DNSRR = None
         
         try:
-            from scapy.all import sniff, DNS, DNSRR
-            global sniff, DNS, DNSRR
-            self.scapy_available = True
+            scapy_all = import_module("scapy.all")
+            self._sniff = getattr(scapy_all, "sniff", None)
+            self._DNS = getattr(scapy_all, "DNS", None)
+            self._DNSRR = getattr(scapy_all, "DNSRR", None)
+            self.scapy_available = all([self._sniff, self._DNS, self._DNSRR])
         except ImportError:
             logger.warning("Scapy not found. DNS sniffing disabled.")
 
@@ -42,8 +53,10 @@ class DNSSniffer:
 
     def _run_sniffer(self):
         try:
+            if not self._sniff:
+                return
             # Filter: UDP source port 53 (DNS responses)
-            sniff(
+            self._sniff(
                 iface=self.interface,
                 filter="udp src port 53",
                 prn=self._process_packet,
@@ -54,11 +67,13 @@ class DNSSniffer:
             logger.error(f"DNS Sniffer failed: {e}")
 
     def _process_packet(self, pkt):
-        if not pkt.haslayer(DNS):
+        if not self._DNS:
+            return
+        if not pkt.haslayer(self._DNS):
             return
 
         try:
-            dns = pkt[DNS]
+            dns = pkt[self._DNS]
             # Only process responses (qr=1) with answers (ancount > 0)
             if dns.qr == 1 and dns.ancount > 0:
                 for x in range(dns.ancount):
