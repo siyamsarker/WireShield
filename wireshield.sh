@@ -489,7 +489,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/certbot renew --quiet --post-hook "systemctl reload wireshield-2fa"
+ExecStart=/usr/bin/certbot renew --quiet --post-hook "systemctl reload wireshield"
 
 [Install]
 WantedBy=multi-user.target
@@ -596,9 +596,16 @@ EOF
 	fi
 	
 	# Check if 2FA service already exists
-	if [[ -f /etc/systemd/system/wireshield-2fa.service ]]; then
+	if [[ -f /etc/systemd/system/wireshield.service ]]; then
 		echo -e "${GREEN}2FA service already installed${NC}"
 		return 0
+	fi
+	if [[ -f /etc/systemd/system/wireshield-2fa.service ]]; then
+		echo -e "${ORANGE}Upgrading service name from wireshield-2fa to wireshield...${NC}"
+		systemctl stop wireshield-2fa 2>/dev/null || true
+		systemctl disable wireshield-2fa 2>/dev/null || true
+		rm -f /etc/systemd/system/wireshield-2fa.service 2>/dev/null || true
+		systemctl daemon-reload 2>/dev/null || true
 	fi
 	
 	# Configure SSL/TLS
@@ -638,7 +645,7 @@ EOF
 			-keyout /etc/wireshield/2fa/key.pem \
 			-out /etc/wireshield/2fa/cert.pem \
 			-days 365 -nodes \
-			-subj "/C=US/ST=State/L=City/O=WireShield/CN=wireshield-2fa" 2>/dev/null || true
+			-subj "/C=US/ST=State/L=City/O=WireShield/CN=wireshield" 2>/dev/null || true
 		chmod 600 /etc/wireshield/2fa/key.pem 2>/dev/null || true
 		chmod 644 /etc/wireshield/2fa/cert.pem 2>/dev/null || true
 	fi
@@ -661,13 +668,13 @@ EOF
 	fi
 
 	# Install systemd service file
-	if [[ -f /etc/wireshield/2fa/wireshield-2fa.service ]]; then
+	if [[ -f /etc/wireshield/2fa/wireshield.service ]]; then
 		# Read config and create updated service file
 		# Load WS_* values (avoid bash parsing errors with 2FA_* names)
 		# shellcheck disable=SC1091
 		source /etc/wireshield/2fa/config.env 2>/dev/null || true
 		
-		cat > /etc/systemd/system/wireshield-2fa.service << EOF
+		cat > /etc/systemd/system/wireshield.service << EOF
 [Unit]
 Description=WireShield 2FA Authentication Service
 After=network-online.target
@@ -698,7 +705,7 @@ WantedBy=multi-user.target
 EOF
 	else
 		# Fallback: create minimal service file
-		cat > /etc/systemd/system/wireshield-2fa.service << EOF
+		cat > /etc/systemd/system/wireshield.service << EOF
 [Unit]
 Description=WireShield 2FA Authentication Service
 After=network-online.target
@@ -726,13 +733,13 @@ EOF
 	
 	# Enable and start the service
 	systemctl daemon-reload 2>/dev/null || true
-	systemctl enable wireshield-2fa 2>/dev/null || true
-	systemctl start wireshield-2fa 2>/dev/null || true
+	systemctl enable wireshield 2>/dev/null || true
+	systemctl start wireshield 2>/dev/null || true
 
-	if systemctl is-active --quiet wireshield-2fa; then
+	if systemctl is-active --quiet wireshield; then
 		echo -e "${GREEN}2FA service installed and started${NC}"
 	else
-		echo -e "${ORANGE}2FA service did not start successfully. Check 'journalctl -u wireshield-2fa' for details.${NC}"
+		echo -e "${ORANGE}2FA service did not start successfully. Check 'journalctl -u wireshield' for details.${NC}"
 	fi
 
 	# Open firewall for 2FA TCP ports (HTTP 80 and HTTPS 443) to allow external/NAT access
@@ -792,7 +799,7 @@ EOF
 		echo -e "${GREEN}✓ 2FA health: OK${NC}"
 	else
 		echo -e "${ORANGE}⚠ 2FA health check failed. Service may still be starting or unreachable.${NC}"
-		echo -e "${ORANGE}  Try: journalctl -u wireshield-2fa -n 60 | less${NC}"
+		echo -e "${ORANGE}  Try: journalctl -u wireshield -n 60 | less${NC}"
 	fi
 }
 
@@ -1585,6 +1592,8 @@ function uninstallWg() {
 
 		# Remove 2FA service and related services
 		echo -e "${ORANGE}Removing 2FA services...${NC}"
+		systemctl stop wireshield 2>/dev/null || true
+		systemctl disable wireshield 2>/dev/null || true
 		systemctl stop wireshield-2fa 2>/dev/null || true
 		systemctl disable wireshield-2fa 2>/dev/null || true
 		systemctl stop wireshield-2fa-renew.timer 2>/dev/null || true
@@ -1593,6 +1602,7 @@ function uninstallWg() {
 		systemctl disable wireshield-2fa-renew.service 2>/dev/null || true
 
 		# Remove systemd service files
+		rm -f /etc/systemd/system/wireshield.service 2>/dev/null || true
 		rm -f /etc/systemd/system/wireshield-2fa.service 2>/dev/null || true
 		rm -f /etc/systemd/system/wireshield-2fa-renew.timer 2>/dev/null || true
 		rm -f /etc/systemd/system/wireshield-2fa-renew.service 2>/dev/null || true

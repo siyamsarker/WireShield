@@ -1,5 +1,5 @@
 [Unit]
-Description=WireShield (Deprecated unit name; use wireshield.service)
+Description=WireShield
 Documentation=https://github.com/siyamsarker/WireShield
 Requires=network-online.target
 After=network-online.target

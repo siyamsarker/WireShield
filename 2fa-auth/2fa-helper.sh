@@ -46,7 +46,7 @@ setup_2fa_service() {
     chmod 700 /etc/wireshield/2fa
     
     # Copy service file
-    cp /opt/wireshield/2fa-auth/wireshield-2fa.service /etc/systemd/system/ 2>/dev/null || true
+    cp /opt/wireshield/2fa-auth/wireshield.service /etc/systemd/system/ 2>/dev/null || true
     
     # Generate SSL certs if needed
     if [ ! -f /etc/wireshield/2fa/cert.pem ] || [ ! -f /etc/wireshield/2fa/key.pem ]; then
@@ -55,8 +55,8 @@ setup_2fa_service() {
     
     # Enable and start service
     systemctl daemon-reload
-    systemctl enable wireshield-2fa
-    systemctl restart wireshield-2fa
+    systemctl enable wireshield
+    systemctl restart wireshield
     
     log "2FA service installed and started"
 }
@@ -161,7 +161,7 @@ validate_session() {
 
 check_2fa_service_status() {
     echo "=== WireShield 2FA Service Status ==="
-    systemctl status wireshield-2fa || true
+    systemctl status wireshield || true
     echo ""
     echo "Database: $DB_PATH ($([ -f "$DB_PATH" ] && echo "✓ exists" || echo "✗ missing"))"
     echo "Service listening on: 127.0.0.1:$WS_2FA_PORT"
