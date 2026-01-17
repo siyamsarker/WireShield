@@ -20,6 +20,10 @@ from app.core.security import (
 
 logger = logging.getLogger(__name__)
 
+# Track wireguard session stats across polling cycles
+_MONITOR_BW_STATE: Dict[str, Dict[str, int]] = {}
+_MONITOR_CLIENT_STATE: Dict[str, Dict[str, float]] = {}
+
 def _load_wireguard_params() -> Dict[str, str]:
     """Read /etc/wireguard/params (created by installer) for interface data."""
     params: Dict[str, str] = {}
@@ -203,12 +207,7 @@ def _monitor_wireguard_sessions():
                          if s['tx'] > curr_server_tx: curr_server_tx = s['tx']
                          if s['handshake_ts'] > curr_handshake: curr_handshake = s['handshake_ts']
                     
-                    if not hasattr(_monitor_wireguard_sessions, "bw_state"):
-                        _monitor_wireguard_sessions.bw_state = {}
-                    if not hasattr(_monitor_wireguard_sessions, "client_state"):
-                        _monitor_wireguard_sessions.client_state = {}
-                    
-                    bw_state = _monitor_wireguard_sessions.bw_state.get(client_id, {
+                    bw_state = _MONITOR_BW_STATE.get(client_id, {
                         'prev_server_rx': curr_server_rx,
                         'prev_server_tx': curr_server_tx
                     })
@@ -224,7 +223,7 @@ def _monitor_wireguard_sessions():
                     # Update State
                     bw_state['prev_server_rx'] = curr_server_rx
                     bw_state['prev_server_tx'] = curr_server_tx
-                    _monitor_wireguard_sessions.bw_state[client_id] = bw_state
+                    _MONITOR_BW_STATE[client_id] = bw_state
 
                     # Persist if there is activity
                     if delta_rx > 0 or delta_tx > 0:
@@ -245,7 +244,7 @@ def _monitor_wireguard_sessions():
 
                     if has_session:
                         # 6. Idle Check & Expiry Logic (Only for active sessions)
-                        state = _monitor_wireguard_sessions.client_state.get(client_id, {
+                        state = _MONITOR_CLIENT_STATE.get(client_id, {
                             'last_rx': 0,
                             'last_handshake': 0,
                             'last_seen_active': time.time()
@@ -262,7 +261,7 @@ def _monitor_wireguard_sessions():
                         if is_active:
                              state['last_seen_active'] = time.time()
                         
-                        _monitor_wireguard_sessions.client_state[client_id] = state
+                        _MONITOR_CLIENT_STATE[client_id] = state
 
                         if (time.time() - state['last_seen_active']) > DISCONNECT_GRACE_SECONDS:
                              stale_clients.append(client_id)
