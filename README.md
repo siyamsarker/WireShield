@@ -240,18 +240,18 @@ sudo journalctl -u wireshield.service -f
 │         WireGuard Server (wg0)              │
 │  ┌───────────────────────────────────────┐  │
 │  │   iptables/ip6tables Firewall         │  │
-│  │                                        │  │
-│  │   1. Check ipset allowlist             │  │
-│  │      ws_2fa_allowed_v4/v6              │  │
-│  │                                        │  │
-│  │   2. If NOT in allowlist:              │  │
-│  │      └─> Jump to WS_2FA_PORTAL chain   │  │
-│  │          ├─ Allow DNS (53/tcp,udp)     │  │
-│  │          ├─ Allow portal (80,443/tcp)  │  │
-│  │          └─ DROP all else              │  │
-│  │                                        │  │
-│  │   3. If in allowlist:                  │  │
-│  │      └─> ACCEPT & MASQUERADE           │  │
+│  │                                       │  │
+│  │   1. Check ipset allowlist            │  │
+│  │      ws_2fa_allowed_v4/v6             │  │
+│  │                                       │  │
+│  │   2. If NOT in allowlist:             │  │
+│  │      └─> Jump to WS_2FA_PORTAL chain  │  │
+│  │          ├─ Allow DNS (53/tcp,udp)    │  │
+│  │          ├─ Allow portal (80,443/tcp) │  │
+│  │          └─ DROP all else             │  │
+│  │                                       │  │
+│  │   3. If in allowlist:                 │  │
+│  │      └─> ACCEPT & MASQUERADE          │  │
 │  └───────────────────────────────────────┘  │
 └─────────────────────────────────────────────┘
        │
@@ -259,22 +259,22 @@ sudo journalctl -u wireshield.service -f
 ┌─────────────────────────────────────────────┐
 │      2FA Service (FastAPI + Python)         │
 │  ┌───────────────────────────────────────┐  │
-│  │  Captive Portal (HTTPS)                │  │
-│  │  ├─ QR code generation                 │  │
+│  │  Captive Portal (HTTPS)               │  │
+│  │  ├─ QR code generation                │  │
 │  │  ├─ TOTP verification                  │  │
-│  │  └─ Session management                 │  │
+│  │  └─ Session management                │  │
 │  └───────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────┐  │
-│  │  Background Monitors                   │  │
-│  │  ├─ WireGuard handshake monitor        │  │
-│  │  ├─ ipset sync daemon                  │  │
-│  │  └─ HTTP→HTTPS redirector              │  │
+│  │  Background Monitors                  │  │
+│  │  ├─ WireGuard handshake monitor       │  │
+│  │  ├─ ipset sync daemon                 │  │
+│  │  └─ HTTP→HTTPS redirector             │  │
 │  └───────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────┐  │
-│  │  SQLite Database                       │  │
-│  │  ├─ users (client_id, TOTP secrets)    │  │
-│  │  ├─ sessions (tokens, expiry)          │  │
-│  │  └─ audit_log (security events)        │  │
+│  │  SQLite Database                      │  │
+│  │  ├─ users (client_id, TOTP secrets)   │  │
+│  │  ├─ sessions (tokens, expiry)         │  │
+│  │  └─ audit_log (security events)       │  │
 │  └───────────────────────────────────────┘  │
 └─────────────────────────────────────────────┘
 ```
