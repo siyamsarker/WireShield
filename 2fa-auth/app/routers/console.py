@@ -538,7 +538,7 @@ async def console_dashboard(request: Request):
         }
 
         .stat-value {
-            font-size: 36px;
+            font-size: 22px;
             font-weight: 800;
             color: var(--text-main);
             line-height: 1.1;
@@ -830,7 +830,7 @@ async def console_dashboard(request: Request):
             </div>
             <div class="filter-group">
                 <label>Domain</label>
-                <input type="text" id="domainFilter" placeholder="Filter domain..." oninput="app.handleFilterDebounce(this.value)">
+                <input type="text" id="domainFilter" placeholder="Filter domain..." oninput="app.handleFilterDebounce(this.value)" style="padding-left: 10px !important;">
             </div>
             <button class="btn btn-secondary" onclick="app.clearFilters()">Clear Filters</button>
         </div>
@@ -1855,14 +1855,31 @@ async def get_activity_logs(
                 continue
 
             # Apply domain filter (requires DB lookup)
+            # Apply domain filter
             if domain_filter:
+                # We can't efficiently check all 5000 lines against DB one by one.
+                # Instead, we rely on the fact that if it's important, it's likely in the cache.
+                # Optimization: We check if the IP is known in our pre-loaded cache map.
+                # Note: This means "fresh" reverse-DNS domains won't be filtered until viewed once.
+                # This is a trade-off for performance.
+                
+                # Check known cache (loaded at start of function? no, we need to load it now efficiently)
+                # Actually, loading entire cache might be big.
+                # Let's use a "lazy" approach: pass if we DON'T know. No, pass if we DO match.
+                
+                # BEST APPROACH:
+                # Just check the pre-fetched `ip_to_domain` if we had one.
+                # Since we don't scan all IPs for domains, we will skip this strict check here
+                # and rely on the fact that we can't filter what we don't know.
+                
+                # However, the user expects it to work.
+                # Let's check `dns_cache` but efficiently?
+                # For now, let's keep the DB check but make it robust (suppress errors).
+                # The real fix is the `resolve_domain` caching above, which means
+                # once a user SEES a domain, it gets cached, so NEXT filter works.
                 try:
-                    # Quick check: does this dst_ip map to the requested domain?
-                    # We can't do this efficiently in batch inside the loop easily without pre-fetching.
-                    # Optimization: Pre-fetch filtering logic is better, but cache lookup is fast.
                     conn = get_db()
                     c = conn.cursor()
-                    # Check if IP maps to a domain containing the filter string
                     c.execute("SELECT 1 FROM dns_cache WHERE ip_address = ? AND domain LIKE ?", (entry["dst_ip"], f"%{domain_filter}%"))
                     match = c.fetchone()
                     conn.close()
@@ -1901,6 +1918,16 @@ async def get_activity_logs(
                     # Run blocking socket call in executor
                     domain_info = await loop.run_in_executor(None, socket.gethostbyaddr, item['dst_ip'])
                     item['dst_domain'] = domain_info[0]
+                    
+                    # Cache the result for future filtering
+                    try:
+                        conn_cache = get_db()
+                        cc = conn_cache.cursor()
+                        cc.execute("INSERT OR IGNORE INTO dns_cache (ip_address, domain) VALUES (?, ?)", (item['dst_ip'], domain_info[0]))
+                        conn_cache.commit()
+                        conn_cache.close()
+                    except Exception:
+                        pass
                 except Exception:
                     item['dst_domain'] = "-"
             else:
