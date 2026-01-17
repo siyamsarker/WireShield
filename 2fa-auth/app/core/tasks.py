@@ -144,15 +144,15 @@ def _monitor_wireguard_sessions():
             conn = get_db()
             try:
                 c = conn.cursor()
-                # Include session creation time to avoid pruning brand new sessions
+                # Need ALL users (ip -> client_id mapping) for bandwidth tracking
+                # AND need session data for expiration
                 c.execute(
                     """
-                    SELECT u.client_id AS client_id,
-                           u.wg_ipv4     AS wg_ipv4,
-                           u.wg_ipv6     AS wg_ipv6,
-                           MAX(s.created_at) AS last_session_created
+                    SELECT u.client_id, u.wg_ipv4, u.wg_ipv6, 
+                           MAX(s.created_at) as last_session_created,
+                           MAX(s.expires_at) as session_expires
                     FROM users u
-                    JOIN sessions s ON s.client_id = u.client_id
+                    LEFT JOIN sessions s ON s.client_id = u.client_id
                     GROUP BY u.client_id, u.wg_ipv4, u.wg_ipv6
                     """
                 )
@@ -163,8 +163,9 @@ def _monitor_wireguard_sessions():
 
                 for row in rows:
                     client_id = row["client_id"]
-                    v4 = (row["wg_ipv4"] or "").strip()
+                    v4 = (row["wg_ipv4"] or "").strip() 
                     v6 = (row["wg_ipv6"] or "").strip()
+                    has_session = row["session_expires"] is not None
 
                     # 1. New Session Grace: Skip if session is brand new
                     try:
@@ -242,28 +243,29 @@ def _monitor_wireguard_sessions():
                         except Exception as e:
                             logger.error(f"Failed to update bandwidth for {client_id}: {e}")
 
-                    # 6. Idle Check (using Session Monitor Logic)
-                    state = _monitor_wireguard_sessions.client_state.get(client_id, {
-                        'last_rx': 0,
-                        'last_handshake': 0,
-                        'last_seen_active': time.time()
-                    })
-                    
-                    is_active = False
-                    if curr_server_rx > state['last_rx']:
-                        is_active = True
-                        state['last_rx'] = curr_server_rx
-                    if curr_handshake > state['last_handshake']:
-                        is_active = True
-                        state['last_handshake'] = curr_handshake
-                    
-                    if is_active:
-                         state['last_seen_active'] = time.time()
-                    
-                    _monitor_wireguard_sessions.client_state[client_id] = state
+                    if has_session:
+                        # 6. Idle Check & Expiry Logic (Only for active sessions)
+                        state = _monitor_wireguard_sessions.client_state.get(client_id, {
+                            'last_rx': 0,
+                            'last_handshake': 0,
+                            'last_seen_active': time.time()
+                        })
+                        
+                        is_active = False
+                        if curr_server_rx > state['last_rx']:
+                            is_active = True
+                            state['last_rx'] = curr_server_rx
+                        if curr_handshake > state['last_handshake']:
+                            is_active = True
+                            state['last_handshake'] = curr_handshake
+                        
+                        if is_active:
+                             state['last_seen_active'] = time.time()
+                        
+                        _monitor_wireguard_sessions.client_state[client_id] = state
 
-                    if (time.time() - state['last_seen_active']) > DISCONNECT_GRACE_SECONDS:
-                         stale_clients.append(client_id)
+                        if (time.time() - state['last_seen_active']) > DISCONNECT_GRACE_SECONDS:
+                             stale_clients.append(client_id)
                          
                     conn.commit() # Commit active updates
             finally:

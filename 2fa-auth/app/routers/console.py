@@ -1039,8 +1039,8 @@ async def console_dashboard(request: Request):
                     document.getElementById('filterBar').style.display = 'none';
                     document.getElementById('liveToggle').style.display = 'none';
                     this.loadDashboard();
-                    // Auto-refresh dashboard every 30 seconds
-                    this.state.dashboardTimer = setInterval(() => this.loadDashboard(), 30000);
+                    // Auto-refresh dashboard every 5 seconds for live data
+                    this.state.dashboardTimer = setInterval(() => this.loadDashboard(), 5000);
                     return;
                 }
                 
