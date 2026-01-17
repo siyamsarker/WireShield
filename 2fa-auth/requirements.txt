@@ -9,3 +9,4 @@ sqlalchemy==2.0.23
 pytest==9.0.2
 httpx==0.24.1
 scapy==2.5.0
+tldextract==5.1.1

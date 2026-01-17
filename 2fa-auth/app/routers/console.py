@@ -50,7 +50,8 @@ async def console_dashboard(request: Request):
     except HTTPException:
         return get_access_denied_html()
         
-    audit_log(client_id, "CONSOLE_ACCESS", "granted", request.client.host)
+    client_host = request.client.host if request and request.client else "unknown"
+    audit_log(client_id, "CONSOLE_ACCESS", "granted", client_host)
     
     # Simple dashboard HTML (embedded for single-file simplicity in this router, 
     # or could be moved to templates.py if too large)
@@ -1596,7 +1597,7 @@ async def console_dashboard(request: Request):
 async def get_users(
     page: int = 1, 
     limit: int = 20, 
-    search: str = None, 
+    search: Optional[str] = None, 
     client_id: str = Depends(_check_console_access)
 ):
     try:
@@ -1663,10 +1664,10 @@ async def get_users(
 async def get_audit_logs(
     page: int = 1,
     limit: int = 50,
-    search: str = None,
-    start_date: str = None,
-    end_date: str = None,
-    client_filter: str = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    client_filter: Optional[str] = None,
     client_id: str = Depends(_check_console_access)
 ):
     try:
@@ -1728,18 +1729,78 @@ async def get_audit_logs(
 async def get_activity_logs(
     page: int = 1,
     limit: int = 50,
-    search: str = None,
-    start_date: str = None,
-    end_date: str = None,
-    client_filter: str = None,
-    domain_filter: str = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    client_filter: Optional[str] = None,
+    domain_filter: Optional[str] = None,
     client_id: str = Depends(_check_console_access)
 ):
     """Fetch WireGuard/iptables kernel logs via journalctl with enhanced parsing."""
     import re
     import socket
     import asyncio
+    import ipaddress
+    from urllib.parse import urlsplit
+    from importlib import import_module
     from datetime import datetime
+
+    extractor = None
+    extractor_checked = False
+
+    def _extract_display_domain(value: str) -> str:
+        nonlocal extractor, extractor_checked
+        if not value:
+            return "-"
+        raw = str(value).strip()
+        if not raw or raw == "-":
+            return "-"
+
+        host = raw
+        try:
+            if "://" in raw:
+                parsed = urlsplit(raw)
+                host = parsed.hostname or raw
+            else:
+                host = raw.split("/")[0].split("?")[0].split("#")[0]
+                if "@" in host:
+                    host = host.split("@", 1)[1]
+                if host.startswith("[") and "]" in host:
+                    host = host[1:host.index("]")]
+                elif ":" in host:
+                    host = host.split(":", 1)[0]
+        except Exception:
+            host = raw
+
+        host = host.strip().lower().rstrip(".")
+        if not host:
+            return "-"
+
+        try:
+            ipaddress.ip_address(host)
+            return host
+        except Exception:
+            pass
+
+        try:
+            if not extractor_checked:
+                extractor_checked = True
+                try:
+                    tldextract = import_module("tldextract")
+                    extractor = tldextract.TLDExtract(suffix_list_urls=None)
+                except Exception:
+                    extractor = None
+            if extractor:
+                extracted = extractor(host)
+                if extracted.registered_domain:
+                    return extracted.registered_domain
+        except Exception:
+            pass
+
+        if host.startswith("www.") and len(host) > 4:
+            return host[4:]
+
+        return host
     
     # Build journalctl command
     cmd = ["journalctl", "-k", "-n", "5000", "--output=short-iso", "--no-pager"]
@@ -1908,7 +1969,9 @@ async def get_activity_logs(
                         row = cc.fetchone()
                         conn_cache.close()
                         if row and row[0]:
-                            item['dst_domain'] = row[0]
+                            raw_domain = row[0]
+                            item['dst_domain_raw'] = raw_domain
+                            item['dst_domain'] = _extract_display_domain(raw_domain)
                             return item
                     except Exception:
                         pass
@@ -1917,13 +1980,15 @@ async def get_activity_logs(
                     loop = asyncio.get_running_loop()
                     # Run blocking socket call in executor
                     domain_info = await loop.run_in_executor(None, socket.gethostbyaddr, item['dst_ip'])
-                    item['dst_domain'] = domain_info[0]
+                    raw_domain = domain_info[0]
+                    item['dst_domain_raw'] = raw_domain
+                    item['dst_domain'] = _extract_display_domain(raw_domain)
                     
                     # Cache the result for future filtering
                     try:
                         conn_cache = get_db()
                         cc = conn_cache.cursor()
-                        cc.execute("INSERT OR IGNORE INTO dns_cache (ip_address, domain) VALUES (?, ?)", (item['dst_ip'], domain_info[0]))
+                        cc.execute("INSERT OR IGNORE INTO dns_cache (ip_address, domain) VALUES (?, ?)", (item['dst_ip'], raw_domain))
                         conn_cache.commit()
                         conn_cache.close()
                     except Exception:
