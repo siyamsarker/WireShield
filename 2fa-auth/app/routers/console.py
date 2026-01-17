@@ -1156,7 +1156,12 @@ async def console_dashboard(request: Request):
                     const colCount = (this.headers[this.state.view] || []).length || 5;
                     let skeletonHtml = '';
                     for (let i = 0; i < 5; i++) {
-                        skeletonHtml += `<tr class="skeleton-row">${'<td><div class="skeleton-cell" style="width: ' + (60 + Math.random() * 40) + '%"></div></td>'.repeat(colCount)}</tr>`;
+                        skeletonHtml += '<tr class="skeleton-row">';
+                        for (let j = 0; j < colCount; j++) {
+                            const width = 60 + Math.floor(Math.random() * 40);
+                            skeletonHtml += `<td><div class="skeleton-cell" style="width: ${width}%"></div></td>`;
+                        }
+                        skeletonHtml += '</tr>';
                     }
                     tbody.innerHTML = skeletonHtml;
                     tbody.style.opacity = '1';
