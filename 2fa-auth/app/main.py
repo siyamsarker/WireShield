@@ -1,8 +1,10 @@
 import logging
 import warnings
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.core.config import LOG_LEVEL
 from app.core.database import init_db
@@ -41,6 +43,10 @@ app = FastAPI(
     redoc_url=None
 )
 
+# Configure Jinja2 templates
+templates_path = Path(__file__).parent.parent / "templates"
+templates = Jinja2Templates(directory=str(templates_path))
+
 from pathlib import Path
 
 # ... (inside file)
@@ -49,6 +55,9 @@ from pathlib import Path
 # app/main.py -> app/ -> 2fa-auth/ -> static
 static_path = Path(__file__).parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_path), check_dir=False), name="static")
+
+# Make templates available to routers
+app.state.templates = templates
 
 # Include Routers
 app.include_router(auth.router)
