@@ -261,7 +261,7 @@ sudo journalctl -u wireshield.service -f
 │  ┌───────────────────────────────────────┐  │
 │  │  Captive Portal (HTTPS)               │  │
 │  │  ├─ QR code generation                │  │
-│  │  ├─ TOTP verification                  │  │
+│  │  ├─ TOTP verification                 │  │
 │  │  └─ Session management                │  │
 │  └───────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────┐  │
