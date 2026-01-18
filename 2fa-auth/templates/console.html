@@ -1265,9 +1265,9 @@ async function loadUsers() {
         
         tbody.innerHTML = data.users.map(user => `
             <tr>
-                <td>${user.client_id}</td>
-                <td>${user.wg_ipv4 || 'N/A'}</td>
-                <td>${user.wg_ipv6 || 'N/A'}</td>
+                <td>${user.client_id || user.id || 'Unknown'}</td>
+                <td>${user.wg_ipv4 || user.ipv4 || 'N/A'}</td>
+                <td>${user.wg_ipv6 || user.ipv6 || 'N/A'}</td>
                 <td>
                     <span style="color: ${user.totp_secret ? 'var(--success)' : 'var(--error)'}">
                         ${user.totp_secret ? 'Enabled' : 'Disabled'}
