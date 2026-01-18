@@ -718,17 +718,22 @@ async function loadDashboardData() {
 async function loadUsers() {
     try {
         const response = await fetch('/api/console/users');
-        const users = await response.json();
+        const data = await response.json();
         
         const tbody = document.getElementById('users-table');
-        tbody.innerHTML = users.map(user => `
+        if (!data.users || data.users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:40px;">No users found</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = data.users.map(user => `
             <tr>
                 <td>${user.client_id}</td>
                 <td>${user.wg_ipv4 || 'N/A'}</td>
                 <td>${user.wg_ipv6 || 'N/A'}</td>
                 <td>
-                    <span style="color: ${user.totp_setup ? 'var(--success)' : 'var(--error)'}">
-                        ${user.totp_setup ? 'Enabled' : 'Disabled'}
+                    <span style="color: ${user.totp_secret ? 'var(--success)' : 'var(--error)'}">
+                        ${user.totp_secret ? 'Enabled' : 'Disabled'}
                     </span>
                 </td>
                 <td>
@@ -741,23 +746,29 @@ async function loadUsers() {
         `).join('');
     } catch (error) {
         console.error('Error loading users:', error);
+        document.getElementById('users-table').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--error);padding:40px;">Error loading users</td></tr>';
     }
 }
 
 async function loadAuditLogs() {
     try {
         const response = await fetch('/api/console/audit-logs');
-        const logs = await response.json();
+        const data = await response.json();
         
         const tbody = document.getElementById('audit-logs');
-        tbody.innerHTML = logs.map(log => `
+        if (!data.logs || data.logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:40px;">No audit logs found</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = data.logs.map(log => `
             <tr>
                 <td>${new Date(log.timestamp).toLocaleString()}</td>
                 <td>${log.client_id || 'System'}</td>
                 <td>${log.action}</td>
                 <td>
-                    <span style="color: ${getStatusColor(log.outcome)}">
-                        ${log.outcome}
+                    <span style="color: ${getStatusColor(log.status)}">
+                        ${log.status}
                     </span>
                 </td>
                 <td>${log.ip_address}</td>
@@ -765,29 +776,48 @@ async function loadAuditLogs() {
         `).join('');
     } catch (error) {
         console.error('Error loading audit logs:', error);
+        document.getElementById('audit-logs').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--error);padding:40px;">Error loading audit logs</td></tr>';
     }
 }
 
 async function loadActivityLogs() {
     try {
         const response = await fetch('/api/console/activity-logs');
-        const logs = await response.json();
+        const data = await response.json();
         
         const tbody = document.getElementById('activity-logs');
-        tbody.innerHTML = logs.map(log => `
+        if (!data.logs || data.logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">No activity logs found</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = data.logs.map(log => {
+            // Format connection details
+            let details = '';
+            if (log.direction === 'OUT' || log.direction === 'IN') {
+                const proto = log.protocol || 'TCP';
+                const srcInfo = log.src_ip + (log.src_port ? ':' + log.src_port : '');
+                const dstInfo = (log.dst_domain && log.dst_domain !== '-' ? log.dst_domain : log.dst_ip) + (log.dst_port ? ':' + log.dst_port : '');
+                details = `${srcInfo} → ${dstInfo} (${proto})`;
+            } else {
+                details = log.dst_ip || '-';
+            }
+            
+            return `
             <tr>
-                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <td>${log.timestamp}</td>
                 <td>${log.client_id || 'Unknown'}</td>
                 <td>
                     <span style="color: ${log.direction === 'IN' ? 'var(--success)' : 'var(--accent)'}">
-                        ${log.direction}
+                        ${log.direction || '-'}
                     </span>
                 </td>
-                <td>${log.details}</td>
+                <td>${details}</td>
             </tr>
-        `).join('');
+        `}).join('');
     } catch (error) {
         console.error('Error loading activity logs:', error);
+        document.getElementById('activity-logs').innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--error);padding:40px;">Error loading activity logs</td></tr>';
     }
 }
 
