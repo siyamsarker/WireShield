@@ -1525,14 +1525,18 @@ function loadActionsChart(data) {
 
 function loadRecentEvents(events) {
     const tbody = document.getElementById('recent-events');
+    if (!events || events.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:40px;">No recent events found</td></tr>';
+        return;
+    }
     tbody.innerHTML = events.map(event => `
         <tr>
             <td>${new Date(event.timestamp).toLocaleString()}</td>
             <td>${event.client_id || 'System'}</td>
             <td>${event.action}</td>
             <td>
-                <span style="color: ${getStatusColor(event.outcome)}">
-                    ${event.outcome}
+                <span style="color: ${getStatusColor(event.outcome || event.status)}">
+                    ${event.outcome || event.status}
                 </span>
             </td>
             <td>${event.ip_address}</td>
