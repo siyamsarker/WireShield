@@ -512,6 +512,38 @@ tbody tr:last-child td {
     border-bottom: none;
 }
 
+/* Legend Items */
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--bg-card-hover);
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    transition: all 0.3s ease;
+}
+
+.legend-item:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 8px currentColor;
+}
+
+.legend-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
 /* Buttons */
 .btn {
     display: inline-flex;
@@ -943,8 +975,77 @@ tbody tr:last-child td {
         
         <!-- Bandwidth Section -->
         <div id="bandwidth-section" style="display: none;">
+            <!-- Bandwidth Stats -->
+            <div class="stats-grid" style="margin-bottom: 32px;">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v20M2 12h20M7 7l10 10M7 17l10-10"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-details">
+                        <span class="stat-title">Total Upload</span>
+                        <div class="stat-value" id="total-upload">0 B</div>
+                        <span class="stat-trend" id="upload-trend"></span>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v20M2 12h20M7 7l10 10M7 17l10-10"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-details">
+                        <span class="stat-title">Total Download</span>
+                        <div class="stat-value" id="total-download">0 B</div>
+                        <span class="stat-trend" id="download-trend"></span>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 6v6l4 2"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-details">
+                        <span class="stat-title">Peak Usage</span>
+                        <div class="stat-value" id="peak-usage">0 B/h</div>
+                        <span class="stat-trend" id="peak-time"></span>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-details">
+                        <span class="stat-title">Avg. Speed</span>
+                        <div class="stat-value" id="avg-speed">0 B/h</div>
+                        <span class="stat-trend" id="speed-info"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bandwidth Chart -->
             <div class="chart-card">
-                <h3 class="chart-title">Bandwidth Usage (24h)</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h3 class="chart-title" style="margin: 0;">Bandwidth Usage Over Time</h3>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);"></span>
+                            <span class="legend-label">Upload</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"></span>
+                            <span class="legend-label">Download</span>
+                        </div>
+                    </div>
+                </div>
                 <div class="chart-container">
                     <canvas id="bandwidthChart"></canvas>
                 </div>
@@ -1185,6 +1286,32 @@ async function loadBandwidthData() {
         const response = await fetch('/api/console/bandwidth-usage');
         const data = await response.json();
         
+        // Calculate statistics
+        const totalUpload = data.upload.reduce((a, b) => a + b, 0);
+        const totalDownload = data.download.reduce((a, b) => a + b, 0);
+        const maxUpload = Math.max(...data.upload);
+        const maxDownload = Math.max(...data.download);
+        const peakUsage = Math.max(maxUpload, maxDownload);
+        const peakIndex = data.upload.indexOf(maxUpload) >= 0 ? data.upload.indexOf(maxUpload) : data.download.indexOf(maxDownload);
+        const avgSpeed = (totalUpload + totalDownload) / data.labels.length;
+        
+        // Update stats cards
+        document.getElementById('total-upload').textContent = formatBytes(totalUpload * 1024 * 1024);
+        document.getElementById('total-download').textContent = formatBytes(totalDownload * 1024 * 1024);
+        document.getElementById('peak-usage').textContent = formatBytes(peakUsage * 1024 * 1024) + '/h';
+        document.getElementById('avg-speed').textContent = formatBytes(avgSpeed * 1024 * 1024) + '/h';
+        
+        // Update trends
+        document.getElementById('upload-trend').textContent = `${data.upload.length} data points`;
+        document.getElementById('upload-trend').style.color = 'var(--text-muted)';
+        document.getElementById('download-trend').textContent = `${data.download.length} data points`;
+        document.getElementById('download-trend').style.color = 'var(--text-muted)';
+        document.getElementById('peak-time').textContent = `at ${data.labels[peakIndex] || 'N/A'}`;
+        document.getElementById('peak-time').style.color = 'var(--text-muted)';
+        document.getElementById('speed-info').textContent = `Last 24 hours`;
+        document.getElementById('speed-info').style.color = 'var(--text-muted)';
+        
+        // Destroy existing chart
         if (bandwidthChart) {
             bandwidthChart.destroy();
         }
@@ -1195,25 +1322,98 @@ async function loadBandwidthData() {
             data: {
                 labels: data.labels,
                 datasets: [{
-                    label: 'Upload (MB)',
+                    label: 'Upload',
                     data: data.upload,
-                    borderColor: '#2563eb',
-                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                    tension: 0.4
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#3b82f6',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: '#3b82f6',
+                    pointHoverBorderWidth: 3
                 }, {
-                    label: 'Download (MB)',
+                    label: 'Download',
                     data: data.download,
-                    borderColor: '#16a34a',
-                    backgroundColor: 'rgba(22, 163, 74, 0.1)',
-                    tension: 0.4
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#10b981',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: '#10b981',
+                    pointHoverBorderWidth: 3
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        padding: 12,
+                        borderColor: 'rgba(148, 163, 184, 0.3)',
+                        borderWidth: 1,
+                        displayColors: true,
+                        boxWidth: 12,
+                        boxHeight: 12,
+                        usePointStyle: true,
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' MB';
+                            }
+                        }
+                    }
+                },
                 scales: {
+                    x: {
+                        grid: {
+                            display: true,
+                            color: 'rgba(148, 163, 184, 0.1)'
+                        },
+                        ticks: {
+                            color: '#64748b',
+                            font: {
+                                size: 12,
+                                weight: 500
+                            }
+                        }
+                    },
                     y: {
-                        beginAtZero: true
+                        beginAtZero: true,
+                        grid: {
+                            display: true,
+                            color: 'rgba(148, 163, 184, 0.1)'
+                        },
+                        ticks: {
+                            color: '#64748b',
+                            font: {
+                                size: 12,
+                                weight: 500
+                            },
+                            callback: function(value) {
+                                return value.toFixed(1) + ' MB';
+                            }
+                        }
                     }
                 }
             }
