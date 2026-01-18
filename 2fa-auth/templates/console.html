@@ -50,12 +50,12 @@ body {
 
 /* Sidebar */
 nav {
-    width: 280px;
+    width: 240px;
     background: var(--bg-nav);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    padding: 28px 20px;
+    padding: 20px 16px;
     gap: 4px;
     flex-shrink: 0;
     position: relative;
@@ -66,21 +66,21 @@ nav {
 .brand {
     display: flex;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 36px;
-    padding: 0 12px 24px;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding: 0 10px 16px;
     border-bottom: 1px solid var(--border);
 }
 
 .brand img {
-    width: 36px;
-    height: 36px;
+    width: 30px;
+    height: 30px;
     border-radius: 8px;
 }
 
 .brand-text {
     font-weight: 700;
-    font-size: 20px;
+    font-size: 18px;
     letter-spacing: -0.03em;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     -webkit-background-clip: text;
@@ -91,12 +91,12 @@ nav {
 .nav-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
+    gap: 10px;
+    padding: 10px 12px;
     color: var(--text-muted);
     text-decoration: none;
     border-radius: 10px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     border: 1px solid transparent;
@@ -135,8 +135,8 @@ nav {
 }
 
 .nav-item svg { 
-    width: 20px; 
-    height: 20px;
+    width: 18px; 
+    height: 18px;
     transition: transform 0.3s ease;
 }
 
@@ -154,21 +154,21 @@ main {
 }
 
 header {
-    height: 80px;
+    height: 64px;
     background: var(--bg-nav);
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 40px;
+    padding: 0 28px;
     flex-shrink: 0;
     box-shadow: var(--shadow-sm);
     backdrop-filter: blur(10px);
 }
 
 .page-title {
-    font-size: 24px;
-    font-weight: 800;
+    font-size: 20px;
+    font-weight: 700;
     color: var(--text-main);
     letter-spacing: -0.02em;
 }
@@ -176,18 +176,18 @@ header {
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 12px;
 }
 
 .status-badge {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 16px;
+    gap: 8px;
+    padding: 6px 12px;
     background: var(--success-light);
     color: var(--success);
     border-radius: 24px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     border: 1px solid var(--success);
     box-shadow: var(--shadow-sm);
@@ -228,7 +228,7 @@ header {
 /* Content Area */
 .content {
     flex: 1;
-    padding: 40px;
+    padding: 28px;
     overflow-y: auto;
     overflow-x: hidden;
 }
@@ -253,9 +253,9 @@ header {
 /* Stats Grid */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 24px;
-    margin-bottom: 40px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
     animation: fadeInUp 0.6s ease;
 }
 
@@ -273,8 +273,8 @@ header {
 .stat-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 24px;
+    border-radius: 14px;
+    padding: 18px;
     box-shadow: var(--shadow-md);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
@@ -308,11 +308,11 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .stat-title {
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -320,10 +320,10 @@ header {
 }
 
 .stat-icon {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     background: var(--accent-gradient);
-    border-radius: 12px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -337,21 +337,21 @@ header {
 }
 
 .stat-value {
-    font-size: 32px;
+    font-size: 24px;
     font-weight: 900;
     color: var(--text-main);
     line-height: 1;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     letter-spacing: -0.02em;
 }
 
 .stat-change {
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 10px;
+    padding: 3px 8px;
     border-radius: 20px;
     width: fit-content;
 }
@@ -370,15 +370,15 @@ header {
 .dashboard-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 24px;
-    margin-bottom: 40px;
+    gap: 16px;
+    margin-bottom: 24px;
 }
 
 .chart-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px;
+    border-radius: 14px;
+    padding: 20px;
     box-shadow: var(--shadow-md);
     transition: all 0.3s ease;
 }
@@ -388,10 +388,10 @@ header {
 }
 
 .chart-title {
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--text-main);
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -400,21 +400,21 @@ header {
 .chart-title::before {
     content: '';
     width: 4px;
-    height: 24px;
+    height: 18px;
     background: var(--accent-gradient);
     border-radius: 2px;
 }
 
 .chart-container {
     position: relative;
-    height: 320px;
+    height: 260px;
 }
 
 /* Data Table */
 .data-table {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 16px;
+    border-radius: 14px;
     overflow: hidden;
     box-shadow: var(--shadow-md);
     transition: all 0.3s ease;
@@ -425,13 +425,13 @@ header {
 }
 
 .table-header {
-    padding: 24px 28px;
+    padding: 16px 20px;
     border-bottom: 1px solid var(--border);
     background: linear-gradient(135deg, var(--bg-card-hover) 0%, var(--bg-card) 100%);
 }
 
 .table-title {
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--text-main);
     display: flex;
@@ -461,13 +461,13 @@ thead {
 }
 
 th, td {
-    padding: 18px 28px;
+    padding: 12px 18px;
     text-align: left;
     border-bottom: 1px solid var(--border);
 }
 
 th {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -476,10 +476,10 @@ th {
 }
 
 td {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text-main);
     font-weight: 500;
-    line-height: 1.6;
+    line-height: 1.4;
 }
 
 tbody tr {
@@ -516,10 +516,10 @@ tbody tr:last-child td {
 .legend-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
+    gap: 6px;
+    padding: 4px 10px;
     background: var(--bg-card-hover);
-    border-radius: 20px;
+    border-radius: 16px;
     border: 1px solid var(--border);
     transition: all 0.3s ease;
 }
@@ -531,14 +531,14 @@ tbody tr:last-child td {
 }
 
 .legend-dot {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-    box-shadow: 0 0 8px currentColor;
+    box-shadow: 0 0 6px currentColor;
 }
 
 .legend-label {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-main);
     white-space: nowrap;
@@ -548,12 +548,12 @@ tbody tr:last-child td {
 .btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px 20px;
-    font-size: 14px;
+    gap: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
     font-weight: 600;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     text-decoration: none;
@@ -639,59 +639,59 @@ tbody tr:last-child td {
     }
     
     .stats-grid {
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     }
 }
 
 @media (max-width: 1024px) {
     nav {
-        width: 240px;
-    }
-    
-    .content {
-        padding: 28px;
-    }
-    
-    .header h1 {
-        font-size: 22px;
-    }
-}
-
-@media (max-width: 768px) {
-    nav {
-        width: 220px;
+        width: 200px;
     }
     
     .content {
         padding: 20px;
     }
     
+    .header h1 {
+        font-size: 18px;
+    }
+}
+
+@media (max-width: 768px) {
+    nav {
+        width: 180px;
+    }
+    
+    .content {
+        padding: 16px;
+    }
+    
     .header {
         flex-direction: column;
-        gap: 16px;
+        gap: 12px;
         height: auto;
-        padding: 20px 24px;
+        padding: 16px 20px;
     }
     
     .header h1 {
-        font-size: 20px;
+        font-size: 18px;
     }
     
     .stats-grid {
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: 12px;
     }
     
     .stat-card {
-        padding: 18px;
+        padding: 14px;
     }
     
     table {
-        font-size: 13px;
+        font-size: 12px;
     }
     
     th, td {
-        padding: 14px 18px;
+        padding: 10px 14px;
     }
 }
 
@@ -732,24 +732,24 @@ tbody tr:last-child td {
     }
     
     .content {
-        padding: 16px;
+        padding: 12px;
     }
     
     .header {
-        padding: 16px 20px;
+        padding: 12px 16px;
     }
     
     .header h1 {
-        font-size: 18px;
+        font-size: 16px;
     }
     
     .status-badge {
-        font-size: 12px;
-        padding: 6px 12px;
+        font-size: 11px;
+        padding: 5px 10px;
     }
     
     .stat-card {
-        padding: 16px;
+        padding: 12px;
     }
     
     table {
@@ -759,31 +759,31 @@ tbody tr:last-child td {
     }
     
     th, td {
-        padding: 12px 16px;
+        padding: 8px 12px;
     }
     
     .btn {
-        padding: 10px 16px;
-        font-size: 13px;
+        padding: 6px 12px;
+        font-size: 12px;
     }
     
     .chart-container {
-        height: 240px;
+        height: 200px;
     }
 }
 
 @media (max-width: 480px) {
     .stats-grid {
-        gap: 12px;
+        gap: 10px;
     }
     
     .dashboard-grid {
-        gap: 16px;
+        gap: 12px;
     }
     
     th, td {
-        padding: 10px 14px;
-        font-size: 12px;
+        padding: 8px 10px;
+        font-size: 11px;
     }
 }
 </style>
@@ -931,9 +931,9 @@ tbody tr:last-child td {
         <!-- Logs Section -->
         <div id="logs-section" style="display: none;">
             <!-- Filter Controls -->
-            <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
-                <input type="text" id="audit-search" placeholder="Search client, action, or IP..." style="flex: 1; min-width: 250px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterAuditLogs()">
-                <select id="audit-status-filter" onchange="filterAuditLogs()" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
+            <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+                <input type="text" id="audit-search" placeholder="Search client, action, or IP..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterAuditLogs()">
+                <select id="audit-status-filter" onchange="filterAuditLogs()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
                     <option value="all">All Status</option>
                     <option value="granted">Granted</option>
                     <option value="denied">Denied</option>
@@ -968,16 +968,16 @@ tbody tr:last-child td {
         <!-- Activity Section -->
         <div id="activity-section" style="display: none;">
             <!-- Filter and Live Controls -->
-            <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; align-items: center;">
-                <input type="text" id="activity-search" placeholder="Search client, IP, or protocol..." style="flex: 1; min-width: 250px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterActivityLogs()">
-                <select id="activity-direction-filter" onchange="filterActivityLogs()" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
+            <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="activity-search" placeholder="Search client, IP, or protocol..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterActivityLogs()">
+                <select id="activity-direction-filter" onchange="filterActivityLogs()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
                     <option value="all">All Directions</option>
                     <option value="in">Inbound</option>
                     <option value="out">Outbound</option>
                 </select>
-                <label style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.3s ease; user-select: none;">
-                    <input type="checkbox" id="live-toggle" onchange="toggleLiveActivity()" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent);">
-                    <span style="font-size: 14px; font-weight: 600; color: var(--text-main);">Live</span>
+                <label style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.3s ease; user-select: none;">
+                    <input type="checkbox" id="live-toggle" onchange="toggleLiveActivity()" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent);">
+                    <span style="font-size: 13px; font-weight: 600; color: var(--text-main);">Live</span>
                     <span id="live-indicator" class="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); display: none; animation: none;"></span>
                 </label>
             </div>
@@ -1005,7 +1005,7 @@ tbody tr:last-child td {
         <!-- Bandwidth Section -->
         <div id="bandwidth-section" style="display: none;">
             <!-- Bandwidth Stats -->
-            <div class="stats-grid" style="margin-bottom: 32px;">
+            <div class="stats-grid" style="margin-bottom: 20px;">
                 <div class="stat-card">
                     <div class="stat-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1062,7 +1062,7 @@ tbody tr:last-child td {
             
             <!-- Bandwidth Chart -->
             <div class="chart-card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                     <h3 class="chart-title" style="margin: 0;">Bandwidth Usage Over Time</h3>
                     <div style="display: flex; gap: 12px; align-items: center;">
                         <div class="legend-item">
