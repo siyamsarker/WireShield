@@ -968,24 +968,40 @@ WireShield/
 ├── wireshield.sh           # Main installer and manager CLI
 ├── LICENSE                 # GPLv3 license
 ├── README.md               # This file
+├── assets/                 # Project assets (logo, images)
+├── tests/                  # Test suite
+│   ├── test_rate_limit.py       # Rate limiter tests
+│   ├── test-2fa-access.sh       # 2FA access testing
+│   └── test-integration.sh      # Integration test suite
 └── 2fa-auth/
     ├── run.py              # Service entry point
+    ├── 2fa-helper.sh       # Management helper scripts
+    ├── generate-certs.sh   # SSL certificate generation script
+    ├── requirements.txt    # Python dependencies
+    ├── wireshield.service  # Systemd service file
     ├── app/                # Application package
+    │   ├── __init__.py     # Package initialization
     │   ├── main.py         # Application factory & startup
-    │   ├── templates.py    # Embedded HTML templates
+    │   ├── templates.py    # Jinja2 template rendering functions
     │   ├── core/           # Core logic
     │   │   ├── config.py   # Configuration loading
     │   │   ├── database.py # Database interactions
-    │   │   └── security.py # Authentication & rate limiting
+    │   │   ├── security.py # Authentication & rate limiting
+    │   │   ├── sniffer.py  # Network sniffer & WireGuard monitoring
+    │   │   └── tasks.py    # Background tasks & session management
     │   └── routers/        # API endpoints
     │       ├── auth.py     # Authentication routes
-    │       ├── setup.py    # 2FA setup routes
-    │       └── console.py  # Admin console routes
-    ├── requirements.txt    # Python dependencies
-    ├── 2fa-helper.sh       # Management helper scripts
-    └── tests/
-        ├── test_rate_limit.py       # Rate limiter tests
-        └── test-integration.sh      # Integration test suite
+    │       ├── console.py  # Admin console routes
+    │       └── health.py   # Health check endpoints
+    ├── static/             # Static assets
+    │   └── fonts/          # Custom fonts
+    └── templates/          # Jinja2 HTML templates
+        ├── base.html            # Base template
+        ├── 2fa_setup.html       # 2FA setup page
+        ├── 2fa_verify.html      # 2FA verification page
+        ├── success.html         # Success page
+        ├── access_denied.html   # Access denied page
+        └── console.html         # Admin console dashboard
 ```
 
 ### Key Components
