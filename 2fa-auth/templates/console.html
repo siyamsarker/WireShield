@@ -1100,11 +1100,18 @@ function showSection(section) {
 // Data loading functions
 async function loadDashboardData() {
     try {
+        // Show loading shimmer
+        const statsGrid = document.getElementById('stats-grid');
+        statsGrid.innerHTML = `
+            <div class="stat-card loading" style="height: 140px;"></div>
+            <div class="stat-card loading" style="height: 140px;"></div>
+            <div class="stat-card loading" style="height: 140px;"></div>
+            <div class="stat-card loading" style="height: 140px;"></div>
+        `;
+        
         // Load stats
         const statsResponse = await fetch('/api/console/dashboard-stats');
         const stats = await statsResponse.json();
-        
-        const statsGrid = document.getElementById('stats-grid');
         statsGrid.innerHTML = `
             <div class="stat-card">
                 <div class="stat-header">
@@ -1177,10 +1184,16 @@ async function loadDashboardData() {
 
 async function loadUsers() {
     try {
+        // Show loading shimmer
+        const tbody = document.getElementById('users-table');
+        tbody.innerHTML = `
+            <tr><td colspan="6"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="6"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="6"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+        `;
+        
         const response = await fetch('/api/console/users');
         const data = await response.json();
-        
-        const tbody = document.getElementById('users-table');
         if (!data.users || data.users.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:40px;">No users found</td></tr>';
             return;
@@ -1212,10 +1225,16 @@ async function loadUsers() {
 
 async function loadAuditLogs() {
     try {
+        // Show loading shimmer
+        const tbody = document.getElementById('audit-logs');
+        tbody.innerHTML = `
+            <tr><td colspan="5"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="5"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="5"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+        `;
+        
         const response = await fetch('/api/console/audit-logs');
         const data = await response.json();
-        
-        const tbody = document.getElementById('audit-logs');
         if (!data.logs || data.logs.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:40px;">No audit logs found</td></tr>';
             return;
@@ -1242,10 +1261,16 @@ async function loadAuditLogs() {
 
 async function loadActivityLogs() {
     try {
+        // Show loading shimmer
+        const tbody = document.getElementById('activity-logs');
+        tbody.innerHTML = `
+            <tr><td colspan="4"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="4"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="4"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+        `;
+        
         const response = await fetch('/api/console/activity-logs');
         const data = await response.json();
-        
-        const tbody = document.getElementById('activity-logs');
         if (!data.logs || data.logs.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">No activity logs found</td></tr>';
             return;
@@ -1283,6 +1308,12 @@ async function loadActivityLogs() {
 
 async function loadBandwidthData() {
     try {
+        // Show loading shimmer for stats
+        document.getElementById('total-upload').innerHTML = '<div class="loading" style="height: 28px; width: 100px; border-radius: 6px;"></div>';
+        document.getElementById('total-download').innerHTML = '<div class="loading" style="height: 28px; width: 100px; border-radius: 6px;"></div>';
+        document.getElementById('peak-usage').innerHTML = '<div class="loading" style="height: 28px; width: 100px; border-radius: 6px;"></div>';
+        document.getElementById('avg-speed').innerHTML = '<div class="loading" style="height: 28px; width: 100px; border-radius: 6px;"></div>';
+        
         const response = await fetch('/api/console/bandwidth-usage');
         const data = await response.json();
         
