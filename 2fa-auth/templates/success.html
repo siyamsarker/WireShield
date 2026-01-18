@@ -171,7 +171,19 @@
         // Show a subtle notification that the tab can be closed
         setTimeout(function() {
             if (confirm('VPN access is now active. Would you like to close this tab?')) {
+                // Try multiple methods to close the window/tab
+                // Method 1: Standard window.close()
                 window.close();
+                
+                // Method 2: If window.close() fails, try to open a blank page and close it
+                setTimeout(function() {
+                    window.open('', '_self').close();
+                }, 100);
+                
+                // Method 3: If still can't close, navigate to about:blank
+                setTimeout(function() {
+                    window.location.href = 'about:blank';
+                }, 200);
             }
         }, 5000);
     });
