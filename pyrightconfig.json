@@ -1,0 +1,13 @@
+{
+  "include": [
+    "2fa-auth",
+    "tests"
+  ],
+  "extraPaths": [
+    "2fa-auth"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.8",
+  "typeCheckingMode": "basic"
+}
