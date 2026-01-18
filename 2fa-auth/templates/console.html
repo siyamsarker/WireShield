@@ -2,7 +2,8 @@
 
 {% block title %}WireShield Console{% endblock %}
 
-{% block head %}
+{% block styles %}
+{{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 /* Console Dashboard Specific Styles */
@@ -397,7 +398,7 @@ tr:hover {
 </style>
 {% endblock %}
 
-{% block body %}
+{% block content %}
 <nav>
     <div class="brand">
         <img src="/static/logo.svg" alt="WireShield" style="width:32px;height:32px;">
@@ -592,7 +593,9 @@ tr:hover {
         </div>
     </div>
 </main>
+{% endblock %}
 
+{% block scripts %}
 <script>
 let activityChart, actionsChart, bandwidthChart;
 
