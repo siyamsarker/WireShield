@@ -613,9 +613,44 @@ tbody tr:last-child td {
 }
 
 .loading {
-    animation: shimmer 2s infinite;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    animation: shimmer 2s ease-in-out infinite;
+    background: linear-gradient(
+        90deg,
+        rgba(226, 232, 240, 0.4) 0%,
+        rgba(226, 232, 240, 0.8) 20%,
+        rgba(241, 245, 249, 1) 40%,
+        rgba(226, 232, 240, 0.8) 60%,
+        rgba(226, 232, 240, 0.4) 100%
+    );
     background-size: 1000px 100%;
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.6) 50%,
+        transparent 100%
+    );
+    animation: shimmerGloss 2s ease-in-out infinite;
+}
+
+@keyframes shimmerGloss {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
 }
 
 /* Refresh Button Animation */
