@@ -930,6 +930,20 @@ tbody tr:last-child td {
         
         <!-- Logs Section -->
         <div id="logs-section" style="display: none;">
+            <!-- Filter Controls -->
+            <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+                <input type="text" id="audit-search" placeholder="Search client, action, or IP..." style="flex: 1; min-width: 250px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterAuditLogs()">
+                <select id="audit-status-filter" onchange="filterAuditLogs()" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
+                    <option value="all">All Status</option>
+                    <option value="granted">Granted</option>
+                    <option value="denied">Denied</option>
+                    <option value="success">Success</option>
+                    <option value="verify_only">Verify Only</option>
+                    <option value="qr_generated">QR Generated</option>
+                    <option value="setup_flow">Setup Flow</option>
+                </select>
+            </div>
+            
             <div class="data-table">
                 <div class="table-header">
                     <h3 class="table-title">Audit Logs</h3>
@@ -953,6 +967,21 @@ tbody tr:last-child td {
         
         <!-- Activity Section -->
         <div id="activity-section" style="display: none;">
+            <!-- Filter and Live Controls -->
+            <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="activity-search" placeholder="Search client, IP, or protocol..." style="flex: 1; min-width: 250px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterActivityLogs()">
+                <select id="activity-direction-filter" onchange="filterActivityLogs()" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
+                    <option value="all">All Directions</option>
+                    <option value="in">Inbound</option>
+                    <option value="out">Outbound</option>
+                </select>
+                <label style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.3s ease; user-select: none;">
+                    <input type="checkbox" id="live-toggle" onchange="toggleLiveActivity()" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent);">
+                    <span style="font-size: 14px; font-weight: 600; color: var(--text-main);">Live</span>
+                    <span id="live-indicator" class="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); display: none; animation: none;"></span>
+                </label>
+            </div>
+            
             <div class="data-table">
                 <div class="table-header">
                     <h3 class="table-title">Activity Logs</h3>
@@ -1235,24 +1264,12 @@ async function loadAuditLogs() {
         
         const response = await fetch('/api/console/audit-logs');
         const data = await response.json();
-        if (!data.logs || data.logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:40px;">No audit logs found</td></tr>';
-            return;
-        }
         
-        tbody.innerHTML = data.logs.map(log => `
-            <tr>
-                <td>${new Date(log.timestamp).toLocaleString()}</td>
-                <td>${log.client_id || 'System'}</td>
-                <td>${log.action}</td>
-                <td>
-                    <span style="color: ${getStatusColor(log.status)}">
-                        ${log.status}
-                    </span>
-                </td>
-                <td>${log.ip_address}</td>
-            </tr>
-        `).join('');
+        // Store logs for filtering
+        allAuditLogs = data.logs || [];
+        
+        // Display logs
+        displayAuditLogs(allAuditLogs);
     } catch (error) {
         console.error('Error loading audit logs:', error);
         document.getElementById('audit-logs').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--error);padding:40px;">Error loading audit logs</td></tr>';
@@ -1271,12 +1288,9 @@ async function loadActivityLogs() {
         
         const response = await fetch('/api/console/activity-logs');
         const data = await response.json();
-        if (!data.logs || data.logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">No activity logs found</td></tr>';
-            return;
-        }
         
-        tbody.innerHTML = data.logs.map(log => {
+        // Store logs for filtering
+        allActivityLogs = (data.logs || []).map(log => {
             // Format connection details
             let details = '';
             if (log.direction === 'OUT' || log.direction === 'IN') {
@@ -1287,19 +1301,15 @@ async function loadActivityLogs() {
             } else {
                 details = log.dst_ip || '-';
             }
-            
-            return `
-            <tr>
-                <td>${log.timestamp}</td>
-                <td>${log.client_id || 'Unknown'}</td>
-                <td>
-                    <span style="color: ${log.direction === 'IN' ? 'var(--success)' : 'var(--accent)'}">
-                        ${log.direction || '-'}
-                    </span>
-                </td>
-                <td>${details}</td>
-            </tr>
-        `}).join('');
+            return {
+                ...log,
+                details: details,
+                direction: log.direction ? log.direction.toLowerCase() : 'n/a'
+            };
+        });
+        
+        // Display logs
+        displayActivityLogs(allActivityLogs);
     } catch (error) {
         console.error('Error loading activity logs:', error);
         document.getElementById('activity-logs').innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--error);padding:40px;">Error loading activity logs</td></tr>';
@@ -1555,11 +1565,135 @@ function formatBytes(bytes) {
 }
 
 function refreshData() {
-    const activeSection = document.querySelector('[id$="-section"]:not([style*="none"])').id.replace('-section', '');
-    if (activeSection === 'dashboard') {
+    const activeSection = document.querySelector('[id$="-section"]:not([style*="none"])');
+    if (!activeSection) return;
+    
+    const section = activeSection.id.replace('-section', '');
+    if (section === 'dashboard') {
         loadDashboardData();
+    } else if (section === 'users') {
+        loadUsers();
+    } else if (section === 'logs') {
+        loadAuditLogs();
+    } else if (section === 'activity') {
+        loadActivityLogs();
+    } else if (section === 'bandwidth') {
+        loadBandwidthData();
+    }
+}
+
+// Filter functions
+let allAuditLogs = [];
+let allActivityLogs = [];
+
+function filterAuditLogs() {
+    const searchTerm = document.getElementById('audit-search').value.toLowerCase();
+    const statusFilter = document.getElementById('audit-status-filter').value;
+    
+    const filtered = allAuditLogs.filter(log => {
+        const matchesSearch = !searchTerm || 
+            (log.client_id && log.client_id.toLowerCase().includes(searchTerm)) ||
+            (log.action && log.action.toLowerCase().includes(searchTerm)) ||
+            (log.ip_address && log.ip_address.toLowerCase().includes(searchTerm));
+        
+        const matchesStatus = statusFilter === 'all' || 
+            (log.status && log.status.toLowerCase() === statusFilter);
+        
+        return matchesSearch && matchesStatus;
+    });
+    
+    displayAuditLogs(filtered);
+}
+
+function filterActivityLogs() {
+    const searchTerm = document.getElementById('activity-search').value.toLowerCase();
+    const directionFilter = document.getElementById('activity-direction-filter').value;
+    
+    const filtered = allActivityLogs.filter(log => {
+        const matchesSearch = !searchTerm || 
+            (log.client_id && log.client_id.toLowerCase().includes(searchTerm)) ||
+            (log.details && log.details.toLowerCase().includes(searchTerm)) ||
+            (log.direction && log.direction.toLowerCase().includes(searchTerm));
+        
+        const matchesDirection = directionFilter === 'all' || 
+            (log.direction && log.direction.toLowerCase() === directionFilter);
+        
+        return matchesSearch && matchesDirection;
+    });
+    
+    displayActivityLogs(filtered);
+}
+
+function displayAuditLogs(logs) {
+    const tbody = document.getElementById('audit-logs');
+    if (!logs || logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:40px;">No audit logs found</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = logs.map(log => `
+        <tr>
+            <td>${new Date(log.timestamp).toLocaleString()}</td>
+            <td>${log.client_id || 'System'}</td>
+            <td>${log.action}</td>
+            <td>
+                <span style="color: ${getStatusColor(log.status)}">
+                    ${log.status}
+                </span>
+            </td>
+            <td>${log.ip_address}</td>
+        </tr>
+    `).join('');
+}
+
+function displayActivityLogs(logs) {
+    const tbody = document.getElementById('activity-logs');
+    if (!logs || logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">No activity logs found</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = logs.map(log => `
+        <tr>
+            <td>${new Date(log.timestamp).toLocaleString()}</td>
+            <td>${log.client_id}</td>
+            <td>
+                <span style="color: ${log.direction === 'in' ? 'var(--success)' : 'var(--accent)'}">
+                    ${log.direction ? log.direction.toUpperCase() : 'N/A'}
+                </span>
+            </td>
+            <td>${log.details}</td>
+        </tr>
+    `).join('');
+}
+
+// Live Activity Toggle
+let liveActivityInterval = null;
+
+function toggleLiveActivity() {
+    const checkbox = document.getElementById('live-toggle');
+    const indicator = document.getElementById('live-indicator');
+    
+    if (checkbox.checked) {
+        indicator.style.display = 'block';
+        indicator.style.background = 'var(--success)';
+        indicator.style.animation = 'pulse 2s infinite';
+        
+        // Load immediately
+        loadActivityLogs();
+        
+        // Set up auto-refresh every 5 seconds
+        liveActivityInterval = setInterval(() => {
+            loadActivityLogs();
+        }, 5000);
     } else {
-        showSection(activeSection);
+        indicator.style.display = 'none';
+        indicator.style.animation = 'none';
+        
+        if (liveActivityInterval) {
+            clearInterval(liveActivityInterval);
+            liveActivityInterval = null;
+        }
     }
 }
 
