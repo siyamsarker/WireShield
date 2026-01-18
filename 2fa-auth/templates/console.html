@@ -82,10 +82,7 @@ nav {
     font-weight: 700;
     font-size: 18px;
     letter-spacing: -0.03em;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--accent);
 }
 
 .nav-item {
@@ -322,7 +319,6 @@ header {
 .stat-icon {
     width: 40px;
     height: 40px;
-    background: var(--accent-gradient);
     border-radius: 10px;
     display: flex;
     align-items: center;
@@ -1180,7 +1176,7 @@ async function loadDashboardData() {
             <div class="stat-card">
                 <div class="stat-header">
                     <span class="stat-title">Total Users</span>
-                    <div class="stat-icon">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);">
                         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                             <circle cx="12" cy="7" r="4"/>
@@ -1193,7 +1189,7 @@ async function loadDashboardData() {
             <div class="stat-card">
                 <div class="stat-header">
                     <span class="stat-title">Active Sessions</span>
-                    <div class="stat-icon">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
                         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <circle cx="12" cy="12" r="10"/>
                             <polyline points="12,6 12,12 16,14"/>
@@ -1206,7 +1202,7 @@ async function loadDashboardData() {
             <div class="stat-card">
                 <div class="stat-header">
                     <span class="stat-title">Failed Attempts</span>
-                    <div class="stat-icon">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
                         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <circle cx="12" cy="12" r="10"/>
                             <line x1="15" y1="9" x2="9" y2="15"/>
@@ -1220,7 +1216,7 @@ async function loadDashboardData() {
             <div class="stat-card">
                 <div class="stat-header">
                     <span class="stat-title">Bandwidth</span>
-                    <div class="stat-icon">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
                         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <line x1="18" y1="20" x2="18" y2="10"/>
                             <line x1="12" y1="20" x2="12" y2="4"/>
