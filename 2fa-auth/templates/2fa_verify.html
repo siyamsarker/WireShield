@@ -6,8 +6,11 @@
 {{ super() }}
 <style>
     .auth-container {
-        max-width: 400px;
-        margin: 60px auto;
+        min-height: calc(100vh - 48px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 0;
         text-align: center;
     }
     .card {
