@@ -1,6 +1,7 @@
 import math
 import subprocess
 import logging
+import time
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Depends, HTTPException
 from datetime import datetime
@@ -203,261 +204,68 @@ async def get_activity_logs(
     domain_filter: Optional[str] = None,
     client_id: str = Depends(_check_console_access)
 ):
-    """Fetch WireGuard/iptables kernel logs via journalctl with enhanced parsing."""
-    import re
-    import socket
-    import asyncio
-    import ipaddress
-    from urllib.parse import urlsplit
-    from importlib import import_module
-    from datetime import datetime
-
-    extractor = None
-    extractor_checked = False
-
-    def _extract_display_domain(value: str) -> str:
-        nonlocal extractor, extractor_checked
-        if not value:
-            return "-"
-        raw = str(value).strip()
-        if not raw or raw == "-":
-            return "-"
-
-        host = raw
-        try:
-            if "://" in raw:
-                parsed = urlsplit(raw)
-                host = parsed.hostname or raw
-            else:
-                host = raw.split("/")[0].split("?")[0].split("#")[0]
-                if "@" in host:
-                    host = host.split("@", 1)[1]
-                if host.startswith("[") and "]" in host:
-                    host = host[1:host.index("]")]
-                elif ":" in host:
-                    host = host.split(":", 1)[0]
-        except Exception:
-            host = raw
-
-        host = host.strip().lower().rstrip(".")
-        if not host:
-            return "-"
-
-        try:
-            ipaddress.ip_address(host)
-            return host
-        except Exception:
-            pass
-
-        try:
-            if not extractor_checked:
-                extractor_checked = True
-                try:
-                    tldextract = import_module("tldextract")
-                    extractor = tldextract.TLDExtract(suffix_list_urls=None)
-                except Exception:
-                    extractor = None
-            if extractor:
-                extracted = extractor(host)
-                if extracted.registered_domain:
-                    return extracted.registered_domain
-        except Exception:
-            pass
-
-        if host.startswith("www.") and len(host) > 4:
-            return host[4:]
-
-        return host
-    
-    # Build journalctl command
-    cmd = ["journalctl", "-k", "-n", "5000", "--output=short-iso", "--no-pager"]
-    
-    # Add date filters to journalctl if provided
-    if start_date:
-        cmd.extend(["--since", f"{start_date} 00:00:00"])
-    if end_date:
-        cmd.extend(["--until", f"{end_date} 23:59:59"])
-    
-    if search:
-        # Improved search: grep for term OR any IP associated with term
-        search_terms = [search]
-        try:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT ip_address FROM dns_cache WHERE domain LIKE ?", (f"%{search}%",))
-            ips = [r[0] for r in c.fetchall()]
-            conn.close()
-            search_terms.extend(ips)
-        except Exception as e:
-            logger.error(f"Search cache lookup failed: {e}")
-            
-        # Join with OR operator for pcre2 grep
-        grep_pattern = "|".join(search_terms)
-        cmd.extend(["--grep", grep_pattern])
-        
+    """Fetch pre-ingested WireGuard/iptables logs from SQLite."""
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        lines = proc.stdout.strip().splitlines()
-        
-        # Filter for WireGuard/WS-Audit related logs
-        wg_lines = [l for l in lines if "wireguard:" in l or "WS-Audit" in l or "wg" in l.lower()]
-        wg_lines.reverse()  # Newest first
-        
-        # Load client IP mapping for identification
-        ip_to_client = {}
-        try:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users")
-            for row in c.fetchall():
-                if row[1]: ip_to_client[row[1]] = row[0]
-                if row[2]: ip_to_client[row[2]] = row[0]
-            conn.close()
-        except Exception:
-            pass
-        
-        # Parse logs into structured format
-        structured = []
-        for line in wg_lines:
-            # Parse timestamp: 2023-10-20T10:00:00+00:00 hostname kernel: ...
-            parts = line.split(" ", 3)
-            ts_raw = parts[0] if parts else ""
-            msg = parts[3] if len(parts) > 3 else line
-            
-            # Convert ISO timestamp to readable format (YYYY-MM-DD HH:MM:SS)
-            ts = ts_raw
-            try:
-                if 'T' in ts_raw:
-                    dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
-                    ts = dt.strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                pass
-            
-            # Extract fields from iptables/nftables log format
-            # Example: [WS-Audit] IN=wg0 OUT=eth0 MAC=... SRC=10.66.66.2 DST=1.1.1.1 ...
-            entry = {
-                "timestamp": ts,
-                "client_id": None,
-                "direction": None,
-                "protocol": None,
-                "src_ip": None,
-                "src_port": None,
-                "dst_ip": None,
-                "dst_port": None
-            }
-            
-            # Parse IN/OUT
-            in_match = re.search(r'IN=(\S*)', msg)
-            out_match = re.search(r'OUT=(\S*)', msg)
-            if in_match and in_match.group(1):
-                entry["direction"] = "IN"
-            elif out_match and out_match.group(1):
-                entry["direction"] = "OUT"
-            
-            # Parse SRC/DST
-            src_match = re.search(r'SRC=(\S+)', msg)
-            dst_match = re.search(r'DST=(\S+)', msg)
-            if src_match:
-                entry["src_ip"] = src_match.group(1)
-                # Map to client
-                if entry["src_ip"] in ip_to_client:
-                    entry["client_id"] = ip_to_client[entry["src_ip"]]
-            if dst_match:
-                entry["dst_ip"] = dst_match.group(1)
-                # Also check dst for client
-                if not entry["client_id"] and entry["dst_ip"] in ip_to_client:
-                    entry["client_id"] = ip_to_client[entry["dst_ip"]]
-            
-            # Parse ports
-            spt_match = re.search(r'SPT=(\d+)', msg)
-            dpt_match = re.search(r'DPT=(\d+)', msg)
-            if spt_match: entry["src_port"] = spt_match.group(1)
-            if dpt_match: entry["dst_port"] = dpt_match.group(1)
-            
-            # Parse protocol
-            proto_match = re.search(r'PROTO=(\S+)', msg)
-            if proto_match: entry["protocol"] = proto_match.group(1)
-            
-            # Apply client filter
-            if client_filter and entry["client_id"] != client_filter:
-                continue
+        start_time = time.monotonic()
+        conn = get_db()
+        c = conn.cursor()
 
-            # Apply domain filter
-            if domain_filter:
-                try:
-                    conn = get_db()
-                    c = conn.cursor()
-                    c.execute("SELECT 1 FROM dns_cache WHERE ip_address = ? AND domain LIKE ?", (entry["dst_ip"], f"%{domain_filter}%"))
-                    match = c.fetchone()
-                    conn.close()
-                    if not match:
-                        continue
-                except Exception:
-                   pass
+        conditions = []
+        params: List[Any] = []
 
-            structured.append(entry)
-        
-        # Pagination
-        total = len(structured)
-        start_idx = (page - 1) * limit
-        end_idx = start_idx + limit
-        page_items = structured[start_idx:end_idx]
+        if start_date:
+            conditions.append("a.timestamp >= ?")
+            params.append(f"{start_date} 00:00:00")
+        if end_date:
+            conditions.append("a.timestamp <= ?")
+            params.append(f"{end_date} 23:59:59")
+        if client_filter:
+            conditions.append("a.client_id = ?")
+            params.append(client_filter)
 
-        # Resolve domains for visible items (async)
-        async def resolve_domain(item):
-            if item['direction'] == 'IN' and item['dst_ip']:
-                try:
-                    # 1. Try DNS Cache from Sniffer
-                    try:
-                        conn_cache = get_db()
-                        cc = conn_cache.cursor()
-                        cc.execute("SELECT domain FROM dns_cache WHERE ip_address = ?", (item['dst_ip'],))
-                        row = cc.fetchone()
-                        conn_cache.close()
-                        if row and row[0]:
-                            raw_domain = row[0]
-                            item['dst_domain_raw'] = raw_domain
-                            item['dst_domain'] = _extract_display_domain(raw_domain)
-                            return item
-                    except Exception:
-                        pass
-                        
-                    # 2. Fallback to Reverse DNS
-                    loop = asyncio.get_running_loop()
-                    # Run blocking socket call in executor
-                    domain_info = await loop.run_in_executor(None, socket.gethostbyaddr, item['dst_ip'])
-                    raw_domain = domain_info[0]
-                    item['dst_domain_raw'] = raw_domain
-                    item['dst_domain'] = _extract_display_domain(raw_domain)
-                    
-                    # Cache the result for future filtering
-                    try:
-                        conn_cache = get_db()
-                        cc = conn_cache.cursor()
-                        cc.execute("INSERT OR IGNORE INTO dns_cache (ip_address, domain) VALUES (?, ?)", (item['dst_ip'], raw_domain))
-                        conn_cache.commit()
-                        conn_cache.close()
-                    except Exception:
-                        pass
-                except Exception:
-                    item['dst_domain'] = "-"
-            else:
-                item['dst_domain'] = "-"
-            return item
+        if search:
+            conditions.append("(a.client_id LIKE ? OR a.src_ip LIKE ? OR a.dst_ip LIKE ? OR a.protocol LIKE ? OR dc.domain LIKE ?)")
+            term = f"%{search}%"
+            params.extend([term, term, term, term, term])
 
-        # Run lookups concurrently
-        if page_items:
-            page_items = await asyncio.gather(*[resolve_domain(item) for item in page_items])
+        if domain_filter:
+            conditions.append("dc.domain LIKE ?")
+            params.append(f"%{domain_filter}%")
+
+        query = (
+            "SELECT a.timestamp, a.client_id, a.direction, a.protocol, a.src_ip, a.src_port, "
+            "a.dst_ip, a.dst_port, dc.domain as dst_domain "
+            "FROM activity_log a "
+            "LEFT JOIN dns_cache dc ON dc.ip_address = a.dst_ip"
+        )
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        count_query = "SELECT COUNT(*) FROM activity_log a LEFT JOIN dns_cache dc ON dc.ip_address = a.dst_ip"
+        if conditions:
+            count_query += " WHERE " + " AND ".join(conditions)
+            c.execute(count_query, tuple(params))
         else:
-            page_items = []
-            
+            c.execute(count_query)
+        total = c.fetchone()[0]
+
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        offset = (page - 1) * limit
+        params_with_paging = params + [limit, offset]
+        c.execute(query, tuple(params_with_paging))
+
+        rows = [dict(row) for row in c.fetchall()]
+        conn.close()
+
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.info("Activity logs query: total=%s page=%s elapsed=%sms", total, page, elapsed_ms)
+
         return {
-            "logs": page_items,
+            "logs": rows,
             "page": page,
             "pages": math.ceil(total / limit) if limit > 0 else 1,
             "total": total
         }
-        
     except Exception as e:
         logger.error(f"Failed to fetch logs: {e}")
         return {"logs": [], "page": 1, "pages": 0, "total": 0}
