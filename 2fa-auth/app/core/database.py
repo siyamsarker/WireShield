@@ -88,6 +88,16 @@ def init_db():
             line_hash TEXT UNIQUE
         )
     ''')
+
+    # Activity Log metrics table: tracks cleanup/retention stats
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS activity_log_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            last_cleanup_at TIMESTAMP,
+            deleted_rows INTEGER DEFAULT 0,
+            remaining_rows INTEGER DEFAULT 0
+        )
+    ''')
     
     conn.commit()
     # Migrations: add wg_ipv4/wg_ipv6 columns if missing
