@@ -194,7 +194,7 @@ function installQuestions() {
 	_ws_print_installation_wizard_box() {
 		if [[ ${USE_ASCII_BOX:-0} -eq 1 ]]; then
 			printf "%b\n" "${ORANGE}============================================================${NC}"
-			printf "%b\n" "${ORANGE}=                  Installation Wizard                   =${NC}"
+			printf "%b\n" "${ORANGE}=                  Installation Wizard                     =${NC}"
 			printf "%b\n" "${ORANGE}============================================================${NC}"
 			printf "\n"
 			printf "%s\n" "This setup wizard will guide you through the VPN configuration."
@@ -255,7 +255,6 @@ function installQuestions() {
 		echo ""
 		echo -e "         Version ${GREEN}2.3.0${NC} • Built with ${RED}❤${NC}  by ${GREEN}Siyam Sarker${NC}"
 		echo -e "         Repository: ${GREEN}github.com/siyamsarker/WireShield${NC}"
-		echo ""
 		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 		echo -e ""
 		_ws_print_installation_wizard_box
