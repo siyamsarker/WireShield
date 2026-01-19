@@ -970,6 +970,8 @@ tbody tr:last-child td {
             <!-- Filter Controls -->
             <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
                 <input type="text" id="audit-search" placeholder="Search client, action, or IP..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterAuditLogs()">
+                <input type="date" id="audit-date-from" aria-label="Audit logs start date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="filterAuditLogs()">
+                <input type="date" id="audit-date-to" aria-label="Audit logs end date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="filterAuditLogs()">
                 <select id="audit-status-filter" onchange="filterAuditLogs()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
                     <option value="all">All Status</option>
                     <option value="granted">Granted</option>
@@ -1007,6 +1009,8 @@ tbody tr:last-child td {
             <!-- Filter and Live Controls -->
             <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
                 <input type="text" id="activity-search" placeholder="Search client, IP, or protocol..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterActivityLogs()">
+                <input type="date" id="activity-date-from" aria-label="Activity logs start date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="filterActivityLogs()">
+                <input type="date" id="activity-date-to" aria-label="Activity logs end date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="filterActivityLogs()">
                 <select id="activity-direction-filter" onchange="filterActivityLogs()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
                     <option value="all">All Directions</option>
                     <option value="in">Inbound</option>
@@ -1627,9 +1631,31 @@ function refreshData() {
 let allAuditLogs = [];
 let allActivityLogs = [];
 
+function isWithinDateRange(timestamp, fromValue, toValue) {
+    if (!fromValue && !toValue) return true;
+    const ts = new Date(timestamp);
+    if (Number.isNaN(ts.getTime())) return true;
+
+    let fromDate = null;
+    let toDate = null;
+
+    if (fromValue) {
+        fromDate = new Date(`${fromValue}T00:00:00`);
+    }
+    if (toValue) {
+        toDate = new Date(`${toValue}T23:59:59.999`);
+    }
+
+    if (fromDate && ts < fromDate) return false;
+    if (toDate && ts > toDate) return false;
+    return true;
+}
+
 function filterAuditLogs() {
     const searchTerm = document.getElementById('audit-search').value.toLowerCase();
     const statusFilter = document.getElementById('audit-status-filter').value;
+    const dateFrom = document.getElementById('audit-date-from').value;
+    const dateTo = document.getElementById('audit-date-to').value;
     
     const filtered = allAuditLogs.filter(log => {
         const matchesSearch = !searchTerm || 
@@ -1640,7 +1666,9 @@ function filterAuditLogs() {
         const matchesStatus = statusFilter === 'all' || 
             (log.status && log.status.toLowerCase() === statusFilter);
         
-        return matchesSearch && matchesStatus;
+        const matchesDate = isWithinDateRange(log.timestamp, dateFrom, dateTo);
+
+        return matchesSearch && matchesStatus && matchesDate;
     });
     
     displayAuditLogs(filtered);
@@ -1649,6 +1677,8 @@ function filterAuditLogs() {
 function filterActivityLogs() {
     const searchTerm = document.getElementById('activity-search').value.toLowerCase();
     const directionFilter = document.getElementById('activity-direction-filter').value;
+    const dateFrom = document.getElementById('activity-date-from').value;
+    const dateTo = document.getElementById('activity-date-to').value;
     
     const filtered = allActivityLogs.filter(log => {
         const matchesSearch = !searchTerm || 
@@ -1659,7 +1689,9 @@ function filterActivityLogs() {
         const matchesDirection = directionFilter === 'all' || 
             (log.direction && log.direction.toLowerCase() === directionFilter);
         
-        return matchesSearch && matchesDirection;
+        const matchesDate = isWithinDateRange(log.timestamp, dateFrom, dateTo);
+
+        return matchesSearch && matchesDirection && matchesDate;
     });
     
     displayActivityLogs(filtered);
