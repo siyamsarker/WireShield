@@ -71,6 +71,23 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Activity Log table: stores parsed WireGuard/iptables audit events
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            client_id TEXT,
+            direction TEXT,
+            protocol TEXT,
+            src_ip TEXT,
+            src_port TEXT,
+            dst_ip TEXT,
+            dst_port TEXT,
+            raw_line TEXT,
+            line_hash TEXT UNIQUE
+        )
+    ''')
     
     conn.commit()
     # Migrations: add wg_ipv4/wg_ipv6 columns if missing
@@ -84,6 +101,29 @@ def init_db():
         pass
     try:
         c.execute('ALTER TABLE users ADD COLUMN console_access BOOLEAN DEFAULT 0')
+    except Exception:
+        pass
+
+    # Performance indexes
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_sessions_client_expires ON sessions(client_id, expires_at)")
+    except Exception:
+        pass
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_client ON audit_log(client_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_status ON audit_log(status)")
+    except Exception:
+        pass
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_dns_cache_domain ON dns_cache(domain)")
+    except Exception:
+        pass
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_timestamp ON activity_log(timestamp)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_client ON activity_log(client_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_src ON activity_log(src_ip)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_dst ON activity_log(dst_ip)")
     except Exception:
         pass
     conn.close()

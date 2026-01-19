@@ -4,6 +4,8 @@ import subprocess
 import logging
 import threading
 import socket
+import hashlib
+import re
 from datetime import datetime
 from typing import Dict
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -280,6 +282,137 @@ def _monitor_wireguard_sessions():
 
 
 # ----------------------------------------------------------------------------
+# Activity Log Ingestion (journalctl -> SQLite)
+# ----------------------------------------------------------------------------
+def _ingest_activity_logs():
+    journalctl = shutil.which("journalctl")
+    if not journalctl:
+        logger.warning("journalctl not found; activity log ingestion disabled")
+        return
+
+    poll_interval = 5
+    logger.info("Activity log ingestion enabled (poll=%ss)", poll_interval)
+
+    while True:
+        start_time = time.monotonic()
+        try:
+            # Determine starting point
+            last_ts = None
+            try:
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("SELECT MAX(timestamp) FROM activity_log")
+                last_ts = c.fetchone()[0]
+                conn.close()
+            except Exception:
+                last_ts = None
+
+            cmd = [journalctl, "-k", "-n", "5000", "--output=short-iso", "--no-pager"]
+            if last_ts:
+                cmd.extend(["--since", last_ts])
+
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            lines = proc.stdout.strip().splitlines() if proc.stdout else []
+
+            wg_lines = [l for l in lines if "wireguard:" in l or "WS-Audit" in l or "wg" in l.lower()]
+            if not wg_lines:
+                time.sleep(poll_interval)
+                continue
+
+            # Load client IP mapping for identification
+            ip_to_client = {}
+            try:
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users")
+                for row in c.fetchall():
+                    if row[1]:
+                        ip_to_client[row[1]] = row[0]
+                    if row[2]:
+                        ip_to_client[row[2]] = row[0]
+                conn.close()
+            except Exception:
+                pass
+
+            entries = []
+            for line in wg_lines:
+                parts = line.split(" ", 3)
+                ts_raw = parts[0] if parts else ""
+                msg = parts[3] if len(parts) > 3 else line
+
+                ts = ts_raw
+                try:
+                    if 'T' in ts_raw:
+                        dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
+                        ts = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    pass
+
+                direction = None
+                protocol = None
+                src_ip = None
+                src_port = None
+                dst_ip = None
+                dst_port = None
+                client_id = None
+
+                in_match = re.search(r'IN=(\S*)', msg)
+                out_match = re.search(r'OUT=(\S*)', msg)
+                if in_match and in_match.group(1):
+                    direction = "IN"
+                elif out_match and out_match.group(1):
+                    direction = "OUT"
+
+                src_match = re.search(r'SRC=(\S+)', msg)
+                dst_match = re.search(r'DST=(\S+)', msg)
+                if src_match:
+                    src_ip = src_match.group(1)
+                    if src_ip in ip_to_client:
+                        client_id = ip_to_client[src_ip]
+                if dst_match:
+                    dst_ip = dst_match.group(1)
+                    if not client_id and dst_ip in ip_to_client:
+                        client_id = ip_to_client[dst_ip]
+
+                spt_match = re.search(r'SPT=(\d+)', msg)
+                dpt_match = re.search(r'DPT=(\d+)', msg)
+                if spt_match:
+                    src_port = spt_match.group(1)
+                if dpt_match:
+                    dst_port = dpt_match.group(1)
+
+                proto_match = re.search(r'PROTO=(\S+)', msg)
+                if proto_match:
+                    protocol = proto_match.group(1)
+
+                line_hash = hashlib.sha256(line.encode('utf-8', errors='ignore')).hexdigest()
+                entries.append((ts, client_id, direction, protocol, src_ip, src_port, dst_ip, dst_port, line, line_hash))
+
+            if entries:
+                conn = get_db()
+                c = conn.cursor()
+                before = conn.total_changes
+                c.executemany(
+                    """
+                    INSERT OR IGNORE INTO activity_log
+                    (timestamp, client_id, direction, protocol, src_ip, src_port, dst_ip, dst_port, raw_line, line_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    entries
+                )
+                conn.commit()
+                inserted = conn.total_changes - before
+                conn.close()
+
+                elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                logger.info("Activity log ingestion: %s lines, %s inserted, %sms", len(entries), inserted, elapsed_ms)
+        except Exception as exc:
+            logger.debug(f"Activity log ingestion error: {exc}")
+        finally:
+            time.sleep(poll_interval)
+
+
+# ----------------------------------------------------------------------------
 # Lightweight HTTP redirector (port 8080) for captive portal
 # ----------------------------------------------------------------------------
 class _RedirectHandler(BaseHTTPRequestHandler):
@@ -318,5 +451,6 @@ def _start_http_redirector_ipv6():
 def start_background_tasks():
     threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
     threading.Thread(target=_monitor_wireguard_sessions, daemon=True).start()
+    threading.Thread(target=_ingest_activity_logs, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv4, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv6, daemon=True).start()
