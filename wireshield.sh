@@ -2085,13 +2085,15 @@ function toggleActivityLogging() {
 function configureLogRetention() {
 	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
 	echo ""
-	echo "Set the number of days to keep archived activity logs."
+	echo "Set the number of days to keep activity logs in the database."
 	echo "Logs older than this will be automatically deleted."
 	
-	if [[ -f /etc/wireguard/params ]]; then
-		source /etc/wireguard/params
+	# Read current retention from environment or database config
+	local current_retention="30"
+	if [[ -f /etc/wireguard/2fa.env ]]; then
+		local env_val=$(grep "^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=" /etc/wireguard/2fa.env | cut -d'=' -f2)
+		[[ -n "$env_val" ]] && current_retention="$env_val"
 	fi
-	local current_retention="${ACTIVITY_LOG_RETENTION:-15}"
 	
 	read -rp "Retention period in days [${current_retention}]: " -e DAYS
 	DAYS=${DAYS:-$current_retention}
@@ -2101,151 +2103,129 @@ function configureLogRetention() {
 		return
 	fi
 	
-	# Update params file
-	if grep -q "ACTIVITY_LOG_RETENTION" /etc/wireguard/params; then
-		sed -i "s/^ACTIVITY_LOG_RETENTION=.*/ACTIVITY_LOG_RETENTION=${DAYS}/" /etc/wireguard/params
+	# Update or create environment file
+	mkdir -p /etc/wireguard
+	if [[ -f /etc/wireguard/2fa.env ]]; then
+		if grep -q "^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=" /etc/wireguard/2fa.env; then
+			sed -i "s/^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=.*/WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}/" /etc/wireguard/2fa.env
+		else
+			echo "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}" >> /etc/wireguard/2fa.env
+		fi
 	else
-		echo "ACTIVITY_LOG_RETENTION=${DAYS}" >> /etc/wireguard/params
+		echo "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}" > /etc/wireguard/2fa.env
 	fi
 	
-	# Update archiving script
-	_ws_setup_log_archiving "${DAYS}"
-	
 	echo -e "${GREEN}Retention period updated to ${DAYS} days.${NC}"
+	echo -e "${ORANGE}Restart WireShield 2FA service for changes to take effect:${NC}"
+	echo -e "  sudo systemctl restart wireshield"
 }
 
 function viewUserActivityLogs() {
 	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
 	echo ""
 	
-	# Mapping IPs to Names
-	declare -A ip_map
-	local cfg="/etc/wireguard/${SERVER_WG_NIC}.conf"
+	# Check if database exists
+	if [[ ! -f /etc/wireshield/2fa/auth.db ]]; then
+		echo -e "${RED}Error: Activity log database not found.${NC}"
+		return
+	fi
 	
-	# Read config to map IPs to Client Names
-	# Loop through file, capturing Client Name and then the Address/AllowedIPs
-	local current_client=""
-	while IFS= read -r line; do
-		if [[ $line =~ ^###[[:space:]]Client[[:space:]](.+) ]]; then
-			# Remove expiry info if present to get just the name
-			local info="${BASH_REMATCH[1]}"
-			if [[ $info =~ ^([^[:space:]]+)[[:space:]]\| ]]; then
-				current_client="${BASH_REMATCH[1]}"
-			else
-				current_client="${info}"
-			fi
-		elif [[ $line =~ ^AllowedIPs[[:space:]]*=[[:space:]]*(.*) ]]; then
-			if [[ -n "${current_client}" ]]; then
-				local ips="${BASH_REMATCH[1]}"
-				# Split by comma
-				IFS=',' read -ra ADDR <<< "$ips"
-				for i in "${ADDR[@]}"; do
-					# Remove /32 or /128
-					local clean_ip=$(echo "$i" | cut -d'/' -f1 | tr -d '[:space:]')
-					ip_map["$clean_ip"]="$current_client"
-				done
-				current_client=""
-			fi
-		fi
-	done < "$cfg"
+	local sqlite3_cmd="sqlite3 /etc/wireshield/2fa/auth.db"
+	
+	# Check if there are any logs
+	local log_count=$($sqlite3_cmd "SELECT COUNT(*) FROM activity_log;" 2>/dev/null)
+	if [[ -z "$log_count" ]] || [[ "$log_count" -eq 0 ]]; then
+		echo -e "${ORANGE}No activity logs found in database.${NC}"
+		echo "Make sure activity logging is enabled and traffic is flowing."
+		return
+	fi
 	
 	echo "Select filter:"
-	echo "   1) View all logs"
+	echo "   1) View all logs (last 100)"
 	echo "   2) Filter by specific user/client"
 	read -rp "Option [1-2]: " -e OPT
 	
-	local filter_ip=""
+	local where_clause=""
+	local selected_client=""
+	
 	if [[ "$OPT" == "2" ]]; then
-		local name=$(_ws_choose_client)
-		if [[ -z "$name" ]]; then return; fi
+		# Get list of users with activity
+		echo ""
+		echo "Users with activity logs:"
+		local user_list=$($sqlite3_cmd "SELECT DISTINCT client_id FROM activity_log WHERE client_id IS NOT NULL ORDER BY client_id;" 2>/dev/null)
 		
-		# Find IP for this client
-		# We can just grep the config
-		# But we already have the map. Iterate or just re-parse specifically for this user.
-		# Simpler: grep the AllowedIPs for this client block.
-		local client_ips=$(sed -n "/^### Client ${name}/,/^$/p" "$cfg" | grep "AllowedIPs" | cut -d'=' -f2)
-		# Just take the first IPv4 ?
-		# A user might have v4 and v6. We need to filter logs where SRC equals any of their IPs.
-		# Construct a grep pattern for the IPs.
-		local grep_pattern=""
-		IFS=',' read -ra ADDR <<< "$client_ips"
-		for i in "${ADDR[@]}"; do
-			local clean_ip=$(echo "$i" | cut -d'/' -f1 | tr -d '[:space:]')
-			if [[ -z "$grep_pattern" ]]; then
-				grep_pattern="SRC=${clean_ip} "
-			else
-				grep_pattern="${grep_pattern}|SRC=${clean_ip} "
-			fi
-		done
+		if [[ -z "$user_list" ]]; then
+			echo -e "${ORANGE}No user-associated logs found.${NC}"
+			return
+		fi
 		
-		echo -e "Showing logs for user: ${GREEN}${name}${NC}"
+		local i=1
+		declare -a clients
+		while IFS= read -r client; do
+			clients[$i]="$client"
+			echo "   $i) $client"
+			((i++))
+		done <<< "$user_list"
+		
+		echo ""
+		read -rp "Select user number [1-$((i-1))]: " USER_NUM
+		
+		if [[ ! "$USER_NUM" =~ ^[0-9]+$ ]] || [[ "$USER_NUM" -lt 1 ]] || [[ "$USER_NUM" -ge "$i" ]]; then
+			echo -e "${ORANGE}Invalid selection.${NC}"
+			return
+		fi
+		
+		selected_client="${clients[$USER_NUM]}"
+		where_clause="WHERE client_id = '${selected_client}'"
+		echo -e "Showing logs for user: ${GREEN}${selected_client}${NC}"
 	else
 		echo -e "Showing logs for ${GREEN}ALL USERS${NC}"
 	fi
 	
-	echo -e "${ORANGE}Retrieving logs (this may take a moment)...${NC}"
+	echo -e "${ORANGE}Retrieving logs from database...${NC}"
+	echo ""
 	
-	# Temporary file for aggregation
-	local tmp_log=$(mktemp)
+	# Query database with optional domain resolution
+	local query="
+		SELECT 
+			a.timestamp,
+			COALESCE(a.client_id, 'System') as client,
+			a.direction,
+			a.protocol,
+			a.src_ip,
+			a.src_port,
+			a.dst_ip,
+			a.dst_port,
+			COALESCE(d.domain, '-') as domain
+		FROM activity_log a
+		LEFT JOIN dns_cache d ON d.ip_address = a.dst_ip
+		${where_clause}
+		ORDER BY a.timestamp DESC
+		LIMIT 100;
+	"
 	
-	# 1. Get archived logs (if any exist)
-	# 2. Get today's logs from journalctl
+	# Format output with column headers
+	echo "┌────────────────────┬────────────┬──────┬────────┬─────────────────┬──────┬─────────────────┬──────┬────────────────────┐"
+	printf "│ %-18s │ %-10s │ %-4s │ %-6s │ %-15s │ %-4s │ %-15s │ %-4s │ %-18s │\n" "Time" "Client" "Dir" "Proto" "Source IP" "Port" "Dest IP" "Port" "Domain"
+	echo "├────────────────────┼────────────┼──────┼────────┼─────────────────┼──────┼─────────────────┼──────┼────────────────────┤"
 	
-	# Function to parse and format log lines
-	# Log format: ... kernel: [WS-Audit] IN=wg0 OUT=eth0 ... SRC=10.66.66.2 DST=1.1.1.1 ...
-	parse_logs() {
-		# We want: Date Time | User | Source | Destination
-		while IFS= read -r line; do
-			# Extract timestamp (ISO format from journalctl short-iso: 2023-10-27T10:00:00+0000)
-			# or syslog format depending on source.
-			# Let's assume the grep input line has the timestamp at the beginning.
-			
-			# Extract fields
-			# SRC=...
-			local src=$(echo "$line" | grep -o 'SRC=[^ ]*' | cut -d= -f2)
-			# DST=...
-			local dst=$(echo "$line" | grep -o 'DST=[^ ]*' | cut -d= -f2)
-			# DPT=... (Optional)
-			local dpt=$(echo "$line" | grep -o 'DPT=[^ ]*' | cut -d= -f2)
-			# PROTO=...
-			local proto=$(echo "$line" | grep -o 'PROTO=[^ ]*' | cut -d= -f2)
-			
-			# Timestamp: fields 1 and 2 usually?
-			# journalctl -o short-iso output example:
-			# 2023-12-29T19:00:00+0600 hostname kernel: [WS-Audit] ...
-			local ts=$(echo "$line" | awk '{print $1}')
-			
-			local user="${ip_map[$src]}"
-			if [[ -z "$user" ]]; then user="Unknown($src)"; fi
-			
-			# Format nicely
-			# TS | User | SRC -> DST:PORT (PROTO)
-			printf "%-25s | %-15s | %-15s -> %s:%s (%s)\n" "$ts" "$user" "$src" "$dst" "${dpt:--}" "$proto"
-		done
-	}
+	$sqlite3_cmd "$query" 2>/dev/null | while IFS='|' read -r ts client dir proto src_ip src_port dst_ip dst_port domain; do
+		# Truncate long values
+		client=$(echo "$client" | cut -c1-10)
+		dir=$(echo "$dir" | cut -c1-4)
+		proto=$(echo "$proto" | cut -c1-6)
+		src_ip=$(echo "$src_ip" | cut -c1-15)
+		src_port=$(echo "${src_port:-0}" | cut -c1-4)
+		dst_ip=$(echo "$dst_ip" | cut -c1-15)
+		dst_port=$(echo "${dst_port:-0}" | cut -c1-4)
+		domain=$(echo "${domain:--}" | cut -c1-18)
+		
+		printf "│ %-18s │ %-10s │ %-4s │ %-6s │ %-15s │ %-4s │ %-15s │ %-4s │ %-18s │\n" "$ts" "$client" "$dir" "$proto" "$src_ip" "$src_port" "$dst_ip" "$dst_port" "$domain"
+	done
 	
-	# Collect logs
-	# Archived
-	find /var/log/wireshield/archives -name "activity-*.log" -print0 2>/dev/null | xargs -0 cat 2>/dev/null >> "$tmp_log"
-	# Today
-	journalctl -k -g "WS-Audit" --since "today" --output=short-iso >> "$tmp_log"
-	
-	# Filter and Display
-	if [[ -n "$grep_pattern" ]]; then
-		if [[ -s "$tmp_log" ]]; then
-			grep -E "$grep_pattern" "$tmp_log" | parse_logs | less
-		else
-			echo "No logs found."
-		fi
-	else
-		if [[ -s "$tmp_log" ]]; then
-			cat "$tmp_log" | parse_logs | less
-		else
-			echo "No logs found."
-		fi
-	fi
-	
-	rm -f "$tmp_log"
+	echo "└────────────────────┴────────────┴──────┴────────┴─────────────────┴──────┴─────────────────┴──────┴────────────────────┘"
+	echo ""
+	echo -e "${GREEN}Showing up to 100 most recent logs.${NC}"
 }
 
 function activityLogsMenu() {
