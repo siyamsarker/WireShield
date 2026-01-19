@@ -6,13 +6,14 @@ import threading
 import socket
 import hashlib
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from app.core.config import (
     AUTH_HTTP_PORT, WIREGUARD_PARAMS_PATH, WG_INTERFACE,
-    SESSION_IDLE_TIMEOUT_SECONDS, DISCONNECT_GRACE_SECONDS, UI_BASE_URL
+    SESSION_IDLE_TIMEOUT_SECONDS, DISCONNECT_GRACE_SECONDS, UI_BASE_URL,
+    ACTIVITY_LOG_RETENTION_DAYS
 )
 from app.core.database import get_db
 from app.core.security import (
@@ -413,6 +414,50 @@ def _ingest_activity_logs():
 
 
 # ----------------------------------------------------------------------------
+# Activity Log Retention Cleanup
+# ----------------------------------------------------------------------------
+def _cleanup_activity_logs():
+    retention_days = max(1, ACTIVITY_LOG_RETENTION_DAYS)
+    logger.info("Activity log retention cleanup enabled (days=%s)", retention_days)
+
+    while True:
+        try:
+            cutoff = (datetime.utcnow() - timedelta(days=retention_days)).strftime("%Y-%m-%d %H:%M:%S")
+            conn = get_db()
+            c = conn.cursor()
+
+            c.execute("SELECT COUNT(*) FROM activity_log")
+            total_before = c.fetchone()[0]
+
+            c.execute("DELETE FROM activity_log WHERE timestamp < ?", (cutoff,))
+            deleted_rows = c.rowcount
+
+            c.execute("SELECT COUNT(*) FROM activity_log")
+            total_after = c.fetchone()[0]
+
+            c.execute(
+                "INSERT INTO activity_log_metrics (last_cleanup_at, deleted_rows, remaining_rows) VALUES (CURRENT_TIMESTAMP, ?, ?)",
+                (deleted_rows, total_after)
+            )
+
+            conn.commit()
+            conn.close()
+
+            logger.info(
+                "Activity log cleanup: cutoff=%s deleted=%s remaining=%s (before=%s)",
+                cutoff,
+                deleted_rows,
+                total_after,
+                total_before,
+            )
+        except Exception as exc:
+            logger.debug(f"Activity log cleanup error: {exc}")
+
+        # Run once a day
+        time.sleep(24 * 60 * 60)
+
+
+# ----------------------------------------------------------------------------
 # Lightweight HTTP redirector (port 8080) for captive portal
 # ----------------------------------------------------------------------------
 class _RedirectHandler(BaseHTTPRequestHandler):
@@ -452,5 +497,6 @@ def start_background_tasks():
     threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
     threading.Thread(target=_monitor_wireguard_sessions, daemon=True).start()
     threading.Thread(target=_ingest_activity_logs, daemon=True).start()
+    threading.Thread(target=_cleanup_activity_logs, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv4, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv6, daemon=True).start()

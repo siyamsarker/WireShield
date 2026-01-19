@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from app.core.database import get_db
 from app.core.security import audit_log
-from app.core.config import LOG_LEVEL
+from app.core.config import LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS
 from app.templates import get_access_denied_html, get_console_html
 
 logger = logging.getLogger(__name__)
@@ -330,6 +330,46 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
             "failed_attempts_24h": 0,
             "bandwidth_24h": 0,
             "new_users_24h": 0
+        }
+
+
+@router.get("/api/console/activity-metrics")
+async def get_activity_metrics(client_id: str = Depends(_check_console_access)):
+    try:
+        conn = get_db()
+        c = conn.cursor()
+
+        c.execute("SELECT COUNT(*) FROM activity_log")
+        total = c.fetchone()[0]
+
+        c.execute("SELECT MIN(timestamp), MAX(timestamp) FROM activity_log")
+        oldest, newest = c.fetchone()
+
+        c.execute(
+            "SELECT last_cleanup_at, deleted_rows, remaining_rows FROM activity_log_metrics ORDER BY id DESC LIMIT 1"
+        )
+        row = c.fetchone()
+        conn.close()
+
+        return {
+            "retention_days": ACTIVITY_LOG_RETENTION_DAYS,
+            "total_logs": total,
+            "oldest_log": oldest,
+            "newest_log": newest,
+            "last_cleanup_at": row[0] if row else None,
+            "deleted_last_run": row[1] if row else 0,
+            "remaining_after_cleanup": row[2] if row else total
+        }
+    except Exception as e:
+        logger.error(f"Error fetching activity metrics: {e}")
+        return {
+            "retention_days": ACTIVITY_LOG_RETENTION_DAYS,
+            "total_logs": 0,
+            "oldest_log": None,
+            "newest_log": None,
+            "last_cleanup_at": None,
+            "deleted_last_run": 0,
+            "remaining_after_cleanup": 0
         }
 
 @router.get("/api/console/bandwidth-usage")

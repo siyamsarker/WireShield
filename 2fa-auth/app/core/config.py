@@ -34,6 +34,7 @@ WG_INTERFACE = getenv_multi("", "WS_WG_INTERFACE", "WG_INTERFACE", "WS_SERVER_WG
 SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("3600", "WS_2FA_SESSION_IDLE_TIMEOUT", "2FA_SESSION_IDLE_TIMEOUT"))
 # Disconnect grace: revoke session after this many seconds without any handshake.
 DISCONNECT_GRACE_SECONDS = int(getenv_multi("3600", "WS_2FA_DISCONNECT_GRACE_SECONDS", "2FA_DISCONNECT_GRACE_SECONDS"))
+ACTIVITY_LOG_RETENTION_DAYS = int(getenv_multi("30", "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS", "2FA_ACTIVITY_LOG_RETENTION_DAYS"))
 
 # Determine UI access URL based on config
 if TFA_DOMAIN:
