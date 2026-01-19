@@ -964,6 +964,9 @@ tbody tr:last-child td {
                         <!-- Users will be loaded here -->
                     </tbody>
                 </table>
+                <div id="users-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-card);">
+                    <!-- Pagination controls rendered by JS -->
+                </div>
             </div>
         </div>
         
@@ -971,10 +974,10 @@ tbody tr:last-child td {
         <div id="logs-section" style="display: none;">
             <!-- Filter Controls -->
             <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
-                <input type="text" id="audit-search" placeholder="Search client, action, or IP..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterAuditLogs()">
-                <input type="date" id="audit-date-from" aria-label="Audit logs start date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="filterAuditLogs()">
-                <input type="date" id="audit-date-to" aria-label="Audit logs end date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="filterAuditLogs()">
-                <select id="audit-status-filter" onchange="filterAuditLogs()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
+                <input type="text" id="audit-search" placeholder="Search client, action, or IP..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="reloadAuditLogs()">
+                <input type="date" id="audit-date-from" aria-label="Audit logs start date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="reloadAuditLogs()">
+                <input type="date" id="audit-date-to" aria-label="Audit logs end date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="reloadAuditLogs()">
+                <select id="audit-status-filter" onchange="applyAuditFilters()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
                     <option value="all">All Status</option>
                     <option value="granted">Granted</option>
                     <option value="denied">Denied</option>
@@ -1003,6 +1006,9 @@ tbody tr:last-child td {
                         <!-- Audit logs will be loaded here -->
                     </tbody>
                 </table>
+                <div id="audit-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-card);">
+                    <!-- Pagination controls rendered by JS -->
+                </div>
             </div>
         </div>
         
@@ -1010,10 +1016,10 @@ tbody tr:last-child td {
         <div id="activity-section" style="display: none;">
             <!-- Filter and Live Controls -->
             <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
-                <input type="text" id="activity-search" placeholder="Search client, IP, or protocol..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="filterActivityLogs()">
-                <input type="date" id="activity-date-from" aria-label="Activity logs start date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="filterActivityLogs()">
-                <input type="date" id="activity-date-to" aria-label="Activity logs end date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="filterActivityLogs()">
-                <select id="activity-direction-filter" onchange="filterActivityLogs()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
+                <input type="text" id="activity-search" placeholder="Search client, IP, or protocol..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="reloadActivityLogs()">
+                <input type="date" id="activity-date-from" aria-label="Activity logs start date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="reloadActivityLogs()">
+                <input type="date" id="activity-date-to" aria-label="Activity logs end date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="reloadActivityLogs()">
+                <select id="activity-direction-filter" onchange="applyActivityFilters()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
                     <option value="all">All Directions</option>
                     <option value="in">Inbound</option>
                     <option value="out">Outbound</option>
@@ -1042,6 +1048,9 @@ tbody tr:last-child td {
                         <!-- Activity logs will be loaded here -->
                     </tbody>
                 </table>
+                <div id="activity-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-card);">
+                    <!-- Pagination controls rendered by JS -->
+                </div>
             </div>
         </div>
         
@@ -1254,8 +1263,9 @@ async function loadDashboardData() {
     }
 }
 
-async function loadUsers() {
+async function loadUsers(page = 1) {
     try {
+        usersPage = page;
         // Show loading shimmer
         const tbody = document.getElementById('users-table');
         tbody.innerHTML = `
@@ -1263,48 +1273,53 @@ async function loadUsers() {
             <tr><td colspan="8"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
             <tr><td colspan="8"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
         `;
-        
-        const response = await fetch('/api/console/users');
+
+        const response = await fetch(`/api/console/users?page=${page}&limit=20`);
         const data = await response.json();
+        usersPages = data.pages || 1;
+
         if (!data.users || data.users.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">No users found</td></tr>';
+            renderPagination('users-pagination', usersPage, usersPages, `loadUsers(${usersPage - 1})`, `loadUsers(${usersPage + 1})`);
             return;
         }
-        
+
         tbody.innerHTML = data.users.map(user => `
             <tr>
                 <td>${user.client_id || user.id || 'Unknown'}</td>
                 <td>${user.wg_ipv4 || user.ipv4 || 'N/A'}</td>
                 <td>${user.wg_ipv6 || user.ipv6 || 'N/A'}</td>
                 <td>
-                    <span style="color: ${user.totp_secret ? 'var(--success)' : 'var(--error)'}">
-                        ${user.totp_secret ? 'Enabled' : 'Disabled'}
-                    <td>
-                        <span style="color: ${user.session_status === 'Active' ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
-                            ${user.session_status || 'Offline'}
-                        </span>
-                    </td>
-                    <td>${user.active_duration || '-'}</td>
-                    <td>
-                        <span style="color: ${user.totp_secret ? 'var(--success)' : 'var(--error)'}; font-weight: 600;">
-                            ${user.totp_secret ? 'Enabled' : 'Not set'}
-                        </span>
-                    </td>
-                    <td>
-                        <span style="color: ${user.console_access ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
-                            ${user.console_access ? 'Granted' : 'Restricted'}
-                        </span>
-                    </td>
+                    <span style="color: ${user.session_status === 'Active' ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
+                        ${user.session_status || 'Offline'}
+                    </span>
+                </td>
+                <td>${user.active_duration || '-'}</td>
+                <td>
+                    <span style="color: ${user.totp_secret ? 'var(--success)' : 'var(--error)'}; font-weight: 600;">
+                        ${user.totp_secret ? 'Enabled' : 'Not set'}
+                    </span>
+                </td>
+                <td>
+                    <span style="color: ${user.console_access ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
+                        ${user.console_access ? 'Granted' : 'Restricted'}
+                    </span>
+                </td>
+                <td>${new Date(user.created_at).toLocaleString()}</td>
             </tr>
         `).join('');
+
+        renderPagination('users-pagination', usersPage, usersPages, `loadUsers(${usersPage - 1})`, `loadUsers(${usersPage + 1})`);
     } catch (error) {
         console.error('Error loading users:', error);
-        document.getElementById('users-table').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--error);padding:40px;">Error loading users</td></tr>';
-            document.getElementById('users-table').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--error);padding:40px;">Error loading users</td></tr>';
+        document.getElementById('users-table').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--error);padding:40px;">Error loading users</td></tr>';
+        renderPagination('users-pagination', 1, 1, '', '');
+    }
 }
 
-async function loadAuditLogs() {
+async function loadAuditLogs(page = 1) {
     try {
+        auditPage = page;
         // Show loading shimmer
         const tbody = document.getElementById('audit-logs');
         tbody.innerHTML = `
@@ -1312,23 +1327,39 @@ async function loadAuditLogs() {
             <tr><td colspan="5"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
             <tr><td colspan="5"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
         `;
-        
-        const response = await fetch('/api/console/audit-logs');
+
+        const searchTerm = document.getElementById('audit-search').value.trim();
+        const dateFrom = document.getElementById('audit-date-from').value;
+        const dateTo = document.getElementById('audit-date-to').value;
+        const params = new URLSearchParams({
+            page: String(page),
+            limit: '50'
+        });
+        if (searchTerm) params.append('search', searchTerm);
+        if (dateFrom) params.append('start_date', dateFrom);
+        if (dateTo) params.append('end_date', dateTo);
+
+        const response = await fetch(`/api/console/audit-logs?${params.toString()}`);
         const data = await response.json();
-        
+        auditPages = data.pages || 1;
+
         // Store logs for filtering
         allAuditLogs = data.logs || [];
-        
+
         // Display logs
-        displayAuditLogs(allAuditLogs);
+        applyAuditFilters();
+
+        renderPagination('audit-pagination', auditPage, auditPages, `loadAuditLogs(${auditPage - 1})`, `loadAuditLogs(${auditPage + 1})`);
     } catch (error) {
         console.error('Error loading audit logs:', error);
         document.getElementById('audit-logs').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--error);padding:40px;">Error loading audit logs</td></tr>';
+        renderPagination('audit-pagination', 1, 1, '', '');
     }
 }
 
-async function loadActivityLogs() {
+async function loadActivityLogs(page = 1) {
     try {
+        activityPage = page;
         // Show loading shimmer
         const tbody = document.getElementById('activity-logs');
         tbody.innerHTML = `
@@ -1336,10 +1367,22 @@ async function loadActivityLogs() {
             <tr><td colspan="4"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
             <tr><td colspan="4"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
         `;
-        
-        const response = await fetch('/api/console/activity-logs');
+
+        const searchTerm = document.getElementById('activity-search').value.trim();
+        const dateFrom = document.getElementById('activity-date-from').value;
+        const dateTo = document.getElementById('activity-date-to').value;
+        const params = new URLSearchParams({
+            page: String(page),
+            limit: '50'
+        });
+        if (searchTerm) params.append('search', searchTerm);
+        if (dateFrom) params.append('start_date', dateFrom);
+        if (dateTo) params.append('end_date', dateTo);
+
+        const response = await fetch(`/api/console/activity-logs?${params.toString()}`);
         const data = await response.json();
-        
+        activityPages = data.pages || 1;
+
         // Store logs for filtering
         allActivityLogs = (data.logs || []).map(log => {
             // Format connection details
@@ -1358,12 +1401,15 @@ async function loadActivityLogs() {
                 direction: log.direction ? log.direction.toLowerCase() : 'n/a'
             };
         });
-        
+
         // Display logs
-        displayActivityLogs(allActivityLogs);
+        applyActivityFilters();
+
+        renderPagination('activity-pagination', activityPage, activityPages, `loadActivityLogs(${activityPage - 1})`, `loadActivityLogs(${activityPage + 1})`);
     } catch (error) {
         console.error('Error loading activity logs:', error);
         document.getElementById('activity-logs').innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--error);padding:40px;">Error loading activity logs</td></tr>';
+        renderPagination('activity-pagination', 1, 1, '', '');
     }
 }
 
@@ -1627,11 +1673,11 @@ function refreshData() {
     if (section === 'dashboard') {
         loadDashboardData();
     } else if (section === 'users') {
-        loadUsers();
+        loadUsers(usersPage);
     } else if (section === 'logs') {
-        loadAuditLogs();
+        loadAuditLogs(auditPage);
     } else if (section === 'activity') {
-        loadActivityLogs();
+        loadActivityLogs(activityPage);
     } else if (section === 'bandwidth') {
         loadBandwidthData();
     }
@@ -1640,6 +1686,34 @@ function refreshData() {
 // Filter functions
 let allAuditLogs = [];
 let allActivityLogs = [];
+let usersPage = 1;
+let usersPages = 1;
+let auditPage = 1;
+let auditPages = 1;
+let activityPage = 1;
+let activityPages = 1;
+
+function renderPagination(containerId, page, pages, onPrev, onNext) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (pages <= 1) {
+        container.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">No pagination required</span>';
+        return;
+    }
+    container.innerHTML = `
+        <button class="btn btn-secondary" ${page <= 1 ? 'disabled' : ''} onclick="${onPrev}">Prev</button>
+        <div style="font-size:12px;color:var(--text-muted);font-weight:600;">Page ${page} of ${pages}</div>
+        <button class="btn btn-secondary" ${page >= pages ? 'disabled' : ''} onclick="${onNext}">Next</button>
+    `;
+}
+
+function reloadAuditLogs() {
+    loadAuditLogs(1);
+}
+
+function reloadActivityLogs() {
+    loadActivityLogs(1);
+}
 
 function isWithinDateRange(timestamp, fromValue, toValue) {
     if (!fromValue && !toValue) return true;
@@ -1661,7 +1735,7 @@ function isWithinDateRange(timestamp, fromValue, toValue) {
     return true;
 }
 
-function filterAuditLogs() {
+function applyAuditFilters() {
     const searchTerm = document.getElementById('audit-search').value.toLowerCase();
     const statusFilter = document.getElementById('audit-status-filter').value;
     const dateFrom = document.getElementById('audit-date-from').value;
@@ -1684,7 +1758,7 @@ function filterAuditLogs() {
     displayAuditLogs(filtered);
 }
 
-function filterActivityLogs() {
+function applyActivityFilters() {
     const searchTerm = document.getElementById('activity-search').value.toLowerCase();
     const directionFilter = document.getElementById('activity-direction-filter').value;
     const dateFrom = document.getElementById('activity-date-from').value;
