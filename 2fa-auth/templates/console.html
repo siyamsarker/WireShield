@@ -953,6 +953,8 @@ tbody tr:last-child td {
                             <th>Client ID</th>
                             <th>IPv4</th>
                             <th>IPv6</th>
+                            <th>Session Status</th>
+                            <th>Active Duration</th>
                             <th>2FA Status</th>
                             <th>Console Access</th>
                             <th>Created</th>
@@ -1257,15 +1259,15 @@ async function loadUsers() {
         // Show loading shimmer
         const tbody = document.getElementById('users-table');
         tbody.innerHTML = `
-            <tr><td colspan="6"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
-            <tr><td colspan="6"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
-            <tr><td colspan="6"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="8"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="8"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
+            <tr><td colspan="8"><div class="loading" style="height: 50px; border-radius: 8px;"></div></td></tr>
         `;
         
         const response = await fetch('/api/console/users');
         const data = await response.json();
         if (!data.users || data.users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:40px;">No users found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">No users found</td></tr>';
             return;
         }
         
@@ -1277,20 +1279,28 @@ async function loadUsers() {
                 <td>
                     <span style="color: ${user.totp_secret ? 'var(--success)' : 'var(--error)'}">
                         ${user.totp_secret ? 'Enabled' : 'Disabled'}
-                    </span>
-                </td>
-                <td>
-                    <span style="color: ${user.console_access ? 'var(--success)' : 'var(--text-muted)'}">
-                        ${user.console_access ? 'Yes' : 'No'}
-                    </span>
-                </td>
-                <td>${new Date(user.created_at).toLocaleString()}</td>
+                    <td>
+                        <span style="color: ${user.session_status === 'Active' ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
+                            ${user.session_status || 'Offline'}
+                        </span>
+                    </td>
+                    <td>${user.active_duration || '-'}</td>
+                    <td>
+                        <span style="color: ${user.totp_secret ? 'var(--success)' : 'var(--error)'}; font-weight: 600;">
+                            ${user.totp_secret ? 'Enabled' : 'Not set'}
+                        </span>
+                    </td>
+                    <td>
+                        <span style="color: ${user.console_access ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
+                            ${user.console_access ? 'Granted' : 'Restricted'}
+                        </span>
+                    </td>
             </tr>
         `).join('');
     } catch (error) {
         console.error('Error loading users:', error);
         document.getElementById('users-table').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--error);padding:40px;">Error loading users</td></tr>';
-    }
+            document.getElementById('users-table').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--error);padding:40px;">Error loading users</td></tr>';
 }
 
 async function loadAuditLogs() {

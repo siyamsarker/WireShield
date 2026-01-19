@@ -67,10 +67,12 @@ async def get_users(
         conn = get_db()
         c = conn.cursor()
         
-        # Subquery to get active session start time
+        # Subquery to get active session start time (non-expired sessions only)
         query = """
             SELECT u.*, 
-            (SELECT MAX(created_at) FROM sessions s WHERE s.client_id = u.client_id) as session_start
+            (SELECT MAX(created_at)
+             FROM sessions s
+             WHERE s.client_id = u.client_id AND s.expires_at > datetime('now')) as active_session_start
             FROM users u
         """
         params = []
@@ -85,20 +87,23 @@ async def get_users(
         rows = []
         for row in c.fetchall():
             item = dict(row)
-            # Calculate active duration
+            # Calculate active duration and status
             duration = "-"
-            if item.get('session_start'):
+            session_status = "Offline"
+            if item.get('active_session_start'):
                 try:
-                    start = datetime.strptime(item['session_start'], "%Y-%m-%d %H:%M:%S")
+                    start = datetime.strptime(item['active_session_start'], "%Y-%m-%d %H:%M:%S")
                     diff = datetime.utcnow() - start
                     total_seconds = int(diff.total_seconds())
                     if total_seconds > 0:
                         hours = total_seconds // 3600
                         minutes = (total_seconds % 3600) // 60
                         duration = f"{hours}h {minutes}m"
+                    session_status = "Active"
                 except Exception:
                     pass
             item['active_duration'] = duration
+            item['session_status'] = session_status
             rows.append(item)
         
         # Count total
