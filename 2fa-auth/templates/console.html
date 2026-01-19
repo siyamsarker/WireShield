@@ -1338,7 +1338,7 @@ async function loadAuditLogs(page = 1) {
         const dateTo = document.getElementById('audit-date-to').value;
         const params = new URLSearchParams({
             page: String(page),
-            limit: '50'
+            limit: '30'
         });
         if (searchTerm) params.append('search', searchTerm);
         if (dateFrom) params.append('start_date', dateFrom);
@@ -1378,7 +1378,7 @@ async function loadActivityLogs(page = 1) {
         const dateTo = document.getElementById('activity-date-to').value;
         const params = new URLSearchParams({
             page: String(page),
-            limit: '50'
+            limit: '30'
         });
         if (searchTerm) params.append('search', searchTerm);
         if (dateFrom) params.append('start_date', dateFrom);
