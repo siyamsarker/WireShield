@@ -443,18 +443,34 @@ async def get_dashboard_charts(client_id: str = Depends(_check_console_access)):
         conn = get_db()
         c = conn.cursor()
         
-        # --- 7-Day Activity Trend ---
+        # --- 24-Hour Traffic Trend (hourly connection activity) ---
         activity_trend = []
-        for i in range(6, -1, -1):
-            date = (datetime.utcnow() - timedelta(days=i)).strftime("%Y-%m-%d")
+        for i in range(23, -1, -1):  # Last 24 hours
+            hour_start = datetime.utcnow() - timedelta(hours=i)
+            hour_end = hour_start + timedelta(hours=1)
+            
+            # Count new connections per hour from activity_log
             c.execute("""
-                SELECT COUNT(*) FROM audit_log 
-                WHERE timestamp LIKE ?
-            """, (f"{date}%",))
-            count = c.fetchone()[0]
+                SELECT COUNT(*) 
+                FROM activity_log 
+                WHERE timestamp >= ? AND timestamp < ?
+            """, (hour_start.strftime("%Y-%m-%d %H:00:00"), hour_end.strftime("%Y-%m-%d %H:00:00")))
+            
+            connections = c.fetchone()[0]
+            
+            # Also get unique clients active in this hour
+            c.execute("""
+                SELECT COUNT(DISTINCT client_id) 
+                FROM activity_log 
+                WHERE timestamp >= ? AND timestamp < ? AND client_id IS NOT NULL
+            """, (hour_start.strftime("%Y-%m-%d %H:00:00"), hour_end.strftime("%Y-%m-%d %H:00:00")))
+            
+            active_users = c.fetchone()[0]
+            
             activity_trend.append({
-                "hour": (datetime.utcnow() - timedelta(days=i)).strftime("%a"),
-                "count": count
+                "hour": hour_start.strftime("%H:%M"),
+                "connections": connections,
+                "active_users": active_users
             })
         
         # --- Action Distribution ---
