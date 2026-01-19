@@ -313,14 +313,29 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
         """, (yesterday,))
         failed_attempts_24h = c.fetchone()[0]
         
+        # Get total bandwidth usage in last 24 hours (rx_bytes + tx_bytes)
+        c.execute("""
+            SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) 
+            FROM bandwidth_usage 
+            WHERE scan_date >= date('now', '-1 day')
+        """)
+        bandwidth_24h = c.fetchone()[0]
+        
+        # Get new users in last 24 hours
+        c.execute("""
+            SELECT COUNT(*) FROM users 
+            WHERE created_at >= ?
+        """, (yesterday,))
+        new_users_24h = c.fetchone()[0]
+        
         conn.close()
         
         return {
             "total_users": total_users,
             "active_sessions": active_sessions,
             "failed_attempts_24h": failed_attempts_24h,
-            "bandwidth_24h": 0,  # Placeholder
-            "new_users_24h": 0   # Placeholder
+            "bandwidth_24h": bandwidth_24h,
+            "new_users_24h": new_users_24h
         }
     except Exception as e:
         logger.error(f"Error fetching dashboard stats: {e}")
