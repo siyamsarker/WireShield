@@ -840,7 +840,7 @@ tbody tr:last-child td {
             <line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
         </svg>
-        Dashboard
+        Overview
     </a>
     
     <a href="#" class="nav-item" onclick="showSection('users')">
@@ -848,7 +848,7 @@ tbody tr:last-child td {
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
             <circle cx="12" cy="7" r="4"/>
         </svg>
-        Users
+        Users & Access
     </a>
     
     <a href="#" class="nav-item" onclick="showSection('logs')">
@@ -859,14 +859,14 @@ tbody tr:last-child td {
             <line x1="16" y1="17" x2="8" y2="17"/>
             <polyline points="10,9 9,9 8,9"/>
         </svg>
-        Audit Logs
+        Audit Trail
     </a>
     
     <a href="#" class="nav-item" onclick="showSection('activity')">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
         </svg>
-        Activity
+        Traffic Activity
     </a>
     
     <a href="#" class="nav-item" onclick="showSection('bandwidth')">
@@ -875,7 +875,7 @@ tbody tr:last-child td {
             <line x1="12" y1="20" x2="12" y2="4"/>
             <line x1="6" y1="20" x2="6" y2="14"/>
         </svg>
-        Bandwidth
+        Bandwidth Insights
     </a>
 </nav>
 
@@ -906,14 +906,14 @@ tbody tr:last-child td {
             
             <div class="dashboard-grid">
                 <div class="chart-card">
-                    <h3 class="chart-title">Activity Trend (24h)</h3>
+                    <h3 class="chart-title">Traffic Trend (24h)</h3>
                     <div class="chart-container">
                         <canvas id="activityChart"></canvas>
                     </div>
                 </div>
                 
                 <div class="chart-card">
-                    <h3 class="chart-title">Actions Distribution</h3>
+                    <h3 class="chart-title">Event Distribution</h3>
                     <div class="chart-container">
                         <canvas id="actionsChart"></canvas>
                     </div>
@@ -922,7 +922,7 @@ tbody tr:last-child td {
             
             <div class="data-table">
                 <div class="table-header">
-                    <h3 class="table-title">Recent Events</h3>
+                    <h3 class="table-title">Recent Activity</h3>
                 </div>
                 <table>
                     <thead>
@@ -945,7 +945,7 @@ tbody tr:last-child td {
         <div id="users-section" style="display: none;">
             <div class="data-table">
                 <div class="table-header">
-                    <h3 class="table-title">VPN Users</h3>
+                    <h3 class="table-title">User Directory</h3>
                 </div>
                 <table>
                     <thead>
@@ -983,7 +983,7 @@ tbody tr:last-child td {
             
             <div class="data-table">
                 <div class="table-header">
-                    <h3 class="table-title">Audit Logs</h3>
+                    <h3 class="table-title">Audit Trail</h3>
                 </div>
                 <table>
                     <thead>
@@ -1021,7 +1021,7 @@ tbody tr:last-child td {
             
             <div class="data-table">
                 <div class="table-header">
-                    <h3 class="table-title">Activity Logs</h3>
+                    <h3 class="table-title">Traffic Activity</h3>
                 </div>
                 <table>
                     <thead>
@@ -1100,7 +1100,7 @@ tbody tr:last-child td {
             <!-- Bandwidth Chart -->
             <div class="chart-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 class="chart-title" style="margin: 0;">Bandwidth Usage Over Time</h3>
+                    <h3 class="chart-title" style="margin: 0;">Bandwidth Trends</h3>
                     <div style="display: flex; gap: 12px; align-items: center;">
                         <div class="legend-item">
                             <span class="legend-dot" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);"></span>
@@ -1141,11 +1141,11 @@ function showSection(section) {
     
     // Update page title
     const titles = {
-        'dashboard': 'Dashboard',
-        'users': 'Users',
-        'logs': 'Audit Logs',
-        'activity': 'Activity Logs',
-        'bandwidth': 'Bandwidth Usage'
+        'dashboard': 'Overview',
+        'users': 'Users & Access',
+        'logs': 'Audit Trail',
+        'activity': 'Traffic Activity',
+        'bandwidth': 'Bandwidth Insights'
     };
     document.getElementById('page-title').textContent = titles[section] || 'Dashboard';
     
