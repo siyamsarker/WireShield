@@ -599,72 +599,47 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
 
 ### User Activity Logging
 
-WireShield includes a built-in activity logger that tracks connection history for auditing purposes. Traffic logs are captured from the kernel, parsed, and stored in an SQLite database for efficient querying and analysis.
-
-**How it works:**
-1. iptables/netfilter logs network traffic from the WireGuard interface to the kernel log
-2. A background service continuously ingests logs from `journalctl` into the database
-3. Logs are enriched with client identification and DNS resolution data
-4. Old logs are automatically purged based on retention policy
+WireShield includes a built-in activity logger that tracks connection history for auditing purposes.
 
 #### Enable/Disable Logging
 
 ```bash
 # Via interactive menu
 sudo ./wireshield.sh
-# Select option: "Activity Logs Management" -> "Enable/Disable Activity Logging"
+# Select option: "User Activity Logs" -> "Enable/Disable Activity Logging"
 ```
-When enabled, the system logs every **NEW** connection made by authenticated clients from the WireGuard interface. Logs are captured via iptables LOG rules and ingested into the database in real-time.
+When enabled, the system logs every **NEW** connection made by authenticated clients from the WireGuard interface.
 
 #### View Activity Logs
-
-**Via CLI:**
-```bash
-sudo ./wireshield.sh
-# Select option: "Activity Logs Management" -> "View User Logs"
-```
-
-**Via Web Console:**
-```
-https://<your-server-ip>:443/console
-# Navigate to: Traffic Activity
-```
-
-You can:
-1. **View all logs:** Display the latest 100 activity records
-2. **Filter by user:** View logs for a specific client
-3. **Search:** Filter by IP, protocol, or domain name
-4. **Date range:** Query logs within a specific time period
-
-**CLI Output format:**
-```text
-┌────────────────────┬────────────┬──────┬────────┬─────────────────┬──────┬─────────────────┬──────┬────────────────────┐
-│ Time               │ Client     │ Dir  │ Proto  │ Source IP       │ Port │ Dest IP         │ Port │ Domain             │
-├────────────────────┼────────────┼──────┼────────┼─────────────────┼──────┼─────────────────┼──────┼────────────────────┤
-│ 2026-01-19 10:00:00│ alice      │ OUT  │ TCP    │ 10.66.66.2      │ 4433 │ 142.250.185.46  │ 443  │ google.com         │
-└────────────────────┴────────────┴──────┴────────┴─────────────────┴──────┴─────────────────┴──────┴────────────────────┘
-```
-
-#### Configure Retention
-
-By default, logs are kept for **30 days**. You can adjust this period:
 
 ```bash
 # Via interactive menu
 sudo ./wireshield.sh
-# Select option: "Activity Logs Management" -> "Configure Retention Period"
+# Select option: "User Activity Logs" -> "View User Logs"
+```
+You can choose to:
+1. **View all logs:** Stream combined logs for all users.
+2. **Filter by user:** View logs for a specific client IP.
+
+**Output format:**
+```text
+TIMESTAMP                 | USER            | SOURCE          -> DESTINATION (PROTO)
+2023-12-30T10:00:00+0000 | alice           | 10.66.66.2      -> 8.8.8.8:53 (UDP)
 ```
 
-The retention period controls how long activity logs are kept in the database. A background cleanup task runs daily to:
-1. Delete logs older than the configured retention period
-2. Record cleanup metrics for monitoring
-3. Optimize database storage
+#### Configure Retention
 
-**To change retention via environment variable:**
+By default, logs are kept for **15 days**. You can adjust this period:
+
 ```bash
-echo "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=60" >> /etc/wireguard/2fa.env
-sudo systemctl restart wireshield
+# Via interactive menu
+sudo ./wireshield.sh
+# Select option: "User Activity Logs" -> "Configure Retention Period"
 ```
+
+A daily cron job (`/usr/local/bin/wireshield-archive-logs`) automatically:
+1. Archives yesterday's logs to `/var/log/wireshield/archives/`
+2. Deletes archives older than the configured retention period
 
 
 ### SSL/TLS Management
@@ -1063,9 +1038,8 @@ WireShield/
 **Admin Console API:**
 - `GET /console` - Admin console dashboard interface
 - `GET /api/console/users` - User management with pagination and search
-- `GET /api/console/audit-logs` - Audit logs with filtering (2FA events, auth attempts)
-- `GET /api/console/activity-logs` - Traffic activity logs from database with DNS resolution
-- `GET /api/console/activity-metrics` - Activity log statistics and retention metrics
+- `GET /api/console/audit-logs` - Audit logs with filtering
+- `GET /api/console/activity-logs` - Real-time activity monitoring via journalctl
 - `GET /api/console/dashboard-stats` - Dashboard statistics and metrics
 - `GET /api/console/bandwidth-usage` - Bandwidth usage charts and data
 - `GET /api/console/dashboard-charts` - Chart data for visualization
@@ -1109,45 +1083,6 @@ CREATE TABLE audit_log (
     status TEXT,
     ip_address TEXT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-**activity_log table:**
-```sql
-CREATE TABLE activity_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    client_id TEXT,
-    direction TEXT,
-    protocol TEXT,
-    src_ip TEXT,
-    src_port TEXT,
-    dst_ip TEXT,
-    dst_port TEXT,
-    raw_line TEXT,
-    line_hash TEXT UNIQUE
-);
-```
-
-**dns_cache table:**
-```sql
-CREATE TABLE dns_cache (
-    ip_address TEXT PRIMARY KEY,
-    domain TEXT NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-**bandwidth_usage table:**
-```sql
-CREATE TABLE bandwidth_usage (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id TEXT NOT NULL,
-    scan_date DATE NOT NULL,
-    rx_bytes INTEGER DEFAULT 0,
-    tx_bytes INTEGER DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(client_id, scan_date)
 );
 ```
 
