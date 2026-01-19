@@ -131,7 +131,7 @@ async def get_users(
 @router.get("/api/console/audit-logs")
 async def get_audit_logs(
     page: int = 1,
-    limit: int = 50,
+    limit: int = 30,
     search: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -196,7 +196,7 @@ async def get_audit_logs(
 @router.get("/api/console/activity-logs")
 async def get_activity_logs(
     page: int = 1,
-    limit: int = 50,
+    limit: int = 30,
     search: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
