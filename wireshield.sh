@@ -511,10 +511,10 @@ EOFSERVICE
 	fi
 	
 	# Self-signed certificate (for IP or localhost)
-	read -rp "Enter IP address or hostname (e.g., 127.0.0.1 or vpn.local): " -e WS_HOSTNAME_2FA
-	
+	read -rp "Enter IP address or hostname (e.g., ${SERVER_WG_IPV4} or vpn.local): " -e -i "${SERVER_WG_IPV4}" WS_HOSTNAME_2FA
+
 	if [[ -z "${WS_HOSTNAME_2FA}" ]]; then
-		WS_HOSTNAME_2FA="127.0.0.1"
+		WS_HOSTNAME_2FA="${SERVER_WG_IPV4}"
 	fi
 	
 	echo -e "${ORANGE}Generating self-signed certificate for ${WS_HOSTNAME_2FA}...${NC}"
@@ -567,7 +567,7 @@ WS_2FA_DISCONNECT_GRACE_SECONDS=3600
 WS_2FA_SSL_ENABLED=false
 WS_2FA_SSL_TYPE=none
 WS_2FA_DOMAIN=
-WS_HOSTNAME_2FA=127.0.0.1
+WS_HOSTNAME_2FA=${SERVER_WG_IPV4}
 EOF
 	
 	# Ensure Python3, pip and venv are available (install even if python3 already exists)
@@ -949,6 +949,10 @@ PostUp = iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 PostUp = iptables -I INPUT -p tcp --dport 80 -j ACCEPT
 PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:443
 PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:80
+PostUp = iptables -t nat -N WS_2FA_REDIRECT 2>/dev/null || true
+PostUp = iptables -t nat -F WS_2FA_REDIRECT
+PostUp = iptables -t nat -A WS_2FA_REDIRECT -p tcp --dport 80 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:80
+PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -p tcp --dport 80 -m set ! --match-set ws_2fa_allowed_v4 src -j WS_2FA_REDIRECT
 PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist
 PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist
 PostUp = iptables -N WS_2FA_PORTAL 2>/dev/null || true
@@ -963,6 +967,10 @@ PostUp = iptables -A FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL
 PostUp = iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostUp = ip6tables -I INPUT -p tcp --dport 443 -j ACCEPT
 PostUp = ip6tables -I INPUT -p tcp --dport 80 -j ACCEPT
+PostUp = ip6tables -t nat -N WS_2FA_REDIRECT6 2>/dev/null || true
+PostUp = ip6tables -t nat -F WS_2FA_REDIRECT6
+PostUp = ip6tables -t nat -A WS_2FA_REDIRECT6 -p tcp --dport 80 -j DNAT --to-destination [${SERVER_WG_IPV6}]:80
+PostUp = ip6tables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -p tcp --dport 80 -m set ! --match-set ws_2fa_allowed_v6 src -j WS_2FA_REDIRECT6
 PostUp = ip6tables -N WS_2FA_PORTAL6 2>/dev/null || true
 PostUp = ip6tables -F WS_2FA_PORTAL6
 PostUp = ip6tables -A WS_2FA_PORTAL6 -p tcp --dport 53 -j ACCEPT
@@ -978,6 +986,9 @@ PostDown = iptables -D INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
 PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:443 2>/dev/null || true
 PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:80 2>/dev/null || true
+PostDown = iptables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -p tcp --dport 80 -m set ! --match-set ws_2fa_allowed_v4 src -j WS_2FA_REDIRECT 2>/dev/null || true
+PostDown = iptables -t nat -F WS_2FA_REDIRECT 2>/dev/null || true
+PostDown = iptables -t nat -X WS_2FA_REDIRECT 2>/dev/null || true
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL 2>/dev/null || true
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -m set --match-set ws_2fa_allowed_v4 src -j ACCEPT 2>/dev/null || true
 PostDown = iptables -F WS_2FA_PORTAL 2>/dev/null || true
@@ -987,6 +998,9 @@ PostDown = ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true
 PostDown = ip6tables -D INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
 PostDown = ip6tables -D INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+PostDown = ip6tables -t nat -D PREROUTING -i ${SERVER_WG_NIC} -p tcp --dport 80 -m set ! --match-set ws_2fa_allowed_v6 src -j WS_2FA_REDIRECT6 2>/dev/null || true
+PostDown = ip6tables -t nat -F WS_2FA_REDIRECT6 2>/dev/null || true
+PostDown = ip6tables -t nat -X WS_2FA_REDIRECT6 2>/dev/null || true
 PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL6 2>/dev/null || true
 PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -m set --match-set ws_2fa_allowed_v6 src -j ACCEPT 2>/dev/null || true
 PostDown = ip6tables -F WS_2FA_PORTAL6 2>/dev/null || true
