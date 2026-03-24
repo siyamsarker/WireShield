@@ -779,13 +779,9 @@ EOF
 	else
 		_scheme="http"
 	fi
-	if [[ -n "${WS_2FA_DOMAIN}" ]]; then
-		_host="${WS_2FA_DOMAIN}"
-	elif [[ -n "${WS_HOSTNAME_2FA}" ]]; then
-		_host="${WS_HOSTNAME_2FA}"
-	else
-		_host="127.0.0.1"
-	fi
+	# Health check runs locally on the server - always use localhost
+	# The WireGuard IP is only reachable when the VPN interface is up
+	_host="127.0.0.1"
 	_health_url="${_scheme}://${_host}:${_port}/health"
 
 	echo -e "${ORANGE}Checking 2FA service health at: ${_health_url}${NC}"
