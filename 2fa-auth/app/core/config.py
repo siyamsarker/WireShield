@@ -37,7 +37,12 @@ DISCONNECT_GRACE_SECONDS = int(getenv_multi("3600", "WS_2FA_DISCONNECT_GRACE_SEC
 ACTIVITY_LOG_RETENTION_DAYS = int(getenv_multi("30", "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS", "2FA_ACTIVITY_LOG_RETENTION_DAYS"))
 
 # Determine UI access URL based on config
+# Use http:// when SSL is disabled, https:// when enabled
+# Include port if it's not the default for the scheme
+_scheme = "https" if SSL_ENABLED else "http"
+_default_port = 443 if SSL_ENABLED else 80
+_port_suffix = "" if AUTH_PORT == _default_port else f":{AUTH_PORT}"
 if TFA_DOMAIN:
-    UI_BASE_URL = f"https://{TFA_DOMAIN}"
+    UI_BASE_URL = f"{_scheme}://{TFA_DOMAIN}{_port_suffix}"
 else:
-    UI_BASE_URL = f"https://{TFA_HOSTNAME}"
+    UI_BASE_URL = f"{_scheme}://{TFA_HOSTNAME}{_port_suffix}"
