@@ -977,6 +977,8 @@ PostUp = ip6tables -A WS_2FA_PORTAL6 -j DROP
 PostUp = ip6tables -A FORWARD -i ${SERVER_WG_NIC} -m set --match-set ws_2fa_allowed_v6 src -j ACCEPT
 PostUp = ip6tables -A FORWARD -i ${SERVER_WG_NIC} -j WS_2FA_PORTAL6
 PostUp = ip6tables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
+PostUp = iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+PostUp = ip6tables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 PostDown = iptables -D INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostDown = iptables -D INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
@@ -1003,12 +1005,24 @@ PostDown = ip6tables -F WS_2FA_PORTAL6 2>/dev/null || true
 PostDown = ip6tables -X WS_2FA_PORTAL6 2>/dev/null || true
 PostDown = ipset flush ws_2fa_allowed_v6 2>/dev/null || true
 PostDown = ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
-PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
+PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE 2>/dev/null || true
+PostDown = iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
+PostDown = ip6tables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	fi
 
-	# Enable IPv4/IPv6 forwarding on the server
+	# Enable IPv4/IPv6 forwarding and network performance tuning on the server
 	echo "net.ipv4.ip_forward = 1
-net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
+net.ipv6.conf.all.forwarding = 1
+
+# TCP performance optimizations for VPN throughput
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.core.netdev_max_backlog = 5000
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 
 	if [[ ${OS} == 'alpine' ]]; then
 		sysctl -p /etc/sysctl.d/wg.conf
@@ -1178,10 +1192,9 @@ PrivateKey = ${CLIENT_PRIV_KEY}
 Address = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128
 DNS = ${CLIENT_DNS_1},${CLIENT_DNS_2}
 
-# Uncomment the next line to set a custom MTU
-# This might impact performance, so use it only if you know what you are doing
+# MTU 1420 prevents fragmentation issues over VPN tunnels
 # See https://github.com/nitred/nr-wg-mtu-finder to find your optimal MTU
-# MTU = 1420
+MTU = 1420
 
 [Peer]
 PublicKey = ${SERVER_PUB_KEY}
