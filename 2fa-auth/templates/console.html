@@ -15,24 +15,26 @@
     --bg-card-hover: #f8fafc;
     --border: #e2e8f0;
     --border-hover: #cbd5e1;
-    
+
     --text-main: #0f172a;
     --text-muted: #64748b;
     --text-light: #94a3b8;
-    
+
     --accent: #3b82f6;
     --accent-hover: #2563eb;
     --accent-light: #eff6ff;
     --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    
+
     --success: #10b981;
     --success-bg: #d1fae5;
     --success-light: #ecfdf5;
     --warning: #f59e0b;
     --warning-bg: #fef3c7;
+    --warning-light: #fffbeb;
     --error: #ef4444;
     --error-bg: #fee2e2;
-    
+    --error-light: #fef2f2;
+
     --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -818,14 +820,660 @@ tbody tr:last-child td {
     .stats-grid {
         gap: 10px;
     }
-    
+
     .dashboard-grid {
         gap: 12px;
     }
-    
+
     th, td {
         padding: 8px 10px;
         font-size: 11px;
+    }
+}
+
+/* Modern Filter Bar Styles */
+.filter-toolbar {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin: 0 16px 16px 16px;
+    box-shadow: var(--shadow-md);
+    transition: all 0.3s ease;
+}
+
+.filter-toolbar:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+.filter-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-group.search-group {
+    flex: 1;
+    min-width: 240px;
+    max-width: 400px;
+}
+
+.filter-input-wrapper {
+    position: relative;
+    flex: 1;
+}
+
+.filter-input-wrapper svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.filter-input {
+    width: 100%;
+    padding: 10px 12px 10px 38px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 13px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.filter-input:hover {
+    border-color: var(--border-hover);
+}
+
+.filter-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.filter-input::placeholder {
+    color: var(--text-light);
+}
+
+.filter-date-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.date-separator {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.filter-date {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 13px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+    min-width: 140px;
+}
+
+.filter-date:hover {
+    border-color: var(--border-hover);
+}
+
+.filter-date:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.filter-select {
+    padding: 10px 36px 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 13px;
+    background: var(--bg-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2364748b' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+    appearance: none;
+    min-width: 140px;
+}
+
+.filter-select:hover {
+    border-color: var(--border-hover);
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.filter-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+/* Live Toggle Switch */
+.live-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: linear-gradient(135deg, var(--success-light) 0%, var(--bg-card) 100%);
+    border: 1px solid var(--success);
+    border-radius: 24px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    user-select: none;
+}
+
+.live-toggle-wrapper:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.live-toggle-wrapper.inactive {
+    background: var(--bg-card);
+    border-color: var(--border);
+}
+
+.live-toggle-wrapper.inactive:hover {
+    border-color: var(--success);
+}
+
+.toggle-switch {
+    position: relative;
+    width: 42px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border);
+    transition: all 0.3s ease;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: all 0.3s ease;
+    border-radius: 50%;
+    box-shadow: var(--shadow-sm);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(18px);
+}
+
+.live-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--success);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.live-toggle-wrapper.inactive .live-label {
+    color: var(--text-muted);
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    display: none;
+    box-shadow: 0 0 8px var(--success);
+}
+
+.live-dot.active {
+    display: block;
+    animation: livePulse 1.5s infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(1.3);
+    }
+}
+
+/* Page Section Container */
+.page-section {
+    padding: 16px;
+    animation: fadeInUp 0.4s ease;
+}
+
+.page-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding: 0;
+}
+
+.page-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.page-section-title::before {
+    content: '';
+    width: 4px;
+    height: 20px;
+    background: var(--accent-gradient);
+    border-radius: 2px;
+}
+
+.page-section-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    background: var(--accent-light);
+    color: var(--accent);
+    border-radius: 20px;
+}
+
+/* Modern Data Table Container */
+.table-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition: all 0.3s ease;
+    margin: 0 16px 16px 16px;
+}
+
+.table-container:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+.table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--bg-card-hover) 0%, var(--bg-card) 100%);
+}
+
+.table-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.table-title::before {
+    content: '';
+    width: 4px;
+    height: 20px;
+    background: var(--accent-gradient);
+    border-radius: 2px;
+}
+
+.table-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+}
+
+.table-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.table-body {
+    overflow-x: auto;
+}
+
+/* Status Badges */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.status-pill.granted, .status-pill.success {
+    background: var(--success-light);
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.status-pill.denied, .status-pill.failed {
+    background: var(--error-bg);
+    color: var(--error);
+    border: 1px solid var(--error);
+}
+
+.status-pill.warning {
+    background: var(--warning-bg);
+    color: var(--warning);
+    border: 1px solid var(--warning);
+}
+
+.status-pill.info {
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+
+/* Direction Badges */
+.direction-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.direction-badge.inbound {
+    background: var(--success-light);
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.direction-badge.outbound {
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+
+/* Filter Date Group */
+.filter-date-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.date-separator {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0 4px;
+}
+
+.filter-date {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 13px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+    min-width: 130px;
+}
+
+.filter-date:hover {
+    border-color: var(--border-hover);
+}
+
+.filter-date:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.direction-badge svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Modern Pagination */
+.pagination-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-hover) 100%);
+}
+
+.pagination-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pagination-pages {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pagination-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: var(--accent-light);
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.page-indicator {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+    padding: 0 12px;
+}
+
+.page-indicator span {
+    color: var(--accent);
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.empty-state-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    background: var(--bg-card-hover);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-light);
+}
+
+.empty-state-icon svg {
+    width: 32px;
+    height: 32px;
+}
+
+.empty-state-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 6px;
+}
+
+.empty-state-text {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* Responsive Filter Toolbar */
+@media (max-width: 1024px) {
+    .filter-row {
+        gap: 10px;
+    }
+
+    .filter-group.search-group {
+        max-width: none;
+    }
+
+    .filter-date {
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 768px) {
+    .filter-toolbar {
+        margin: 0 12px 12px 12px;
+        padding: 12px 14px;
+    }
+
+    .filter-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .filter-group.search-group {
+        max-width: none;
+        min-width: auto;
+    }
+
+    .filter-date-group {
+        flex-wrap: wrap;
+    }
+
+    .filter-date {
+        flex: 1;
+        min-width: auto;
+    }
+
+    .filter-select {
+        width: 100%;
+    }
+
+    .live-toggle-wrapper {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .table-container {
+        margin: 0 12px 12px 12px;
+    }
+
+    .pagination-container {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .filter-toolbar {
+        margin: 0 8px 8px 8px;
+        padding: 10px 12px;
+    }
+
+    .table-container {
+        margin: 0 8px 8px 8px;
+    }
+
+    .table-toolbar {
+        padding: 12px 14px;
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
     }
 }
 </style>
@@ -977,41 +1625,76 @@ tbody tr:last-child td {
         
         <!-- Logs Section -->
         <div id="logs-section" style="display: none;">
-            <!-- Filter Controls -->
-            <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
-                <input type="text" id="audit-search" placeholder="Search client, action, or IP..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="reloadAuditLogs()">
-                <input type="date" id="audit-date-from" aria-label="Audit logs start date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="reloadAuditLogs()">
-                <input type="date" id="audit-date-to" aria-label="Audit logs end date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="reloadAuditLogs()">
-                <select id="audit-status-filter" onchange="applyAuditFilters()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
-                    <option value="all">All Status</option>
-                    <option value="granted">Granted</option>
-                    <option value="denied">Denied</option>
-                    <option value="success">Success</option>
-                    <option value="verify_only">Verify Only</option>
-                    <option value="qr_generated">QR Generated</option>
-                    <option value="setup_flow">Setup Flow</option>
-                </select>
-            </div>
-            
-            <div class="data-table">
-                <div class="table-header">
-                    <h3 class="table-title">Audit Trail</h3>
+            <!-- Modern Filter Toolbar -->
+            <div class="filter-toolbar">
+                <div class="filter-row">
+                    <!-- Search Input -->
+                    <div class="filter-group search-group">
+                        <div class="filter-input-wrapper">
+                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="m21 21-4.35-4.35"/>
+                            </svg>
+                            <input type="text" id="audit-search" class="filter-input" placeholder="Search client, action, or IP address..." oninput="reloadAuditLogs()">
+                        </div>
+                    </div>
+
+                    <!-- Date Range Filter -->
+                    <div class="filter-group filter-date-group">
+                        <input type="date" id="audit-date-from" class="filter-date" aria-label="Start date" onchange="reloadAuditLogs()">
+                        <span class="date-separator">→</span>
+                        <input type="date" id="audit-date-to" class="filter-date" aria-label="End date" onchange="reloadAuditLogs()">
+                    </div>
+
+                    <!-- Status Filter -->
+                    <div class="filter-group">
+                        <select id="audit-status-filter" class="filter-select" onchange="applyAuditFilters()">
+                            <option value="all">All Status</option>
+                            <option value="granted">Granted</option>
+                            <option value="denied">Denied</option>
+                            <option value="success">Success</option>
+                            <option value="verify_only">Verify Only</option>
+                            <option value="qr_generated">QR Generated</option>
+                            <option value="setup_flow">Setup Flow</option>
+                        </select>
+                    </div>
                 </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Client</th>
-                            <th>Action</th>
-                            <th>Status</th>
-                            <th>IP Address</th>
-                        </tr>
-                    </thead>
-                    <tbody id="audit-logs">
-                        <!-- Audit logs will be loaded here -->
-                    </tbody>
-                </table>
-                <div id="audit-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-card);">
+            </div>
+
+            <!-- Modern Data Table -->
+            <div class="table-container">
+                <div class="table-toolbar">
+                    <div class="table-title">
+                        Audit Trail
+                        <span class="table-count" id="audit-count">0 records</span>
+                    </div>
+                    <div class="table-actions">
+                        <button class="btn btn-secondary" onclick="reloadAuditLogs()">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M1 4v6h6M23 20v-6h-6"/>
+                                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                            </svg>
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Client</th>
+                                <th>Action</th>
+                                <th>Status</th>
+                                <th>IP Address</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-logs">
+                            <!-- Audit logs will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-container" id="audit-pagination">
                     <!-- Pagination controls rendered by JS -->
                 </div>
             </div>
@@ -1019,41 +1702,83 @@ tbody tr:last-child td {
         
         <!-- Activity Section -->
         <div id="activity-section" style="display: none;">
-            <!-- Filter and Live Controls -->
-            <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
-                <input type="text" id="activity-search" placeholder="Search client, IP, or protocol..." style="flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); transition: all 0.3s ease;" oninput="reloadActivityLogs()">
-                <input type="date" id="activity-date-from" aria-label="Activity logs start date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="reloadActivityLogs()">
-                <input type="date" id="activity-date-to" aria-label="Activity logs end date" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;" onchange="reloadActivityLogs()">
-                <select id="activity-direction-filter" onchange="applyActivityFilters()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg-card); color: var(--text-main); cursor: pointer; transition: all 0.3s ease;">
-                    <option value="all">All Directions</option>
-                    <option value="in">Inbound</option>
-                    <option value="out">Outbound</option>
-                </select>
-                <label style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.3s ease; user-select: none;">
-                    <input type="checkbox" id="live-toggle" onchange="toggleLiveActivity()" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent);">
-                    <span style="font-size: 13px; font-weight: 600; color: var(--text-main);">Live</span>
-                    <span id="live-indicator" class="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); display: none; animation: none;"></span>
-                </label>
-            </div>
-            
-            <div class="data-table">
-                <div class="table-header">
-                    <h3 class="table-title">Traffic Activity</h3>
+            <!-- Modern Filter Toolbar -->
+            <div class="filter-toolbar">
+                <div class="filter-row">
+                    <!-- Search Input -->
+                    <div class="filter-group search-group">
+                        <div class="filter-input-wrapper">
+                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="m21 21-4.35-4.35"/>
+                            </svg>
+                            <input type="text" id="activity-search" class="filter-input" placeholder="Search client, IP, or protocol..." oninput="reloadActivityLogs()">
+                        </div>
+                    </div>
+
+                    <!-- Date Range Filter -->
+                    <div class="filter-group filter-date-group">
+                        <input type="date" id="activity-date-from" class="filter-date" aria-label="Start date" onchange="reloadActivityLogs()">
+                        <span class="date-separator">→</span>
+                        <input type="date" id="activity-date-to" class="filter-date" aria-label="End date" onchange="reloadActivityLogs()">
+                    </div>
+
+                    <!-- Direction Filter -->
+                    <div class="filter-group">
+                        <select id="activity-direction-filter" class="filter-select" onchange="applyActivityFilters()">
+                            <option value="all">All Directions</option>
+                            <option value="in">Inbound</option>
+                            <option value="out">Outbound</option>
+                        </select>
+                    </div>
+
+                    <!-- Live Toggle -->
+                    <label class="live-toggle-wrapper inactive" id="live-toggle-container">
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="live-toggle" onchange="toggleLiveActivity()">
+                            <span class="toggle-slider"></span>
+                        </div>
+                        <span class="live-label">
+                            Live
+                            <span class="live-dot" id="live-indicator"></span>
+                        </span>
+                    </label>
                 </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Client</th>
-                            <th>Direction</th>
-                            <th>Details</th>
-                        </tr>
-                    </thead>
-                    <tbody id="activity-logs">
-                        <!-- Activity logs will be loaded here -->
-                    </tbody>
-                </table>
-                <div id="activity-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-card);">
+            </div>
+
+            <!-- Modern Data Table -->
+            <div class="table-container">
+                <div class="table-toolbar">
+                    <div class="table-title">
+                        Traffic Activity
+                        <span class="table-count" id="activity-count">0 records</span>
+                    </div>
+                    <div class="table-actions">
+                        <button class="btn btn-secondary" onclick="reloadActivityLogs()">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M1 4v6h6M23 20v-6h-6"/>
+                                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                            </svg>
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Client</th>
+                                <th>Direction</th>
+                                <th>Connection Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activity-logs">
+                            <!-- Activity logs will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-container" id="activity-pagination">
                     <!-- Pagination controls rendered by JS -->
                 </div>
             </div>
@@ -1759,13 +2484,39 @@ function renderPagination(containerId, page, pages, onPrev, onNext) {
     const container = document.getElementById(containerId);
     if (!container) return;
     if (pages <= 1) {
-        container.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">No pagination required</span>';
+        container.innerHTML = `
+            <div class="pagination-info">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Single page view
+            </div>
+            <div class="pagination-pages"></div>
+        `;
         return;
     }
     container.innerHTML = `
-        <button class="btn btn-secondary" ${page <= 1 ? 'disabled' : ''} onclick="${onPrev}">Prev</button>
-        <div style="font-size:12px;color:var(--text-muted);font-weight:600;">Page ${page} of ${pages}</div>
-        <button class="btn btn-secondary" ${page >= pages ? 'disabled' : ''} onclick="${onNext}">Next</button>
+        <div class="pagination-info">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            Showing page ${page} of ${pages}
+        </div>
+        <div class="pagination-pages">
+            <button class="pagination-btn" ${page <= 1 ? 'disabled' : ''} onclick="${onPrev}">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M15 19l-7-7 7-7"/>
+                </svg>
+                Previous
+            </button>
+            <span class="page-indicator"><span>${page}</span> / ${pages}</span>
+            <button class="pagination-btn" ${page >= pages ? 'disabled' : ''} onclick="${onNext}">
+                Next
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M9 5l7 7-7 7"/>
+                </svg>
+            </button>
+        </div>
     `;
 }
 
@@ -1847,45 +2598,126 @@ function applyActivityFilters() {
 
 function displayAuditLogs(logs) {
     const tbody = document.getElementById('audit-logs');
+    const countBadge = document.getElementById('audit-count');
+
+    // Update count badge
+    if (countBadge) {
+        countBadge.textContent = `${logs.length} record${logs.length !== 1 ? 's' : ''}`;
+    }
+
     if (!logs || logs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:40px;">No audit logs found</td></tr>';
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                        <div class="empty-state-title">No audit logs found</div>
+                        <div class="empty-state-text">Try adjusting your filters or date range</div>
+                    </div>
+                </td>
+            </tr>
+        `;
         return;
     }
-    
-    tbody.innerHTML = logs.map(log => `
-        <tr>
-            <td>${new Date(log.timestamp).toLocaleString()}</td>
-            <td>${log.client_id || 'System'}</td>
-            <td>${log.action}</td>
-            <td>
-                <span style="color: ${getStatusColor(log.status)}">
-                    ${log.status}
-                </span>
-            </td>
-            <td>${log.ip_address}</td>
-        </tr>
-    `).join('');
+
+    tbody.innerHTML = logs.map(log => {
+        const statusClass = getStatusClass(log.status);
+        return `
+            <tr>
+                <td>
+                    <span style="color: var(--text-muted); font-size: 12px;">
+                        ${new Date(log.timestamp).toLocaleString()}
+                    </span>
+                </td>
+                <td>
+                    <span style="font-weight: 600;">${log.client_id || 'System'}</span>
+                </td>
+                <td>${log.action}</td>
+                <td>
+                    <span class="status-pill ${statusClass}">
+                        ${log.status}
+                    </span>
+                </td>
+                <td>
+                    <span style="font-family: monospace; font-size: 12px;">${log.ip_address}</span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getStatusClass(status) {
+    const s = (status || '').toLowerCase();
+    if (['granted', 'success', 'verified'].includes(s)) return 'granted';
+    if (['denied', 'failed', 'error'].includes(s)) return 'denied';
+    if (['warning', 'pending'].includes(s)) return 'warning';
+    return 'info';
 }
 
 function displayActivityLogs(logs) {
     const tbody = document.getElementById('activity-logs');
+    const countBadge = document.getElementById('activity-count');
+
+    // Update count badge
+    if (countBadge) {
+        countBadge.textContent = `${logs.length} record${logs.length !== 1 ? 's' : ''}`;
+    }
+
     if (!logs || logs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">No traffic activity found</td></tr>';
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                        </div>
+                        <div class="empty-state-title">No traffic activity found</div>
+                        <div class="empty-state-text">Try adjusting your filters or enable live mode</div>
+                    </div>
+                </td>
+            </tr>
+        `;
         return;
     }
 
-    tbody.innerHTML = logs.map(log => `
-        <tr>
-            <td>${new Date(log.timestamp).toLocaleString()}</td>
-            <td>${log.client_id || 'Unknown'}</td>
-            <td>
-                <span style="color: ${log.direction === 'in' ? 'var(--success)' : 'var(--accent)'}">
-                    ${log.direction ? log.direction.toUpperCase() : 'N/A'}
-                </span>
-            </td>
-            <td>${log.details}</td>
-        </tr>
-    `).join('');
+    tbody.innerHTML = logs.map(log => {
+        const isInbound = log.direction === 'in';
+        return `
+            <tr>
+                <td>
+                    <span style="color: var(--text-muted); font-size: 12px;">
+                        ${new Date(log.timestamp).toLocaleString()}
+                    </span>
+                </td>
+                <td>
+                    <span style="font-weight: 600;">${log.client_id || 'Unknown'}</span>
+                </td>
+                <td>
+                    <span class="direction-badge ${isInbound ? 'inbound' : 'outbound'}">
+                        ${isInbound ? `
+                            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                            </svg>
+                        ` : `
+                            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                            </svg>
+                        `}
+                        ${log.direction ? log.direction.toUpperCase() : 'N/A'}
+                    </span>
+                </td>
+                <td>
+                    <span style="font-family: monospace; font-size: 12px;">${log.details}</span>
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
 // Live Activity Toggle
@@ -1894,23 +2726,29 @@ let liveActivityInterval = null;
 function toggleLiveActivity() {
     const checkbox = document.getElementById('live-toggle');
     const indicator = document.getElementById('live-indicator');
-    
+    const toggleContainer = document.getElementById('live-toggle-container');
+
     if (checkbox.checked) {
-        indicator.style.display = 'block';
-        indicator.style.background = 'var(--success)';
-        indicator.style.animation = 'pulse 2s infinite';
-        
+        // Update toggle appearance
+        if (toggleContainer) {
+            toggleContainer.classList.remove('inactive');
+        }
+        indicator.classList.add('active');
+
         // Load immediately
         loadActivityLogs();
-        
+
         // Set up auto-refresh every 5 seconds
         liveActivityInterval = setInterval(() => {
             loadActivityLogs();
         }, 5000);
     } else {
-        indicator.style.display = 'none';
-        indicator.style.animation = 'none';
-        
+        // Update toggle appearance
+        if (toggleContainer) {
+            toggleContainer.classList.add('inactive');
+        }
+        indicator.classList.remove('active');
+
         if (liveActivityInterval) {
             clearInterval(liveActivityInterval);
             liveActivityInterval = null;
