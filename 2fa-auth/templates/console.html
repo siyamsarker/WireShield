@@ -412,6 +412,705 @@ header {
     height: 260px;
 }
 
+/* ========== Bandwidth Insights Styles ========== */
+.bandwidth-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding: 0 4px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.bandwidth-header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bandwidth-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0;
+    letter-spacing: -0.5px;
+}
+
+.bandwidth-subtitle {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.bandwidth-header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(16, 185, 129, 0.1);
+    border-radius: 20px;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: #10b981;
+    border-radius: 50%;
+    animation: pulse-live 2s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.live-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: #10b981;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.time-range-selector {
+    display: flex;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.time-range-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.time-range-btn:hover {
+    color: var(--text-main);
+    background: var(--bg-card-hover);
+}
+
+.time-range-btn.active {
+    background: var(--accent);
+    color: white;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.export-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.export-btn:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.export-btn svg {
+    opacity: 0.7;
+}
+
+.export-btn:hover svg {
+    opacity: 1;
+}
+
+/* Bandwidth Stats Grid */
+.bandwidth-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.bandwidth-stat-card {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.bandwidth-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--accent);
+}
+
+.bandwidth-stat-card:hover .stat-card-glow {
+    opacity: 1;
+}
+
+.stat-card-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100px;
+    background: linear-gradient(180deg, var(--accent-light) 0%, transparent 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.bandwidth-stat-card[data-type="upload"] .stat-card-glow {
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, transparent 100%);
+}
+
+.bandwidth-stat-card[data-type="download"] .stat-card-glow {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.1) 0%, transparent 100%);
+}
+
+.bandwidth-stat-card[data-type="peak"] .stat-card-glow {
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.1) 0%, transparent 100%);
+}
+
+.bandwidth-stat-card[data-type="average"] .stat-card-glow {
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.1) 0%, transparent 100%);
+}
+
+.stat-card-content {
+    position: relative;
+    padding: 20px;
+    z-index: 1;
+}
+
+.stat-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.stat-icon-wrapper {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease;
+}
+
+.bandwidth-stat-card:hover .stat-icon-wrapper {
+    transform: scale(1.1);
+}
+
+.upload-icon {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.download-icon {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.peak-icon {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.avg-icon {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.stat-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.stat-badge.positive {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.stat-badge.negative {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.stat-badge.neutral {
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+}
+
+.stat-time-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(139, 92, 246, 0.1);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #8b5cf6;
+}
+
+.stat-stability-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #f59e0b;
+}
+
+.stability-dot {
+    width: 6px;
+    height: 6px;
+    background: #f59e0b;
+    border-radius: 50%;
+}
+
+.stat-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stat-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value-large {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.stat-number {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-unit {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.stat-comparison {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.comparison-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.comparison-value {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.comparison-value.positive {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.comparison-value.negative {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.comparison-value.neutral {
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+}
+
+.stat-progress-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--border);
+    overflow: hidden;
+}
+
+.stat-progress-fill {
+    height: 100%;
+    transition: width 1s ease-out;
+    border-radius: 0 2px 2px 0;
+}
+
+.upload-fill {
+    background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.download-fill {
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+}
+
+.stat-peak-indicator {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 30px;
+    margin-top: 8px;
+}
+
+.peak-bar {
+    flex: 1;
+    background: var(--border);
+    border-radius: 2px 2px 0 0;
+    transition: all 0.3s ease;
+    opacity: 0.5;
+}
+
+.peak-bar.active {
+    background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+    opacity: 1;
+}
+
+.stat-mini-chart {
+    margin-top: 12px;
+    color: #f59e0b;
+    opacity: 0.3;
+}
+
+.stat-mini-chart svg {
+    width: 100%;
+    height: 30px;
+}
+
+.mini-chart-line {
+    stroke-dasharray: 200;
+    stroke-dashoffset: 200;
+    animation: draw-line 2s ease forwards;
+}
+
+@keyframes draw-line {
+    to { stroke-dashoffset: 0; }
+}
+
+/* Bandwidth Chart Section */
+.bandwidth-chart-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition: all 0.3s ease;
+}
+
+.bandwidth-chart-section:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+.bandwidth-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--bg-card-hover) 0%, var(--bg-card) 100%);
+}
+
+.chart-header-left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.bandwidth-chart-header .chart-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0;
+}
+
+.bandwidth-chart-header .chart-title::before {
+    display: none;
+}
+
+.chart-legend {
+    display: flex;
+    gap: 16px;
+}
+
+.bandwidth-chart-header .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bandwidth-chart-header .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.legend-item.upload .legend-dot {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+}
+
+.legend-item.download .legend-dot {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+}
+
+.bandwidth-chart-header .legend-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.chart-header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.chart-type-toggle {
+    display: flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px;
+}
+
+.chart-type-btn {
+    width: 36px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.chart-type-btn:hover {
+    color: var(--text-main);
+}
+
+.chart-type-btn.active {
+    background: var(--accent);
+    color: white;
+}
+
+.bandwidth-chart-container {
+    position: relative;
+    height: 320px;
+    padding: 20px;
+}
+
+#bandwidthChart {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.chart-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: var(--bg-card);
+    z-index: 10;
+}
+
+.chart-loader {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.chart-loading span {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.chart-empty-state {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: var(--bg-card);
+    z-index: 10;
+}
+
+.chart-empty-state svg {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.chart-empty-state h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.chart-empty-state p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.bandwidth-chart-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-hover) 100%);
+}
+
+.chart-summary {
+    display: flex;
+    gap: 24px;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.summary-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.chart-last-updated {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* Responsive Styles for Bandwidth */
+@media (max-width: 1200px) {
+    .bandwidth-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .bandwidth-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .bandwidth-header-right {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .bandwidth-stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .bandwidth-chart-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .chart-header-right {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .bandwidth-chart-footer {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .chart-summary {
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+}
+
 /* Data Table */
 .data-table {
     background: var(--bg-card);
@@ -1786,79 +2485,243 @@ tbody tr:last-child td {
         
         <!-- Bandwidth Section -->
         <div id="bandwidth-section" style="display: none;">
-            <!-- Bandwidth Stats -->
-            <div class="stats-grid" style="margin-bottom: 20px;">
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2v20M2 12h20M7 7l10 10M7 17l10-10"></path>
-                        </svg>
+            <!-- Bandwidth Header -->
+            <div class="bandwidth-header">
+                <div class="bandwidth-header-left">
+                    <h2 class="bandwidth-title">Bandwidth Insights</h2>
+                    <div class="bandwidth-subtitle">Monitor your network traffic in real-time</div>
+                </div>
+                <div class="bandwidth-header-right">
+                    <div class="live-indicator" id="bandwidth-live">
+                        <span class="live-dot"></span>
+                        <span class="live-text">Live</span>
                     </div>
-                    <div class="stat-details">
-                        <span class="stat-title">Total Upload</span>
-                        <div class="stat-value" id="total-upload">0 B</div>
-                        <span class="stat-trend" id="upload-trend"></span>
+                    <div class="time-range-selector">
+                        <button class="time-range-btn active" data-days="7">7D</button>
+                        <button class="time-range-btn" data-days="30">30D</button>
+                        <button class="time-range-btn" data-days="90">90D</button>
+                    </div>
+                    <button class="export-btn" onclick="exportBandwidthData()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7,10 12,15 17,10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Export
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bandwidth Stats Grid -->
+            <div class="bandwidth-stats-grid">
+                <div class="bandwidth-stat-card" data-type="upload">
+                    <div class="stat-card-glow"></div>
+                    <div class="stat-card-content">
+                        <div class="stat-card-header">
+                            <div class="stat-icon-wrapper upload-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 19V5M5 12l7-7 7 7"/>
+                                </svg>
+                            </div>
+                            <div class="stat-badge" id="upload-badge">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="18,15 12,9 6,15"></polyline>
+                                </svg>
+                                <span>0%</span>
+                            </div>
+                        </div>
+                        <div class="stat-card-body">
+                            <span class="stat-label">Total Upload</span>
+                            <div class="stat-value-large" id="total-upload">
+                                <span class="stat-number">0</span>
+                                <span class="stat-unit">B</span>
+                            </div>
+                            <div class="stat-comparison" id="upload-comparison">
+                                <span class="comparison-label">vs previous period</span>
+                                <span class="comparison-value neutral">--</span>
+                            </div>
+                        </div>
+                        <div class="stat-progress-bar">
+                            <div class="stat-progress-fill upload-fill" id="upload-progress"></div>
+                        </div>
                     </div>
                 </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2v20M2 12h20M7 7l10 10M7 17l10-10"></path>
-                        </svg>
-                    </div>
-                    <div class="stat-details">
-                        <span class="stat-title">Total Download</span>
-                        <div class="stat-value" id="total-download">0 B</div>
-                        <span class="stat-trend" id="download-trend"></span>
+
+                <div class="bandwidth-stat-card" data-type="download">
+                    <div class="stat-card-glow"></div>
+                    <div class="stat-card-content">
+                        <div class="stat-card-header">
+                            <div class="stat-icon-wrapper download-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 5v14M5 12l7 7 7-7"/>
+                                </svg>
+                            </div>
+                            <div class="stat-badge" id="download-badge">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="18,15 12,9 6,15"></polyline>
+                                </svg>
+                                <span>0%</span>
+                            </div>
+                        </div>
+                        <div class="stat-card-body">
+                            <span class="stat-label">Total Download</span>
+                            <div class="stat-value-large" id="total-download">
+                                <span class="stat-number">0</span>
+                                <span class="stat-unit">B</span>
+                            </div>
+                            <div class="stat-comparison" id="download-comparison">
+                                <span class="comparison-label">vs previous period</span>
+                                <span class="comparison-value neutral">--</span>
+                            </div>
+                        </div>
+                        <div class="stat-progress-bar">
+                            <div class="stat-progress-fill download-fill" id="download-progress"></div>
+                        </div>
                     </div>
                 </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M12 6v6l4 2"></path>
-                        </svg>
-                    </div>
-                    <div class="stat-details">
-                        <span class="stat-title">Peak Usage</span>
-                        <div class="stat-value" id="peak-usage">0 B/h</div>
-                        <span class="stat-trend" id="peak-time"></span>
+
+                <div class="bandwidth-stat-card" data-type="peak">
+                    <div class="stat-card-glow"></div>
+                    <div class="stat-card-content">
+                        <div class="stat-card-header">
+                            <div class="stat-icon-wrapper peak-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="13,2 3,14 12,14 11,22 21,10 12,10"></polygon>
+                                </svg>
+                            </div>
+                            <div class="stat-time-badge" id="peak-time-badge">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12,6 12,12 16,14"></polyline>
+                                </svg>
+                                <span>--</span>
+                            </div>
+                        </div>
+                        <div class="stat-card-body">
+                            <span class="stat-label">Peak Usage</span>
+                            <div class="stat-value-large" id="peak-usage">
+                                <span class="stat-number">0</span>
+                                <span class="stat-unit">B/h</span>
+                            </div>
+                            <div class="stat-comparison" id="peak-comparison">
+                                <span class="comparison-label">highest recorded</span>
+                                <span class="comparison-value neutral">--</span>
+                            </div>
+                        </div>
+                        <div class="stat-peak-indicator">
+                            <div class="peak-bar" style="height: 30%"></div>
+                            <div class="peak-bar" style="height: 50%"></div>
+                            <div class="peak-bar active" style="height: 100%"></div>
+                            <div class="peak-bar" style="height: 70%"></div>
+                            <div class="peak-bar" style="height: 40%"></div>
+                        </div>
                     </div>
                 </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-                        </svg>
-                    </div>
-                    <div class="stat-details">
-                        <span class="stat-title">Avg. Speed</span>
-                        <div class="stat-value" id="avg-speed">0 B/h</div>
-                        <span class="stat-trend" id="speed-info"></span>
+
+                <div class="bandwidth-stat-card" data-type="average">
+                    <div class="stat-card-glow"></div>
+                    <div class="stat-card-content">
+                        <div class="stat-card-header">
+                            <div class="stat-icon-wrapper avg-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                                </svg>
+                            </div>
+                            <div class="stat-stability-badge" id="stability-badge">
+                                <span class="stability-dot"></span>
+                                <span>Stable</span>
+                            </div>
+                        </div>
+                        <div class="stat-card-body">
+                            <span class="stat-label">Avg. Speed</span>
+                            <div class="stat-value-large" id="avg-speed">
+                                <span class="stat-number">0</span>
+                                <span class="stat-unit">B/h</span>
+                            </div>
+                            <div class="stat-comparison" id="avg-comparison">
+                                <span class="comparison-label">across all sessions</span>
+                                <span class="comparison-value neutral">--</span>
+                            </div>
+                        </div>
+                        <div class="stat-mini-chart" id="avg-mini-chart">
+                            <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+                                <path class="mini-chart-line" d="M0,15 Q10,10 20,15 T40,15 T60,15 T80,15 T100,15" fill="none" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Bandwidth Chart -->
-            <div class="chart-card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 class="chart-title" style="margin: 0;">Bandwidth Trends</h3>
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <div class="legend-item">
-                            <span class="legend-dot" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);"></span>
-                            <span class="legend-label">Upload</span>
+
+            <!-- Bandwidth Chart Section -->
+            <div class="bandwidth-chart-section">
+                <div class="bandwidth-chart-header">
+                    <div class="chart-header-left">
+                        <h3 class="chart-title">Traffic Overview</h3>
+                        <div class="chart-legend">
+                            <div class="legend-item upload">
+                                <span class="legend-dot"></span>
+                                <span class="legend-label">Upload</span>
+                            </div>
+                            <div class="legend-item download">
+                                <span class="legend-dot"></span>
+                                <span class="legend-label">Download</span>
+                            </div>
                         </div>
-                        <div class="legend-item">
-                            <span class="legend-dot" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"></span>
-                            <span class="legend-label">Download</span>
+                    </div>
+                    <div class="chart-header-right">
+                        <div class="chart-type-toggle">
+                            <button class="chart-type-btn active" data-type="line">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"></polyline>
+                                </svg>
+                            </button>
+                            <button class="chart-type-btn" data-type="bar">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="12" width="4" height="9"></rect>
+                                    <rect x="10" y="7" width="4" height="14"></rect>
+                                    <rect x="17" y="3" width="4" height="18"></rect>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
-                <div class="chart-container">
+                <div class="bandwidth-chart-container">
+                    <div class="chart-loading" id="bandwidth-chart-loading">
+                        <div class="chart-loader"></div>
+                        <span>Loading chart data...</span>
+                    </div>
+                    <div class="chart-empty-state" id="bandwidth-chart-empty" style="display: none;">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M3 3v18h18"></path>
+                            <path d="M7 16l4-4 4 4 5-6"></path>
+                        </svg>
+                        <h4>No Bandwidth Data</h4>
+                        <p>Start using your VPN to see traffic analytics</p>
+                    </div>
                     <canvas id="bandwidthChart"></canvas>
+                </div>
+                <div class="bandwidth-chart-footer">
+                    <div class="chart-summary">
+                        <div class="summary-item">
+                            <span class="summary-label">Total Traffic</span>
+                            <span class="summary-value" id="total-traffic">0 B</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Data Points</span>
+                            <span class="summary-value" id="data-points">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Avg. Daily</span>
+                            <span class="summary-value" id="avg-daily">0 B</span>
+                        </div>
+                    </div>
+                    <div class="chart-last-updated">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12,6 12,12 16,14"></polyline>
+                        </svg>
+                        <span id="bandwidth-last-updated">Just now</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2143,84 +3006,247 @@ async function loadActivityLogs(page = 1) {
     }
 }
 
-async function loadBandwidthData() {
+// Bandwidth Insights State
+let bandwidthState = {
+    currentDays: 7,
+    chartType: 'line',
+    previousData: null,
+    autoRefreshInterval: null
+};
+
+// Initialize Bandwidth Event Listeners
+function initBandwidthEvents() {
+    // Time range selector
+    document.querySelectorAll('.time-range-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            bandwidthState.currentDays = parseInt(this.dataset.days);
+            loadBandwidthData();
+        });
+    });
+
+    // Chart type toggle
+    document.querySelectorAll('.chart-type-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            bandwidthState.chartType = this.dataset.type;
+            loadBandwidthData();
+        });
+    });
+}
+
+// Animated number counter
+function animateNumber(element, target, duration = 1000) {
+    const start = 0;
+    const startTime = performance.now();
+
+    function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeOut = 1 - Math.pow(1 - progress, 3);
+        const current = start + (target - start) * easeOut;
+
+        element.textContent = formatBytes(current);
+
+        if (progress < 1) {
+            requestAnimationFrame(update);
+        }
+    }
+
+    requestAnimationFrame(update);
+}
+
+// Format number with animation
+function formatBytesAnimated(bytes, decimals = 2) {
+    if (bytes === 0) return { value: '0', unit: 'B' };
+
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return {
+        value: parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)),
+        unit: sizes[i]
+    };
+}
+
+// Update stat card with animation
+function updateStatCard(id, bytes, comparison = null, badgeChange = null) {
+    const element = document.getElementById(id);
+    if (!element) return;
+
+    const formatted = formatBytesAnimated(bytes);
+
+    element.innerHTML = `
+        <span class="stat-number">${formatted.value}</span>
+        <span class="stat-unit">${formatted.unit}</span>
+    `;
+
+    // Update comparison if provided
+    if (comparison && element.parentElement) {
+        const comparisonEl = element.parentElement.querySelector('.stat-comparison .comparison-value');
+        if (comparisonEl) {
+            comparisonEl.textContent = comparison.text;
+            comparisonEl.className = 'comparison-value ' + comparison.class;
+        }
+    }
+}
+
+// Load Bandwidth Data
+async function loadBandwidthData(days = null) {
+    const targetDays = days || bandwidthState.currentDays;
+
     try {
-        // Show loading shimmer for stats
-        document.getElementById('total-upload').innerHTML = '<div class="loading" style="height: 28px; width: 100px; border-radius: 6px;"></div>';
-        document.getElementById('total-download').innerHTML = '<div class="loading" style="height: 28px; width: 100px; border-radius: 6px;"></div>';
-        document.getElementById('peak-usage').innerHTML = '<div class="loading" style="height: 28px; width: 100px; border-radius: 6px;"></div>';
-        document.getElementById('avg-speed').innerHTML = '<div class="loading" style="height: 28px; width: 100px; border-radius: 6px;"></div>';
-        
-        const response = await fetch('/api/console/bandwidth-usage');
+        // Show loading state
+        const chartLoading = document.getElementById('bandwidth-chart-loading');
+        const chartEmpty = document.getElementById('bandwidth-chart-empty');
+        const chartCanvas = document.getElementById('bandwidthChart');
+
+        if (chartLoading) chartLoading.style.display = 'flex';
+        if (chartEmpty) chartEmpty.style.display = 'none';
+        if (chartCanvas) chartCanvas.style.opacity = '0';
+
+        const response = await fetch(`/api/console/bandwidth-usage?days=${targetDays}`);
         const data = await response.json();
-        
+
+        // Hide loading
+        if (chartLoading) chartLoading.style.display = 'none';
+
+        // Check for empty data
+        if (!data.labels || data.labels.length === 0 || (data.upload.every(v => v === 0) && data.download.every(v => v === 0))) {
+            if (chartEmpty) chartEmpty.style.display = 'flex';
+            if (chartCanvas) chartCanvas.style.opacity = '0';
+            updateEmptyStats();
+            return;
+        }
+
+        if (chartCanvas) chartCanvas.style.opacity = '1';
+
         // Calculate statistics
         const totalUpload = data.upload.reduce((a, b) => a + b, 0);
         const totalDownload = data.download.reduce((a, b) => a + b, 0);
         const maxUpload = Math.max(...data.upload);
         const maxDownload = Math.max(...data.download);
         const peakUsage = Math.max(maxUpload, maxDownload);
-        const peakIndex = data.upload.indexOf(maxUpload) >= 0 ? data.upload.indexOf(maxUpload) : data.download.indexOf(maxDownload);
-        const avgSpeed = (totalUpload + totalDownload) / data.labels.length;
-        
-        // Update stats cards
-        document.getElementById('total-upload').textContent = formatBytes(totalUpload * 1024 * 1024);
-        document.getElementById('total-download').textContent = formatBytes(totalDownload * 1024 * 1024);
-        document.getElementById('peak-usage').textContent = formatBytes(peakUsage * 1024 * 1024) + '/h';
-        document.getElementById('avg-speed').textContent = formatBytes(avgSpeed * 1024 * 1024) + '/h';
-        
-        // Update trends
-        document.getElementById('upload-trend').textContent = `${data.upload.length} data points`;
-        document.getElementById('upload-trend').style.color = 'var(--text-muted)';
-        document.getElementById('download-trend').textContent = `${data.download.length} data points`;
-        document.getElementById('download-trend').style.color = 'var(--text-muted)';
-        document.getElementById('peak-time').textContent = `at ${data.labels[peakIndex] || 'N/A'}`;
-        document.getElementById('peak-time').style.color = 'var(--text-muted)';
-        document.getElementById('speed-info').textContent = `Last 24 hours`;
-        document.getElementById('speed-info').style.color = 'var(--text-muted)';
-        
+        const peakIndex = maxUpload >= maxDownload ? data.upload.indexOf(maxUpload) : data.download.indexOf(maxDownload);
+        const avgSpeed = (totalUpload + totalDownload) / Math.max(data.labels.length, 1);
+        const totalTraffic = totalUpload + totalDownload;
+
+        // Calculate progress percentages
+        const maxTotal = Math.max(totalUpload, totalDownload);
+        const uploadProgress = maxTotal > 0 ? (totalUpload / maxTotal) * 100 : 0;
+        const downloadProgress = maxTotal > 0 ? (totalDownload / maxTotal) * 100 : 0;
+
+        // Update stats cards with animation
+        updateStatCard('total-upload', totalUpload * 1024 * 1024);
+        updateStatCard('total-download', totalDownload * 1024 * 1024);
+        updateStatCard('peak-usage', peakUsage * 1024 * 1024);
+        updateStatCard('avg-speed', avgSpeed * 1024 * 1024);
+
+        // Update progress bars
+        const uploadProgressBar = document.getElementById('upload-progress');
+        const downloadProgressBar = document.getElementById('download-progress');
+        if (uploadProgressBar) uploadProgressBar.style.width = uploadProgress + '%';
+        if (downloadProgressBar) downloadProgressBar.style.width = downloadProgress + '%';
+
+        // Update peak time badge
+        const peakTimeBadge = document.getElementById('peak-time-badge');
+        if (peakTimeBadge && peakTimeBadge.querySelector('span')) {
+            peakTimeBadge.querySelector('span').textContent = data.labels[peakIndex] || '--';
+        }
+
+        // Update peak comparison
+        const peakComparison = document.getElementById('peak-comparison');
+        if (peakComparison) {
+            const peakValue = peakComparison.querySelector('.comparison-value');
+            if (peakValue) {
+                peakValue.textContent = formatBytes(peakUsage * 1024 * 1024);
+            }
+        }
+
+        // Update chart footer summary
+        const totalTrafficEl = document.getElementById('total-traffic');
+        const dataPointsEl = document.getElementById('data-points');
+        const avgDailyEl = document.getElementById('avg-daily');
+        const lastUpdatedEl = document.getElementById('bandwidth-last-updated');
+
+        if (totalTrafficEl) totalTrafficEl.textContent = formatBytes(totalTraffic * 1024 * 1024);
+        if (dataPointsEl) dataPointsEl.textContent = data.labels.length + ' days';
+        if (avgDailyEl) avgDailyEl.textContent = formatBytes(avgSpeed * 1024 * 1024);
+        if (lastUpdatedEl) lastUpdatedEl.textContent = 'Just now';
+
+        // Calculate comparison with previous period (if available)
+        if (bandwidthState.previousData) {
+            updateComparison(bandwidthState.previousData, { totalUpload, totalDownload });
+        }
+
+        // Store current data for future comparison
+        bandwidthState.previousData = { totalUpload, totalDownload };
+
         // Destroy existing chart
         if (bandwidthChart) {
             bandwidthChart.destroy();
+            bandwidthChart = null;
         }
-        
+
+        // Create chart
         const ctx = document.getElementById('bandwidthChart').getContext('2d');
-        bandwidthChart = new Chart(ctx, {
-            type: 'line',
+        const chartType = bandwidthState.chartType;
+
+        // Create gradient for upload
+        const uploadGradient = ctx.createLinearGradient(0, 0, 0, 300);
+        uploadGradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
+        uploadGradient.addColorStop(1, 'rgba(59, 130, 246, 0.01)');
+
+        // Create gradient for download
+        const downloadGradient = ctx.createLinearGradient(0, 0, 0, 300);
+        downloadGradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
+        downloadGradient.addColorStop(1, 'rgba(16, 185, 129, 0.01)');
+
+        const chartConfig = {
+            type: chartType,
             data: {
-                labels: data.labels,
+                labels: data.labels.map(label => {
+                    // Format date labels
+                    const date = new Date(label);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }),
                 datasets: [{
                     label: 'Upload',
                     data: data.upload,
                     borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    borderWidth: 3,
-                    fill: true,
+                    backgroundColor: chartType === 'line' ? uploadGradient : 'rgba(59, 130, 246, 0.8)',
+                    borderWidth: chartType === 'line' ? 3 : 0,
+                    fill: chartType === 'line',
                     tension: 0.4,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
+                    pointRadius: chartType === 'line' ? (data.labels.length > 14 ? 0 : 4) : 0,
+                    pointHoverRadius: chartType === 'line' ? 6 : 0,
                     pointBackgroundColor: '#3b82f6',
                     pointBorderColor: '#fff',
                     pointBorderWidth: 2,
                     pointHoverBackgroundColor: '#fff',
                     pointHoverBorderColor: '#3b82f6',
-                    pointHoverBorderWidth: 3
+                    pointHoverBorderWidth: 3,
+                    borderRadius: chartType === 'bar' ? 6 : 0
                 }, {
                     label: 'Download',
                     data: data.download,
                     borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    borderWidth: 3,
-                    fill: true,
+                    backgroundColor: chartType === 'line' ? downloadGradient : 'rgba(16, 185, 129, 0.8)',
+                    borderWidth: chartType === 'line' ? 3 : 0,
+                    fill: chartType === 'line',
                     tension: 0.4,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
+                    pointRadius: chartType === 'line' ? (data.labels.length > 14 ? 0 : 4) : 0,
+                    pointHoverRadius: chartType === 'line' ? 6 : 0,
                     pointBackgroundColor: '#10b981',
                     pointBorderColor: '#fff',
                     pointBorderWidth: 2,
                     pointHoverBackgroundColor: '#fff',
                     pointHoverBorderColor: '#10b981',
-                    pointHoverBorderWidth: 3
+                    pointHoverBorderWidth: 3,
+                    borderRadius: chartType === 'bar' ? 6 : 0
                 }]
             },
             options: {
@@ -2230,24 +3256,44 @@ async function loadBandwidthData() {
                     mode: 'index',
                     intersect: false
                 },
+                animation: {
+                    duration: 750,
+                    easing: 'easeOutQuart'
+                },
                 plugins: {
                     legend: {
                         display: false
                     },
                     tooltip: {
+                        enabled: true,
                         backgroundColor: 'rgba(15, 23, 42, 0.95)',
                         titleColor: '#fff',
                         bodyColor: '#fff',
-                        padding: 12,
-                        borderColor: 'rgba(148, 163, 184, 0.3)',
+                        titleFont: { size: 13, weight: 600 },
+                        bodyFont: { size: 12 },
+                        padding: 16,
+                        borderColor: 'rgba(148, 163, 184, 0.2)',
                         borderWidth: 1,
                         displayColors: true,
                         boxWidth: 12,
                         boxHeight: 12,
+                        boxPadding: 4,
                         usePointStyle: true,
+                        cornerRadius: 8,
                         callbacks: {
+                            title: function(context) {
+                                return context[0].label;
+                            },
                             label: function(context) {
-                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' MB';
+                                const value = context.parsed.y;
+                                const bytes = value * 1024 * 1024;
+                                return ' ' + context.dataset.label + ': ' + formatBytes(bytes);
+                            },
+                            afterBody: function(context) {
+                                const uploadVal = context[0].chart.data.datasets[0].data[context[0].dataIndex];
+                                const downloadVal = context[0].chart.data.datasets[1].data[context[0].dataIndex];
+                                const total = (uploadVal + downloadVal) * 1024 * 1024;
+                                return '\nTotal: ' + formatBytes(total);
                             }
                         }
                     }
@@ -2256,39 +3302,127 @@ async function loadBandwidthData() {
                     x: {
                         grid: {
                             display: true,
-                            color: 'rgba(148, 163, 184, 0.1)'
+                            color: 'rgba(148, 163, 184, 0.08)',
+                            drawBorder: false
                         },
                         ticks: {
                             color: '#64748b',
                             font: {
-                                size: 12,
+                                size: 11,
                                 weight: 500
-                            }
+                            },
+                            maxRotation: 45,
+                            minRotation: 0
                         }
                     },
                     y: {
                         beginAtZero: true,
                         grid: {
                             display: true,
-                            color: 'rgba(148, 163, 184, 0.1)'
+                            color: 'rgba(148, 163, 184, 0.08)',
+                            drawBorder: false
                         },
                         ticks: {
                             color: '#64748b',
                             font: {
-                                size: 12,
+                                size: 11,
                                 weight: 500
                             },
+                            padding: 8,
                             callback: function(value) {
-                                return value.toFixed(1) + ' MB';
+                                if (value >= 1000) {
+                                    return (value / 1000).toFixed(1) + ' GB';
+                                }
+                                return value.toFixed(0) + ' MB';
                             }
                         }
                     }
                 }
             }
-        });
+        };
+
+        bandwidthChart = new Chart(ctx, chartConfig);
+
     } catch (error) {
         console.error('Error loading bandwidth data:', error);
+        const chartLoading = document.getElementById('bandwidth-chart-loading');
+        const chartEmpty = document.getElementById('bandwidth-chart-empty');
+        if (chartLoading) chartLoading.style.display = 'none';
+        if (chartEmpty) {
+            chartEmpty.style.display = 'flex';
+            chartEmpty.querySelector('p').textContent = 'Error loading data. Please try again.';
+        }
     }
+}
+
+// Update comparison with previous period
+function updateComparison(previous, current) {
+    const uploadChange = previous.totalUpload > 0
+        ? ((current.totalUpload - previous.totalUpload) / previous.totalUpload * 100).toFixed(1)
+        : 0;
+    const downloadChange = previous.totalDownload > 0
+        ? ((current.totalDownload - previous.totalDownload) / previous.totalDownload * 100).toFixed(1)
+        : 0;
+
+    // Update upload badge
+    const uploadBadge = document.getElementById('upload-badge');
+    if (uploadBadge) {
+        const changeSpan = uploadBadge.querySelector('span');
+        const arrow = uploadChange >= 0
+            ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18,15 12,9 6,15"></polyline></svg>'
+            : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6,9 12,15 18,9"></polyline></svg>';
+        uploadBadge.innerHTML = arrow + '<span>' + Math.abs(uploadChange) + '%</span>';
+        uploadBadge.className = 'stat-badge ' + (uploadChange >= 0 ? 'positive' : 'negative');
+    }
+
+    // Update download badge
+    const downloadBadge = document.getElementById('download-badge');
+    if (downloadBadge) {
+        const arrow = downloadChange >= 0
+            ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18,15 12,9 6,15"></polyline></svg>'
+            : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6,9 12,15 18,9"></polyline></svg>';
+        downloadBadge.innerHTML = arrow + '<span>' + Math.abs(downloadChange) + '%</span>';
+        downloadBadge.className = 'stat-badge ' + (downloadChange >= 0 ? 'positive' : 'negative');
+    }
+}
+
+// Update empty stats
+function updateEmptyStats() {
+    ['total-upload', 'total-download', 'peak-usage', 'avg-speed'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.innerHTML = '<span class="stat-number">0</span><span class="stat-unit">B</span>';
+        }
+    });
+}
+
+// Export bandwidth data
+function exportBandwidthData() {
+    fetch(`/api/console/bandwidth-usage?days=${bandwidthState.currentDays}`)
+        .then(response => response.json())
+        .then(data => {
+            // Create CSV content
+            let csv = 'Date,Upload (MB),Download (MB),Total (MB)\n';
+            for (let i = 0; i < data.labels.length; i++) {
+                const upload = data.upload[i] || 0;
+                const download = data.download[i] || 0;
+                csv += `${data.labels[i]},${upload.toFixed(2)},${download.toFixed(2)},${(upload + download).toFixed(2)}\n`;
+            }
+
+            // Download file
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `bandwidth-report-${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => {
+            console.error('Error exporting bandwidth data:', error);
+        });
 }
 
 function loadActivityChart(data) {
@@ -2759,12 +3893,15 @@ function toggleLiveActivity() {
 // Initialize dashboard on load
 document.addEventListener('DOMContentLoaded', function() {
     loadDashboardData();
-    
+    initBandwidthEvents();
+
     // Auto-refresh every 30 seconds
     setInterval(() => {
         const activeSection = document.querySelector('[id$="-section"]:not([style*="none"])').id.replace('-section', '');
         if (activeSection === 'dashboard') {
             loadDashboardData();
+        } else if (activeSection === 'bandwidth') {
+            loadBandwidthData();
         }
     }, 30000);
 });
