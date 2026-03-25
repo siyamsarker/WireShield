@@ -1832,8 +1832,10 @@ function applyActivityFilters() {
             (log.details && log.details.toLowerCase().includes(searchTerm)) ||
             (log.direction && log.direction.toLowerCase().includes(searchTerm));
         
-        const matchesDirection = directionFilter === 'all' || 
-            (log.direction && log.direction.toLowerCase() === directionFilter);
+        const logDir = log.direction ? log.direction.toLowerCase() : '';
+        const matchesDirection = directionFilter === 'all' ||
+            (directionFilter === 'in' && (logDir === 'in')) ||
+            (directionFilter === 'out' && (logDir === 'out'));
         
         const matchesDate = isWithinDateRange(log.timestamp, dateFrom, dateTo);
 
@@ -1868,14 +1870,14 @@ function displayAuditLogs(logs) {
 function displayActivityLogs(logs) {
     const tbody = document.getElementById('activity-logs');
     if (!logs || logs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">No activity logs found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">No traffic activity found</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = logs.map(log => `
         <tr>
             <td>${new Date(log.timestamp).toLocaleString()}</td>
-            <td>${log.client_id}</td>
+            <td>${log.client_id || 'Unknown'}</td>
             <td>
                 <span style="color: ${log.direction === 'in' ? 'var(--success)' : 'var(--accent)'}">
                     ${log.direction ? log.direction.toUpperCase() : 'N/A'}

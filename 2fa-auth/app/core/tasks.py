@@ -315,8 +315,8 @@ def _ingest_activity_logs():
             proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
             lines = proc.stdout.strip().splitlines() if proc.stdout else []
 
-            # Filter for iptables/netfilter logs (containing standard iptables markers)
-            wg_lines = [l for l in lines if any(marker in l for marker in ["IN=", "OUT=", "SRC=", "DST="])]
+            # Filter for WireShield audit logs (must have [WS-Audit] prefix AND iptables markers)
+            wg_lines = [l for l in lines if "[WS-Audit]" in l and any(marker in l for marker in ["IN=", "OUT=", "SRC=", "DST="])]
             if not wg_lines:
                 time.sleep(poll_interval)
                 continue
