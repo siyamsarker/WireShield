@@ -2195,7 +2195,7 @@ tbody tr:last-child td {
         Overview
     </a>
     
-    <a href="#" class="nav-item" onclick="showSection('users')">
+    <a href="#" class="nav-item" onclick="showSection('users', event)">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
             <circle cx="12" cy="7" r="4"/>
@@ -2203,7 +2203,7 @@ tbody tr:last-child td {
         Users & Access
     </a>
     
-    <a href="#" class="nav-item" onclick="showSection('logs')">
+    <a href="#" class="nav-item" onclick="showSection('logs', event)">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14,2 14,8 20,8"/>
@@ -2214,14 +2214,14 @@ tbody tr:last-child td {
         Audit Trail
     </a>
     
-    <a href="#" class="nav-item" onclick="showSection('activity')">
+    <a href="#" class="nav-item" onclick="showSection('activity', event)">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
         </svg>
         Traffic Activity
     </a>
     
-    <a href="#" class="nav-item" onclick="showSection('bandwidth')">
+    <a href="#" class="nav-item" onclick="showSection('bandwidth', event)">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <line x1="18" y1="20" x2="18" y2="10"/>
             <line x1="12" y1="20" x2="12" y2="4"/>
@@ -2734,19 +2734,22 @@ tbody tr:last-child td {
 let activityChart, actionsChart, bandwidthChart;
 
 // Navigation
-function showSection(section) {
+function showSection(section, event) {
     // Hide all sections
     document.querySelectorAll('[id$="-section"]').forEach(el => el.style.display = 'none');
-    
+
     // Remove active class from nav items
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    
+
     // Show selected section
     document.getElementById(section + '-section').style.display = 'block';
-    
+
     // Add active class to clicked nav item
-    event.target.closest('.nav-item').classList.add('active');
-    
+    const clickedItem = event ? event.target.closest('.nav-item') : null;
+    if (clickedItem) {
+        clickedItem.classList.add('active');
+    }
+
     // Update page title
     const titles = {
         'dashboard': 'Overview',
@@ -2756,7 +2759,7 @@ function showSection(section) {
         'bandwidth': 'Bandwidth Insights'
     };
     document.getElementById('page-title').textContent = titles[section] || 'Dashboard';
-    
+
     // Load section data
     if (section === 'users') {
         loadUsers();
