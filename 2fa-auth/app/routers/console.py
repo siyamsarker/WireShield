@@ -249,7 +249,7 @@ async def get_activity_logs(
             c.execute(count_query)
         total = c.fetchone()[0]
 
-        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY a.timestamp DESC LIMIT ? OFFSET ?"
         offset = (page - 1) * limit
         params_with_paging = params + [limit, offset]
         c.execute(query, tuple(params_with_paging))
