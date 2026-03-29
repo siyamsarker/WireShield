@@ -512,6 +512,16 @@ header {
     box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
+.bandwidth-custom-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bandwidth-custom-range .filter-date {
+    min-width: 135px;
+}
+
 .export-btn {
     display: flex;
     align-items: center;
@@ -2254,13 +2264,26 @@ tbody tr:last-child td {
                 <select id="bandwidth-user-filter" class="filter-select" style="min-width: 150px;" onchange="filterBandwidthByUser()">
                     <option value="all">All Users</option>
                 </select>
-                <div class="live-indicator" id="bandwidth-live">
-                    <span class="live-dot"></span>
-                    <span class="live-text">Live</span>
-                </div>
+                <label class="live-toggle-wrapper inactive" id="bandwidth-live-toggle-container">
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="bandwidth-live-toggle" onchange="toggleBandwidthLive()">
+                        <span class="toggle-slider"></span>
+                    </div>
+                    <span class="live-label">
+                        Live
+                        <span class="live-dot" id="bandwidth-live-indicator"></span>
+                    </span>
+                </label>
                 <div class="time-range-selector">
                     <button class="time-range-btn active" data-days="7">7D</button>
                     <button class="time-range-btn" data-days="30">30D</button>
+                    <button class="time-range-btn" data-days="custom">Custom</button>
+                </div>
+                <div class="bandwidth-custom-range" id="bandwidth-custom-range" style="display: none;">
+                    <input type="date" id="bandwidth-date-from" class="filter-date" aria-label="Bandwidth start date">
+                    <span class="date-separator">→</span>
+                    <input type="date" id="bandwidth-date-to" class="filter-date" aria-label="Bandwidth end date">
+                    <button class="btn btn-secondary" onclick="applyBandwidthCustomDate()">Apply</button>
                 </div>
                 <button class="btn btn-secondary" onclick="refreshData()">
                     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -2435,6 +2458,13 @@ tbody tr:last-child td {
                         <input type="date" id="activity-date-from" class="filter-date" aria-label="Start date" onchange="reloadActivityLogs()">
                         <span class="date-separator">→</span>
                         <input type="date" id="activity-date-to" class="filter-date" aria-label="End date" onchange="reloadActivityLogs()">
+                    </div>
+
+                    <!-- User Filter -->
+                    <div class="filter-group">
+                        <select id="activity-user-filter" class="filter-select" onchange="reloadActivityLogs()">
+                            <option value="all">All Users</option>
+                        </select>
                     </div>
 
                     <!-- Direction Filter -->
@@ -2750,6 +2780,12 @@ function showSection(section, event) {
     } else {
         defaultHeaderActions.style.display = 'flex';
         bandwidthHeaderActions.style.display = 'none';
+
+        const bwToggle = document.getElementById('bandwidth-live-toggle');
+        if (bwToggle && bwToggle.checked) {
+            bwToggle.checked = false;
+            toggleBandwidthLive();
+        }
     }
 
     // Load section data
@@ -2758,6 +2794,7 @@ function showSection(section, event) {
     } else if (section === 'logs') {
         loadAuditLogs();
     } else if (section === 'activity') {
+        loadActivityUserFilter();
         loadActivityLogs();
     } else if (section === 'bandwidth') {
         loadBandwidthData();
@@ -2957,6 +2994,7 @@ async function loadActivityLogs(page = 1) {
         `;
 
         const searchTerm = document.getElementById('activity-search').value.trim();
+        const userFilter = document.getElementById('activity-user-filter')?.value || 'all';
         const dateFrom = document.getElementById('activity-date-from').value;
         const dateTo = document.getElementById('activity-date-to').value;
         const params = new URLSearchParams({
@@ -2964,6 +3002,7 @@ async function loadActivityLogs(page = 1) {
             limit: '30'
         });
         if (searchTerm) params.append('search', searchTerm);
+        if (userFilter && userFilter !== 'all') params.append('client_filter', userFilter);
         if (dateFrom) params.append('start_date', dateFrom);
         if (dateTo) params.append('end_date', dateTo);
 
@@ -3004,20 +3043,48 @@ async function loadActivityLogs(page = 1) {
 // Bandwidth Insights State
 let bandwidthState = {
     currentDays: 7,
+    rangeMode: 'preset',
+    customDateFrom: '',
+    customDateTo: '',
     chartType: 'line',
     previousData: null,
     autoRefreshInterval: null,
-    selectedUser: 'all'
+    selectedUser: 'all',
+    eventsInitialized: false
 };
+
+let liveBandwidthInterval = null;
 
 // Initialize Bandwidth Event Listeners
 function initBandwidthEvents() {
+    if (bandwidthState.eventsInitialized) {
+        return;
+    }
+
     // Time range selector
     document.querySelectorAll('.time-range-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
-            bandwidthState.currentDays = parseInt(this.dataset.days);
+
+            if (this.dataset.days === 'custom') {
+                bandwidthState.rangeMode = 'custom';
+                const customRange = document.getElementById('bandwidth-custom-range');
+                if (customRange) {
+                    customRange.style.display = 'flex';
+                }
+                return;
+            }
+
+            bandwidthState.rangeMode = 'preset';
+            bandwidthState.currentDays = parseInt(this.dataset.days, 10);
+            bandwidthState.previousData = null;
+
+            const customRange = document.getElementById('bandwidth-custom-range');
+            if (customRange) {
+                customRange.style.display = 'none';
+            }
+
             loadBandwidthData();
         });
     });
@@ -3031,6 +3098,31 @@ function initBandwidthEvents() {
             loadBandwidthData();
         });
     });
+
+    bandwidthState.eventsInitialized = true;
+}
+
+function applyBandwidthCustomDate() {
+    const fromInput = document.getElementById('bandwidth-date-from');
+    const toInput = document.getElementById('bandwidth-date-to');
+    const fromDate = fromInput ? fromInput.value : '';
+    const toDate = toInput ? toInput.value : '';
+
+    if (!fromDate || !toDate) {
+        alert('Please select both start and end dates.');
+        return;
+    }
+
+    if (new Date(fromDate) > new Date(toDate)) {
+        alert('Start date must be before or equal to end date.');
+        return;
+    }
+
+    bandwidthState.rangeMode = 'custom';
+    bandwidthState.customDateFrom = fromDate;
+    bandwidthState.customDateTo = toDate;
+    bandwidthState.previousData = null;
+    loadBandwidthData();
 }
 
 // Animated number counter
@@ -3104,8 +3196,21 @@ async function loadBandwidthData(days = null) {
         if (chartEmpty) chartEmpty.style.display = 'none';
         if (chartCanvas) chartCanvas.style.opacity = '0';
 
-        const userParam = bandwidthState.selectedUser !== 'all' ? `&user=${bandwidthState.selectedUser}` : '';
-        const response = await fetch(`/api/console/bandwidth-usage?days=${targetDays}${userParam}`, { cache: 'no-store' });
+        const params = new URLSearchParams();
+        const useCustomRange = bandwidthState.rangeMode === 'custom' && bandwidthState.customDateFrom && bandwidthState.customDateTo;
+
+        if (useCustomRange) {
+            params.append('start_date', bandwidthState.customDateFrom);
+            params.append('end_date', bandwidthState.customDateTo);
+        } else {
+            params.append('days', String(targetDays));
+        }
+
+        if (bandwidthState.selectedUser !== 'all') {
+            params.append('user', bandwidthState.selectedUser);
+        }
+
+        const response = await fetch(`/api/console/bandwidth-usage?${params.toString()}`, { cache: 'no-store' });
         const data = await response.json();
 
         // Hide loading
@@ -3170,9 +3275,13 @@ async function loadBandwidthData(days = null) {
         const lastUpdatedEl = document.getElementById('bandwidth-last-updated');
 
         if (totalTrafficEl) totalTrafficEl.textContent = formatBytes(totalTraffic * 1024 * 1024);
-        if (dataPointsEl) dataPointsEl.textContent = data.labels.length + ' days';
+        if (dataPointsEl) {
+            dataPointsEl.textContent = useCustomRange
+                ? `${data.labels.length} points`
+                : `${data.labels.length} days`;
+        }
         if (avgDailyEl) avgDailyEl.textContent = formatBytes(avgSpeed * 1024 * 1024);
-        if (lastUpdatedEl) lastUpdatedEl.textContent = 'Just now';
+        if (lastUpdatedEl) lastUpdatedEl.textContent = new Date().toLocaleTimeString();
 
         // Calculate comparison with previous period (if available)
         if (bandwidthState.previousData) {
@@ -3420,7 +3529,67 @@ async function loadBandwidthUserFilter() {
 function filterBandwidthByUser() {
     const select = document.getElementById('bandwidth-user-filter');
     bandwidthState.selectedUser = select.value;
+    bandwidthState.previousData = null;
     loadBandwidthData();
+}
+
+function toggleBandwidthLive() {
+    const checkbox = document.getElementById('bandwidth-live-toggle');
+    const indicator = document.getElementById('bandwidth-live-indicator');
+    const toggleContainer = document.getElementById('bandwidth-live-toggle-container');
+
+    if (!checkbox || !indicator || !toggleContainer) {
+        return;
+    }
+
+    if (checkbox.checked) {
+        toggleContainer.classList.remove('inactive');
+        indicator.classList.add('active');
+        loadBandwidthData();
+
+        if (liveBandwidthInterval) {
+            clearInterval(liveBandwidthInterval);
+        }
+        liveBandwidthInterval = setInterval(() => {
+            loadBandwidthData();
+        }, 5000);
+    } else {
+        toggleContainer.classList.add('inactive');
+        indicator.classList.remove('active');
+
+        if (liveBandwidthInterval) {
+            clearInterval(liveBandwidthInterval);
+            liveBandwidthInterval = null;
+        }
+    }
+}
+
+function loadActivityUserFilter() {
+    fetch('/api/console/users?page=1&limit=100', { cache: 'no-store' })
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('activity-user-filter');
+            if (!select) return;
+
+            const currentValue = select.value || 'all';
+            select.innerHTML = '<option value="all">All Users</option>';
+
+            if (data.users && data.users.length > 0) {
+                data.users.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.client_id;
+                    option.textContent = user.client_id;
+                    select.appendChild(option);
+                });
+            }
+
+            if ([...select.options].some(opt => opt.value === currentValue)) {
+                select.value = currentValue;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading activity user filter:', error);
+        });
 }
 
 function loadActivityChart(data) {
@@ -3705,6 +3874,7 @@ function applyAuditFilters() {
 
 function applyActivityFilters() {
     const searchTerm = document.getElementById('activity-search').value.toLowerCase();
+    const userFilter = document.getElementById('activity-user-filter').value;
     const directionFilter = document.getElementById('activity-direction-filter').value;
     const dateFrom = document.getElementById('activity-date-from').value;
     const dateTo = document.getElementById('activity-date-to').value;
@@ -3719,10 +3889,12 @@ function applyActivityFilters() {
         const matchesDirection = directionFilter === 'all' ||
             (directionFilter === 'in' && (logDir === 'in')) ||
             (directionFilter === 'out' && (logDir === 'out'));
+
+        const matchesUser = userFilter === 'all' || (log.client_id && log.client_id === userFilter);
         
         const matchesDate = isWithinDateRange(log.timestamp, dateFrom, dateTo);
 
-        return matchesSearch && matchesDirection && matchesDate;
+        return matchesSearch && matchesDirection && matchesUser && matchesDate;
     });
     
     displayActivityLogs(filtered);
