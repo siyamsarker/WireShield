@@ -2392,6 +2392,13 @@ tbody tr:last-child td {
                         <input type="date" id="audit-date-to" class="filter-date" aria-label="End date" onchange="reloadAuditLogs()">
                     </div>
 
+                    <!-- User Filter -->
+                    <div class="filter-group">
+                        <select id="audit-user-filter" class="filter-select" onchange="reloadAuditLogs()">
+                            <option value="all">All Users</option>
+                        </select>
+                    </div>
+
                     <!-- Status Filter -->
                     <div class="filter-group">
                         <select id="audit-status-filter" class="filter-select" onchange="applyAuditFilters()">
@@ -2792,6 +2799,7 @@ function showSection(section, event) {
     if (section === 'users') {
         loadUsers();
     } else if (section === 'logs') {
+        loadAuditUserFilter();
         loadAuditLogs();
     } else if (section === 'activity') {
         loadActivityUserFilter();
@@ -2954,6 +2962,7 @@ async function loadAuditLogs(page = 1) {
         `;
 
         const searchTerm = document.getElementById('audit-search').value.trim();
+        const userFilter = document.getElementById('audit-user-filter')?.value || 'all';
         const dateFrom = document.getElementById('audit-date-from').value;
         const dateTo = document.getElementById('audit-date-to').value;
         const params = new URLSearchParams({
@@ -2961,6 +2970,7 @@ async function loadAuditLogs(page = 1) {
             limit: '30'
         });
         if (searchTerm) params.append('search', searchTerm);
+        if (userFilter && userFilter !== 'all') params.append('client_filter', userFilter);
         if (dateFrom) params.append('start_date', dateFrom);
         if (dateTo) params.append('end_date', dateTo);
 
@@ -3592,6 +3602,34 @@ function loadActivityUserFilter() {
         });
 }
 
+function loadAuditUserFilter() {
+    fetch('/api/console/users?page=1&limit=100', { cache: 'no-store' })
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('audit-user-filter');
+            if (!select) return;
+
+            const currentValue = select.value || 'all';
+            select.innerHTML = '<option value="all">All Users</option>';
+
+            if (data.users && data.users.length > 0) {
+                data.users.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.client_id;
+                    option.textContent = user.client_id;
+                    select.appendChild(option);
+                });
+            }
+
+            if ([...select.options].some(opt => opt.value === currentValue)) {
+                select.value = currentValue;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading audit user filter:', error);
+        });
+}
+
 function loadActivityChart(data) {
     if (activityChart) {
         activityChart.destroy();
@@ -3851,6 +3889,7 @@ function isWithinDateRange(timestamp, fromValue, toValue) {
 
 function applyAuditFilters() {
     const searchTerm = document.getElementById('audit-search').value.toLowerCase();
+    const userFilter = document.getElementById('audit-user-filter').value;
     const statusFilter = document.getElementById('audit-status-filter').value;
     const dateFrom = document.getElementById('audit-date-from').value;
     const dateTo = document.getElementById('audit-date-to').value;
@@ -3863,10 +3902,12 @@ function applyAuditFilters() {
         
         const matchesStatus = statusFilter === 'all' || 
             (log.status && log.status.toLowerCase() === statusFilter);
+
+        const matchesUser = userFilter === 'all' || (log.client_id && log.client_id === userFilter);
         
         const matchesDate = isWithinDateRange(log.timestamp, dateFrom, dateTo);
 
-        return matchesSearch && matchesStatus && matchesDate;
+        return matchesSearch && matchesStatus && matchesUser && matchesDate;
     });
     
     displayAuditLogs(filtered);
