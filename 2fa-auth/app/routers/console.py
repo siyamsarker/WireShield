@@ -388,13 +388,44 @@ async def get_activity_metrics(client_id: str = Depends(_check_console_access)):
         }
 
 @router.get("/api/console/bandwidth-usage")
-async def get_bandwidth_usage(days: int = 30, client_id: str = Depends(_check_console_access)):
-    """Fetch daily bandwidth usage (RX+TX) per client for the last N days."""
+async def get_bandwidth_usage(
+    days: int = 30,
+    user: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    client_id: str = Depends(_check_console_access)
+):
+    """Fetch daily bandwidth usage (RX+TX) per client with optional user/date filters."""
     try:
         conn = get_db()
         c = conn.cursor()
-        # Fetch records for last 'days' days
-        c.execute(f"SELECT scan_date, client_id, rx_bytes, tx_bytes FROM bandwidth_usage WHERE scan_date >= date('now', '-{days} days') ORDER BY scan_date ASC")
+
+        conditions = []
+        params: List[Any] = []
+
+        if user and user != "all":
+            conditions.append("client_id = ?")
+            params.append(user)
+
+        if start_date:
+            conditions.append("scan_date >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("scan_date <= ?")
+            params.append(end_date)
+
+        # Fallback to rolling N-day window when no explicit date range is provided.
+        if not start_date and not end_date:
+            safe_days = max(1, min(days, 3650))
+            conditions.append("scan_date >= date('now', ?)")
+            params.append(f"-{safe_days} days")
+
+        query = "SELECT scan_date, client_id, rx_bytes, tx_bytes FROM bandwidth_usage"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY scan_date ASC"
+
+        c.execute(query, tuple(params))
         rows = [dict(row) for row in c.fetchall()]
         conn.close()
 
