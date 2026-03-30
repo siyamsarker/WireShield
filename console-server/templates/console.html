@@ -2264,14 +2264,7 @@ tbody tr:last-child td {
                         <span class="live-dot" id="auto-refresh-indicator-default"></span>
                     </span>
                 </label>
-                <button class="btn btn-secondary" onclick="copyCurrentSectionLink()">
-                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                    </svg>
-                    Copy Link
-                </button>
-                <button class="btn btn-secondary" onclick="resetCurrentSectionView()">
+                <button class="btn btn-secondary" id="reset-view-btn" onclick="resetCurrentSectionView()">
                     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <polyline points="1 4 1 10 7 10"/>
                         <polyline points="23 20 23 14 17 14"/>
@@ -2292,16 +2285,6 @@ tbody tr:last-child td {
                 <select id="bandwidth-user-filter" class="filter-select" style="min-width: 150px;" onchange="filterBandwidthByUser()">
                     <option value="all">All Users</option>
                 </select>
-                <label class="live-toggle-wrapper inactive" id="bandwidth-live-toggle-container">
-                    <div class="toggle-switch">
-                        <input type="checkbox" id="bandwidth-live-toggle" onchange="toggleBandwidthLive()">
-                        <span class="toggle-slider"></span>
-                    </div>
-                    <span class="live-label">
-                        Live
-                        <span class="live-dot" id="bandwidth-live-indicator"></span>
-                    </span>
-                </label>
                 <label class="live-toggle-wrapper inactive" id="auto-refresh-toggle-container-bandwidth">
                     <div class="toggle-switch">
                         <input type="checkbox" id="auto-refresh-toggle-bandwidth" onchange="syncAutoRefreshFromHeader('bandwidth')">
@@ -2313,8 +2296,8 @@ tbody tr:last-child td {
                     </span>
                 </label>
                 <div class="time-range-selector">
-                    <button class="time-range-btn" data-days="1">24H</button>
-                    <button class="time-range-btn active" data-days="7">7D</button>
+                    <button class="time-range-btn active" data-days="1">24H</button>
+                    <button class="time-range-btn" data-days="7">7D</button>
                     <button class="time-range-btn" data-days="30">30D</button>
                     <button class="time-range-btn" data-days="custom">Custom</button>
                 </div>
@@ -2521,18 +2504,6 @@ tbody tr:last-child td {
                             <option value="out">Outbound</option>
                         </select>
                     </div>
-
-                    <!-- Live Toggle -->
-                    <label class="live-toggle-wrapper inactive" id="live-toggle-container">
-                        <div class="toggle-switch">
-                            <input type="checkbox" id="live-toggle" onchange="toggleLiveActivity()">
-                            <span class="toggle-slider"></span>
-                        </div>
-                        <span class="live-label">
-                            Live
-                            <span class="live-dot" id="live-indicator"></span>
-                        </span>
-                    </label>
                 </div>
             </div>
 
@@ -2851,6 +2822,13 @@ function showSection(section, event, fromHash = false) {
     // Toggle header actions based on section
     const defaultHeaderActions = document.getElementById('default-header-actions');
     const bandwidthHeaderActions = document.getElementById('bandwidth-header-actions');
+    const resetViewBtn = document.getElementById('reset-view-btn');
+
+    // Show Reset View button only for logs and activity sections
+    if (resetViewBtn) {
+        resetViewBtn.style.display = (section === 'logs' || section === 'activity') ? 'flex' : 'none';
+    }
+
     if (section === 'bandwidth') {
         defaultHeaderActions.style.display = 'none';
         bandwidthHeaderActions.style.display = 'flex';
@@ -2859,12 +2837,6 @@ function showSection(section, event, fromHash = false) {
     } else {
         defaultHeaderActions.style.display = 'flex';
         bandwidthHeaderActions.style.display = 'none';
-
-        const bwToggle = document.getElementById('bandwidth-live-toggle');
-        if (bwToggle && bwToggle.checked) {
-            bwToggle.checked = false;
-            toggleBandwidthLive();
-        }
     }
 
     // Load section data
@@ -3126,7 +3098,7 @@ async function loadActivityLogs(page = 1) {
 
 // Bandwidth Insights State
 let bandwidthState = {
-    currentDays: 7,
+    currentDays: 1,
     rangeMode: 'preset',
     customDateFrom: '',
     customDateTo: '',
@@ -3136,8 +3108,6 @@ let bandwidthState = {
     selectedUser: 'all',
     eventsInitialized: false
 };
-
-let liveBandwidthInterval = null;
 
 // Initialize Bandwidth Event Listeners
 function initBandwidthEvents() {
@@ -3614,37 +3584,6 @@ function filterBandwidthByUser() {
     loadBandwidthData();
 }
 
-function toggleBandwidthLive() {
-    const checkbox = document.getElementById('bandwidth-live-toggle');
-    const indicator = document.getElementById('bandwidth-live-indicator');
-    const toggleContainer = document.getElementById('bandwidth-live-toggle-container');
-
-    if (!checkbox || !indicator || !toggleContainer) {
-        return;
-    }
-
-    if (checkbox.checked) {
-        toggleContainer.classList.remove('inactive');
-        indicator.classList.add('active');
-        loadBandwidthData();
-
-        if (liveBandwidthInterval) {
-            clearInterval(liveBandwidthInterval);
-        }
-        liveBandwidthInterval = setInterval(() => {
-            loadBandwidthData();
-        }, 5000);
-    } else {
-        toggleContainer.classList.add('inactive');
-        indicator.classList.remove('active');
-
-        if (liveBandwidthInterval) {
-            clearInterval(liveBandwidthInterval);
-            liveBandwidthInterval = null;
-        }
-    }
-}
-
 function loadActivityUserFilter() {
     fetch('/api/console/users?page=1&limit=100', { cache: 'no-store' })
         .then(response => response.json())
@@ -3914,15 +3853,6 @@ function syncAutoRefreshFromHeader(source) {
     setAutoRefreshEnabled(toggle.checked);
 }
 
-function copyCurrentSectionLink() {
-    const section = getSectionFromHash();
-    const fullUrl = `${window.location.origin}${window.location.pathname}#${section}`;
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(fullUrl).catch(() => {});
-    }
-}
-
 function resetCurrentSectionView() {
     const section = getActiveSection();
 
@@ -3953,11 +3883,6 @@ function resetCurrentSectionView() {
         if (activityDirection) activityDirection.value = 'all';
         if (activityUser) activityUser.value = 'all';
 
-        const liveToggle = document.getElementById('live-toggle');
-        if (liveToggle && liveToggle.checked) {
-            liveToggle.checked = false;
-            toggleLiveActivity();
-        }
         loadActivityLogs(1);
     } else {
         refreshData();
@@ -4237,42 +4162,6 @@ function displayActivityLogs(logs) {
             </tr>
         `;
     }).join('');
-}
-
-// Live Activity Toggle
-let liveActivityInterval = null;
-
-function toggleLiveActivity() {
-    const checkbox = document.getElementById('live-toggle');
-    const indicator = document.getElementById('live-indicator');
-    const toggleContainer = document.getElementById('live-toggle-container');
-
-    if (checkbox.checked) {
-        // Update toggle appearance
-        if (toggleContainer) {
-            toggleContainer.classList.remove('inactive');
-        }
-        indicator.classList.add('active');
-
-        // Load immediately
-        loadActivityLogs();
-
-        // Set up auto-refresh every 5 seconds
-        liveActivityInterval = setInterval(() => {
-            loadActivityLogs();
-        }, 5000);
-    } else {
-        // Update toggle appearance
-        if (toggleContainer) {
-            toggleContainer.classList.add('inactive');
-        }
-        indicator.classList.remove('active');
-
-        if (liveActivityInterval) {
-            clearInterval(liveActivityInterval);
-            liveActivityInterval = null;
-        }
-    }
 }
 
 // Initialize dashboard on load
