@@ -52,7 +52,7 @@ from pathlib import Path
 # ... (inside file)
 
 # Resolve static path relative to this file
-# app/main.py -> app/ -> 2fa-auth/ -> static
+# app/main.py -> app/ -> console-server/ -> static
 static_path = Path(__file__).parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_path), check_dir=False), name="static")
 

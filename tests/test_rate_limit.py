@@ -3,8 +3,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 # Add local package to path so we can import app modules
-# service_root = WireShield/2fa-auth
-service_root = Path(__file__).parent.parent / "2fa-auth"
+# service_root = WireShield/console-server
+service_root = Path(__file__).parent.parent / "console-server"
 if str(service_root) not in sys.path:
     sys.path.insert(0, str(service_root))
 

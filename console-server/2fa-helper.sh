@@ -46,7 +46,7 @@ setup_2fa_service() {
     chmod 700 /etc/wireshield/2fa
     
     # Copy service file
-    cp /opt/wireshield/2fa-auth/wireshield.service /etc/systemd/system/ 2>/dev/null || true
+    cp /opt/wireshield/console-server/wireshield.service /etc/systemd/system/ 2>/dev/null || true
     
     # Generate SSL certs if needed
     if [ ! -f /etc/wireshield/2fa/cert.pem ] || [ ! -f /etc/wireshield/2fa/key.pem ]; then

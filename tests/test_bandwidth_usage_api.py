@@ -5,7 +5,7 @@ from pathlib import Path
 
 os.environ.setdefault("WS_2FA_SECRET_KEY", "test-secret")
 
-service_root = Path(__file__).parent.parent / "2fa-auth"
+service_root = Path(__file__).parent.parent / "console-server"
 if str(service_root) not in sys.path:
     sys.path.insert(0, str(service_root))
 

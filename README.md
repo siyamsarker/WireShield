@@ -963,7 +963,7 @@ sudo systemctl restart wireshield.service
 ```bash
 # Clone repository
 git clone https://github.com/siyamsarker/WireShield.git
-cd WireShield/2fa-auth
+cd WireShield/console-server
 
 # Create virtual environment
 python3 -m venv .venv
@@ -981,7 +981,7 @@ python app.py
 ### Running Tests
 
 ```bash
-cd 2fa-auth
+cd console-server
 source .venv/bin/activate
 pytest -v
 ```
@@ -998,7 +998,7 @@ WireShield/
 │   ├── test_rate_limit.py       # Rate limiter tests
 │   ├── test-2fa-access.sh       # 2FA access testing
 │   └── test-integration.sh      # Integration test suite
-└── 2fa-auth/
+└── console-server/
     ├── run.py              # Service entry point
     ├── 2fa-helper.sh       # Management helper scripts
     ├── generate-certs.sh   # SSL certificate generation script
