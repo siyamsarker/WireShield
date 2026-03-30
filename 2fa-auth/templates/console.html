@@ -2313,6 +2313,7 @@ tbody tr:last-child td {
                     </span>
                 </label>
                 <div class="time-range-selector">
+                    <button class="time-range-btn" data-days="1">24H</button>
                     <button class="time-range-btn active" data-days="7">7D</button>
                     <button class="time-range-btn" data-days="30">30D</button>
                     <button class="time-range-btn" data-days="custom">Custom</button>
@@ -3300,7 +3301,8 @@ async function loadBandwidthData(days = null) {
         if (chartLoading) chartLoading.style.display = 'none';
 
         // Check for empty data
-        if (!data.labels || data.labels.length === 0 || (data.upload.every(v => v === 0) && data.download.every(v => v === 0))) {
+        const hasTrafficData = (data.upload || []).some(v => Number(v) > 0) || (data.download || []).some(v => Number(v) > 0);
+        if (!data.labels || data.labels.length === 0 || !hasTrafficData) {
             if (chartEmpty) chartEmpty.style.display = 'flex';
             if (chartCanvas) chartCanvas.style.opacity = '0';
             updateEmptyStats();
@@ -3324,11 +3326,11 @@ async function loadBandwidthData(days = null) {
         const uploadProgress = maxTotal > 0 ? (totalUpload / maxTotal) * 100 : 0;
         const downloadProgress = maxTotal > 0 ? (totalDownload / maxTotal) * 100 : 0;
 
-        // Update stats cards with animation
-        updateStatCard('total-upload', totalUpload * 1024 * 1024);
-        updateStatCard('total-download', totalDownload * 1024 * 1024);
-        updateStatCard('peak-usage', peakUsage * 1024 * 1024);
-        updateStatCard('avg-speed', avgSpeed * 1024 * 1024);
+        // Update stats cards with animation (values are already bytes)
+        updateStatCard('total-upload', totalUpload);
+        updateStatCard('total-download', totalDownload);
+        updateStatCard('peak-usage', peakUsage);
+        updateStatCard('avg-speed', avgSpeed);
 
         // Update progress bars
         const uploadProgressBar = document.getElementById('upload-progress');
@@ -3347,7 +3349,7 @@ async function loadBandwidthData(days = null) {
         if (peakComparison) {
             const peakValue = peakComparison.querySelector('.comparison-value');
             if (peakValue) {
-                peakValue.textContent = formatBytes(peakUsage * 1024 * 1024);
+                peakValue.textContent = formatBytes(peakUsage);
             }
         }
 
@@ -3357,13 +3359,13 @@ async function loadBandwidthData(days = null) {
         const avgDailyEl = document.getElementById('avg-daily');
         const lastUpdatedEl = document.getElementById('bandwidth-last-updated');
 
-        if (totalTrafficEl) totalTrafficEl.textContent = formatBytes(totalTraffic * 1024 * 1024);
+        if (totalTrafficEl) totalTrafficEl.textContent = formatBytes(totalTraffic);
         if (dataPointsEl) {
             dataPointsEl.textContent = useCustomRange
                 ? `${data.labels.length} points`
-                : `${data.labels.length} days`;
+                : (targetDays === 1 ? '24h' : `${data.labels.length} days`);
         }
-        if (avgDailyEl) avgDailyEl.textContent = formatBytes(avgSpeed * 1024 * 1024);
+        if (avgDailyEl) avgDailyEl.textContent = formatBytes(avgSpeed);
         if (lastUpdatedEl) lastUpdatedEl.textContent = new Date().toLocaleTimeString();
 
         // Calculate comparison with previous period (if available)
@@ -3475,13 +3477,12 @@ async function loadBandwidthData(days = null) {
                             },
                             label: function(context) {
                                 const value = context.parsed.y;
-                                const bytes = value * 1024 * 1024;
-                                return ' ' + context.dataset.label + ': ' + formatBytes(bytes);
+                                return ' ' + context.dataset.label + ': ' + formatBytes(value);
                             },
                             afterBody: function(context) {
                                 const uploadVal = context[0].chart.data.datasets[0].data[context[0].dataIndex];
                                 const downloadVal = context[0].chart.data.datasets[1].data[context[0].dataIndex];
-                                const total = (uploadVal + downloadVal) * 1024 * 1024;
+                                const total = uploadVal + downloadVal;
                                 return '\nTotal: ' + formatBytes(total);
                             }
                         }
@@ -3519,10 +3520,7 @@ async function loadBandwidthData(days = null) {
                             },
                             padding: 8,
                             callback: function(value) {
-                                if (value >= 1000) {
-                                    return (value / 1000).toFixed(1) + ' GB';
-                                }
-                                return value.toFixed(0) + ' MB';
+                                return formatBytes(value);
                             }
                         }
                     }

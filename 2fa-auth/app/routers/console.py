@@ -430,20 +430,20 @@ async def get_bandwidth_usage(
         conn.close()
 
         # Structure: { labels: [d1, d2], upload: [...], download: [...] }
-        data_map = {} # date -> { upload: total, download: total }
+        # Values are raw bytes for precise rendering at low volumes.
+        data_map = {} # date -> { upload: total_bytes, download: total_bytes }
         dates = set()
 
         for r in rows:
             date_str = r['scan_date']
-            # Convert bytes to MB
-            upload_mb = (r['tx_bytes'] or 0) / (1024**2)
-            download_mb = (r['rx_bytes'] or 0) / (1024**2)
+            upload_bytes = int(r['tx_bytes'] or 0)
+            download_bytes = int(r['rx_bytes'] or 0)
             
             if date_str not in data_map: 
                 data_map[date_str] = {"upload": 0, "download": 0}
             
-            data_map[date_str]["upload"] += upload_mb
-            data_map[date_str]["download"] += download_mb
+            data_map[date_str]["upload"] += upload_bytes
+            data_map[date_str]["download"] += download_bytes
             dates.add(date_str)
         
         sorted_dates = sorted(list(dates))
