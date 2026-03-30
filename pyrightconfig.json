@@ -1,10 +1,10 @@
 {
   "include": [
-    "2fa-auth",
+    "console-server",
     "tests"
   ],
   "extraPaths": [
-    "2fa-auth"
+    "console-server"
   ],
   "venvPath": ".",
   "venv": ".venv",

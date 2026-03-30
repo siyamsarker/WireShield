@@ -592,11 +592,11 @@ EOF
 	fi
 
 	# Copy 2FA files from the current repository if available
-	if [[ -d "${SCRIPT_DIR}/2fa-auth" ]]; then
+	if [[ -d "${SCRIPT_DIR}/console-server" ]]; then
 		echo "Copying 2FA service files..."
-		cp -fr "${SCRIPT_DIR}/2fa-auth/"* /etc/wireshield/2fa/ || true
-	elif [[ -d /opt/wireshield/2fa-auth ]]; then
-		cp /opt/wireshield/2fa-auth/* /etc/wireshield/2fa/ 2>/dev/null || true
+		cp -fr "${SCRIPT_DIR}/console-server/"* /etc/wireshield/2fa/ || true
+	elif [[ -d /opt/wireshield/console-server ]]; then
+		cp /opt/wireshield/console-server/* /etc/wireshield/2fa/ 2>/dev/null || true
 	fi
 	
 	# Check if 2FA service already exists
@@ -657,17 +657,17 @@ EOF
 	# Verify app presence (robustness)
 	if [[ ! -f /etc/wireshield/2fa/run.py ]]; then
 		echo -e "${ORANGE}run.py missing in /etc/wireshield/2fa, attempting copy from repo...${NC}"
-		if [[ -f "${SCRIPT_DIR}/2fa-auth/run.py" ]]; then
-			cp -f "${SCRIPT_DIR}/2fa-auth/run.py" /etc/wireshield/2fa/ || true
+		if [[ -f "${SCRIPT_DIR}/console-server/run.py" ]]; then
+			cp -f "${SCRIPT_DIR}/console-server/run.py" /etc/wireshield/2fa/ || true
 		fi
-		if [[ -d "${SCRIPT_DIR}/2fa-auth/static" ]]; then
-			cp -fr "${SCRIPT_DIR}/2fa-auth/static" /etc/wireshield/2fa/ || true
+		if [[ -d "${SCRIPT_DIR}/console-server/static" ]]; then
+			cp -fr "${SCRIPT_DIR}/console-server/static" /etc/wireshield/2fa/ || true
 		fi
-		if [[ -d "${SCRIPT_DIR}/2fa-auth/app" ]]; then
-			cp -fr "${SCRIPT_DIR}/2fa-auth/app" /etc/wireshield/2fa/ || true
+		if [[ -d "${SCRIPT_DIR}/console-server/app" ]]; then
+			cp -fr "${SCRIPT_DIR}/console-server/app" /etc/wireshield/2fa/ || true
 		fi
-		if [[ -f "${SCRIPT_DIR}/2fa-auth/requirements.txt" ]]; then
-			cp -f "${SCRIPT_DIR}/2fa-auth/requirements.txt" /etc/wireshield/2fa/ || true
+		if [[ -f "${SCRIPT_DIR}/console-server/requirements.txt" ]]; then
+			cp -f "${SCRIPT_DIR}/console-server/requirements.txt" /etc/wireshield/2fa/ || true
 		fi
 	fi
 
