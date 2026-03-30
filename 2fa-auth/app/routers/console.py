@@ -313,13 +313,26 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
         """, (yesterday,))
         failed_attempts_24h = c.fetchone()[0]
         
-        # Get total bandwidth usage in last 24 hours (rx_bytes + tx_bytes)
-        c.execute("""
-            SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) 
-            FROM bandwidth_usage 
-            WHERE scan_date >= date('now', '-1 day')
-        """)
-        bandwidth_24h = c.fetchone()[0]
+        # Estimate rolling last-24h bandwidth from daily aggregates.
+        # bandwidth_usage is stored per local day, so combine all of today and
+        # a proportional slice of yesterday based on current local time.
+        now_local = datetime.now()
+        today_local = now_local.strftime("%Y-%m-%d")
+        yesterday_local = (now_local - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        c.execute("SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) FROM bandwidth_usage WHERE scan_date = ?", (today_local,))
+        today_total = c.fetchone()[0] or 0
+
+        c.execute("SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) FROM bandwidth_usage WHERE scan_date = ?", (yesterday_local,))
+        yesterday_total = c.fetchone()[0] or 0
+
+        hours_since_midnight = (
+            now_local.hour +
+            (now_local.minute / 60.0) +
+            (now_local.second / 3600.0)
+        )
+        yesterday_fraction = max(0.0, min(1.0, (24.0 - hours_since_midnight) / 24.0))
+        bandwidth_24h = int(today_total + (yesterday_total * yesterday_fraction))
         
         # Get new users in last 24 hours
         c.execute("""
