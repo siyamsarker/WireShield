@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Depends, HTTPException
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from fastapi.responses import HTMLResponse
 
 from app.core.database import get_db
@@ -428,8 +428,8 @@ async def get_bandwidth_usage(
             params.append(end_date)
 
         # Fallback to rolling N-day window when no explicit date range is provided.
+        safe_days = max(1, min(days, 3650))
         if not start_date and not end_date:
-            safe_days = max(1, min(days, 3650))
             conditions.append("scan_date >= date('now', ?)")
             params.append(f"-{safe_days} days")
 
@@ -445,21 +445,43 @@ async def get_bandwidth_usage(
         # Structure: { labels: [d1, d2], upload: [...], download: [...] }
         # Values are raw bytes for precise rendering at low volumes.
         data_map = {} # date -> { upload: total_bytes, download: total_bytes }
-        dates = set()
 
         for r in rows:
             date_str = r['scan_date']
             upload_bytes = int(r['tx_bytes'] or 0)
             download_bytes = int(r['rx_bytes'] or 0)
-            
-            if date_str not in data_map: 
+
+            if date_str not in data_map:
                 data_map[date_str] = {"upload": 0, "download": 0}
-            
+
             data_map[date_str]["upload"] += upload_bytes
             data_map[date_str]["download"] += download_bytes
-            dates.add(date_str)
-        
-        sorted_dates = sorted(list(dates))
+
+        # Determine the complete date range and fill in missing dates with zeros
+        _utc_now = datetime.now(timezone.utc)
+        today_str = _utc_now.strftime('%Y-%m-%d')
+        if start_date and end_date:
+            range_start = start_date
+            range_end = end_date
+        elif start_date:
+            range_start = start_date
+            range_end = today_str
+        else:
+            range_start = (_utc_now - timedelta(days=safe_days)).strftime('%Y-%m-%d')
+            range_end = end_date if end_date else today_str
+
+        all_dates = []
+        cur_dt = datetime.strptime(range_start, '%Y-%m-%d')
+        end_dt = datetime.strptime(range_end, '%Y-%m-%d')
+        while cur_dt <= end_dt:
+            all_dates.append(cur_dt.strftime('%Y-%m-%d'))
+            cur_dt += timedelta(days=1)
+
+        for d in all_dates:
+            if d not in data_map:
+                data_map[d] = {"upload": 0, "download": 0}
+
+        sorted_dates = sorted(all_dates)
         upload_data = []
         download_data = []
         
