@@ -2296,8 +2296,8 @@ tbody tr:last-child td {
                     </span>
                 </label>
                 <div class="time-range-selector">
-                    <button class="time-range-btn active" data-days="1">24H</button>
-                    <button class="time-range-btn" data-days="7">7D</button>
+                    <button class="time-range-btn" data-days="1">24H</button>
+                    <button class="time-range-btn active" data-days="7">7D</button>
                     <button class="time-range-btn" data-days="30">30D</button>
                     <button class="time-range-btn" data-days="custom">Custom</button>
                 </div>
@@ -3098,7 +3098,7 @@ async function loadActivityLogs(page = 1) {
 
 // Bandwidth Insights State
 let bandwidthState = {
-    currentDays: 1,
+    currentDays: 7,
     rangeMode: 'preset',
     customDateFrom: '',
     customDateTo: '',
