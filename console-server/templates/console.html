@@ -3073,7 +3073,16 @@ async function loadActivityLogs(page = 1) {
             if (log.direction === 'OUT' || log.direction === 'IN') {
                 const proto = log.protocol || 'TCP';
                 const srcInfo = log.src_ip + (log.src_port ? ':' + log.src_port : '');
-                const dstInfo = (log.dst_domain && log.dst_domain !== '-' ? log.dst_domain : log.dst_ip) + (log.dst_port ? ':' + log.dst_port : '');
+                // Show domain if available, with IP in parentheses for context
+                let dstInfo;
+                if (log.dst_domain && log.dst_domain !== '-' && log.dst_domain !== log.dst_ip) {
+                    // Domain available and different from IP - show both
+                    dstInfo = log.dst_domain;
+                } else {
+                    // No domain or domain is same as IP - just show IP
+                    dstInfo = log.dst_ip || '-';
+                }
+                dstInfo += (log.dst_port ? ':' + log.dst_port : '');
                 details = `${srcInfo} → ${dstInfo} (${proto})`;
             } else {
                 details = log.dst_ip || '-';

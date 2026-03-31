@@ -76,13 +76,25 @@ class DNSSniffer:
             dns = pkt[self._DNS]
             # Only process responses (qr=1) with answers (ancount > 0)
             if dns.qr == 1 and dns.ancount > 0:
+                # Use the original queried domain (what the user actually typed)
+                # instead of answer rrname (which may be a CNAME target)
+                queried_domain = None
+                if dns.qdcount > 0 and dns.qd:
+                    qname = dns.qd.qname
+                    if isinstance(qname, bytes):
+                        qname = qname.decode('utf-8', errors='ignore')
+                    queried_domain = qname.rstrip('.')
+
+                if not queried_domain:
+                    return
+
                 for x in range(dns.ancount):
                     answer = dns.an[x]
-                    # Check for A records (type 1)
-                    if answer.type == 1:
-                        domain = answer.rrname.decode('utf-8').rstrip('.')
+                    # Capture A records (type 1) and AAAA records (type 28)
+                    if answer.type in (1, 28):
                         ip = answer.rdata
-                        self._cache_mapping(ip, domain)
+                        if ip:
+                            self._cache_mapping(ip, queried_domain)
         except Exception as e:
             logger.debug(f"DNS packet processing failed: {e}")
 

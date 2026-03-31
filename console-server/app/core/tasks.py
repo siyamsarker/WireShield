@@ -6,8 +6,9 @@ import threading
 import socket
 import hashlib
 import re
+import ipaddress
 from datetime import datetime, timedelta
-from typing import Dict
+from typing import Dict, Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from app.core.config import (
@@ -282,6 +283,49 @@ def _monitor_wireguard_sessions():
         time.sleep(poll_interval)
 
 
+def _is_private_ip(ip_str: str) -> bool:
+    """Check if an IP address is private/reserved (no useful reverse DNS)."""
+    try:
+        return ipaddress.ip_address(ip_str).is_private
+    except ValueError:
+        return True
+
+
+def _reverse_resolve(ip_str: str) -> Optional[str]:
+    """Perform a reverse DNS lookup for an IP address."""
+    try:
+        hostname, _, _ = socket.gethostbyaddr(ip_str)
+        if hostname:
+            return hostname.rstrip('.')
+    except (socket.herror, socket.gaierror, OSError, UnicodeError):
+        pass
+    return None
+
+
+def _resolve_ips_to_dns_cache(ips: list[str]) -> int:
+    """Reverse-resolve a list of IPs and store results in dns_cache.
+    Returns the number of new mappings cached."""
+    resolved = 0
+    for ip in ips:
+        if _is_private_ip(ip):
+            continue
+        domain = _reverse_resolve(ip)
+        if domain:
+            try:
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("""
+                    INSERT OR IGNORE INTO dns_cache (ip_address, domain, timestamp)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                """, (ip, domain))
+                conn.commit()
+                conn.close()
+                resolved += 1
+            except Exception:
+                pass
+    return resolved
+
+
 # ----------------------------------------------------------------------------
 # Activity Log Ingestion (journalctl -> SQLite)
 # ----------------------------------------------------------------------------
@@ -406,6 +450,30 @@ def _ingest_activity_logs():
                 inserted = conn.total_changes - before
                 conn.close()
 
+                # Actively resolve new destination IPs that aren't in dns_cache
+                if inserted > 0:
+                    new_ips = list(set(e[6] for e in entries if e[6]))  # e[6] = dst_ip
+                    if new_ips:
+                        try:
+                            conn = get_db()
+                            c = conn.cursor()
+                            placeholders = ','.join('?' * len(new_ips))
+                            c.execute(
+                                f"SELECT DISTINCT ip_address FROM dns_cache WHERE ip_address IN ({placeholders})",
+                                new_ips
+                            )
+                            cached = set(row[0] for row in c.fetchall())
+                            conn.close()
+                            uncached = [ip for ip in new_ips if ip not in cached and not _is_private_ip(ip)]
+                            if uncached:
+                                threading.Thread(
+                                    target=_resolve_ips_to_dns_cache,
+                                    args=(uncached,),
+                                    daemon=True
+                                ).start()
+                        except Exception:
+                            pass
+
                 elapsed_ms = int((time.monotonic() - start_time) * 1000)
                 logger.info("Activity log ingestion: %s lines, %s inserted, %sms", len(entries), inserted, elapsed_ms)
         except Exception as exc:
@@ -494,10 +562,54 @@ def _start_http_redirector_ipv6():
     except Exception as e:
         logger.debug(f"HTTP redirector IPv6 failed: {e}")
 
+# ----------------------------------------------------------------------------
+# Periodic DNS Resolution for Unresolved IPs
+# ----------------------------------------------------------------------------
+def _resolve_unresolved_activity_ips():
+    """Periodically resolve destination IPs in activity_log that aren't in dns_cache."""
+    poll_interval = 60  # Run every 60 seconds
+    logger.info("Unresolved IP resolver enabled (poll=%ss)", poll_interval)
+
+    while True:
+        try:
+            conn = get_db()
+            c = conn.cursor()
+
+            # Find dst_ip values in activity_log that don't have dns_cache entries
+            # Exclude private IPs since they won't have useful reverse DNS
+            c.execute("""
+                SELECT DISTINCT a.dst_ip
+                FROM activity_log a
+                LEFT JOIN dns_cache dc ON dc.ip_address = a.dst_ip
+                WHERE dc.ip_address IS NULL
+                AND a.dst_ip IS NOT NULL
+                LIMIT 100
+            """)
+
+            rows = c.fetchall()
+            conn.close()
+
+            if rows:
+                ips = [row[0] for row in rows]
+                # Filter out private IPs
+                public_ips = [ip for ip in ips if not _is_private_ip(ip)]
+
+                if public_ips:
+                    resolved = _resolve_ips_to_dns_cache(public_ips)
+                    if resolved > 0:
+                        logger.info("Resolved %s new IPs to domains", resolved)
+
+        except Exception as exc:
+            logger.debug(f"Unresolved IP resolver error: {exc}")
+
+        time.sleep(poll_interval)
+
+
 def start_background_tasks():
     threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
     threading.Thread(target=_monitor_wireguard_sessions, daemon=True).start()
     threading.Thread(target=_ingest_activity_logs, daemon=True).start()
     threading.Thread(target=_cleanup_activity_logs, daemon=True).start()
+    threading.Thread(target=_resolve_unresolved_activity_ips, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv4, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv6, daemon=True).start()
