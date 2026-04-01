@@ -8,7 +8,7 @@ import hashlib
 import re
 import ipaddress
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from app.core.config import (
@@ -231,7 +231,8 @@ def _monitor_wireguard_sessions():
 
                     # Persist if there is activity
                     if delta_rx > 0 or delta_tx > 0:
-                        today = datetime.now().strftime("%Y-%m-%d")
+                        # Use UTC date to match API queries (SQLite date('now') is UTC)
+                        today = datetime.utcnow().strftime("%Y-%m-%d")
                         # DB Mapping: rx_bytes (Client Download/Server TX), tx_bytes (Client Upload/Server RX)
                         # Note: We are using standard ISP terminology for the DB columns where RX is what client receives.
                         try:
@@ -302,7 +303,7 @@ def _reverse_resolve(ip_str: str) -> Optional[str]:
     return None
 
 
-def _resolve_ips_to_dns_cache(ips: list[str]) -> int:
+def _resolve_ips_to_dns_cache(ips: List[str]) -> int:
     """Reverse-resolve a list of IPs and store results in dns_cache.
     Returns the number of new mappings cached."""
     resolved = 0
