@@ -314,22 +314,22 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
         failed_attempts_24h = c.fetchone()[0]
         
         # Estimate rolling last-24h bandwidth from daily aggregates.
-        # bandwidth_usage is stored per local day, so combine all of today and
-        # a proportional slice of yesterday based on current local time.
-        now_local = datetime.now()
-        today_local = now_local.strftime("%Y-%m-%d")
-        yesterday_local = (now_local - timedelta(days=1)).strftime("%Y-%m-%d")
+        # bandwidth_usage is stored per UTC day (to match tasks.py), so combine all of today
+        # and a proportional slice of yesterday based on current UTC time.
+        now_utc = datetime.utcnow()
+        today_utc = now_utc.strftime("%Y-%m-%d")
+        yesterday_utc = (now_utc - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        c.execute("SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) FROM bandwidth_usage WHERE scan_date = ?", (today_local,))
+        c.execute("SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) FROM bandwidth_usage WHERE scan_date = ?", (today_utc,))
         today_total = c.fetchone()[0] or 0
 
-        c.execute("SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) FROM bandwidth_usage WHERE scan_date = ?", (yesterday_local,))
+        c.execute("SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) FROM bandwidth_usage WHERE scan_date = ?", (yesterday_utc,))
         yesterday_total = c.fetchone()[0] or 0
 
         hours_since_midnight = (
-            now_local.hour +
-            (now_local.minute / 60.0) +
-            (now_local.second / 3600.0)
+            now_utc.hour +
+            (now_utc.minute / 60.0) +
+            (now_utc.second / 3600.0)
         )
         yesterday_fraction = max(0.0, min(1.0, (24.0 - hours_since_midnight) / 24.0))
         bandwidth_24h = int(today_total + (yesterday_total * yesterday_fraction))
