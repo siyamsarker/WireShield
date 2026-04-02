@@ -171,59 +171,41 @@ def _monitor_wireguard_sessions():
 
                 for row in rows:
                     client_id = row["client_id"]
-                    v4 = (row["wg_ipv4"] or "").strip() 
+                    v4 = (row["wg_ipv4"] or "").strip()
                     v6 = (row["wg_ipv6"] or "").strip()
                     has_session = row["session_expires"] is not None
 
-                    # 1. New Session Grace: Skip if session is brand new
-                    try:
-                        created_ts = row["last_session_created"]
-                        created_dt = datetime.strptime(created_ts, "%Y-%m-%d %H:%M:%S") if created_ts else None
-                    except Exception:
-                        created_dt = None
-
-                    if created_dt is not None:
-                        if (datetime.utcnow() - created_dt).total_seconds() < grace_seconds:
-                            continue
-
-                    # 2. Get Stats for this client
+                    # 1. Get Stats for this client (always, regardless of session age)
                     current_stats = []
                     if v4 and v4 in ip_stats:
                         current_stats.append(ip_stats[v4])
                     if v6 and v6 in ip_stats:
                         current_stats.append(ip_stats[v6])
-                    
-                    if not current_stats:
-                        pass
 
-                    # 3. Determine last activity time
-                    # if active_updates:
-                    #      pass # handled in loop below
-
-                    # 5. Bandwidth Tracking
+                    # 2. Bandwidth Tracking (runs unconditionally)
                     # We track deltas for Server RX (Client Upload) and Server TX (Client Download)
                     curr_server_rx = 0
                     curr_server_tx = 0
                     curr_handshake = 0
-                    
+
                     for s in current_stats:
                          if s['rx'] > curr_server_rx: curr_server_rx = s['rx']
                          if s['tx'] > curr_server_tx: curr_server_tx = s['tx']
                          if s['handshake_ts'] > curr_handshake: curr_handshake = s['handshake_ts']
-                    
+
                     bw_state = _MONITOR_BW_STATE.get(client_id, {
                         'prev_server_rx': curr_server_rx,
                         'prev_server_tx': curr_server_tx
                     })
-                    
+
                     # Calculate Deltas
                     delta_rx = curr_server_rx - bw_state['prev_server_rx'] # Client Upload
                     delta_tx = curr_server_tx - bw_state['prev_server_tx'] # Client Download
-                    
+
                     # Handle restart/reset (curr < prev)
                     if delta_rx < 0: delta_rx = curr_server_rx
                     if delta_tx < 0: delta_tx = curr_server_tx
-                    
+
                     # Update State
                     bw_state['prev_server_rx'] = curr_server_rx
                     bw_state['prev_server_tx'] = curr_server_tx
@@ -247,30 +229,42 @@ def _monitor_wireguard_sessions():
                         except Exception as e:
                             logger.error(f"Failed to update bandwidth for {client_id}: {e}")
 
+                    # 3. Session Idle Check & Expiry Logic (only for active sessions)
                     if has_session:
-                        # 6. Idle Check & Expiry Logic (Only for active sessions)
-                        state = _MONITOR_CLIENT_STATE.get(client_id, {
-                            'last_rx': 0,
-                            'last_handshake': 0,
-                            'last_seen_active': time.time()
-                        })
-                        
-                        is_active = False
-                        if curr_server_rx > state['last_rx']:
-                            is_active = True
-                            state['last_rx'] = curr_server_rx
-                        if curr_handshake > state['last_handshake']:
-                            is_active = True
-                            state['last_handshake'] = curr_handshake
-                        
-                        if is_active:
-                             state['last_seen_active'] = time.time()
-                        
-                        _MONITOR_CLIENT_STATE[client_id] = state
+                        # Grace period: skip expiry checks for brand-new sessions
+                        in_grace = False
+                        try:
+                            created_ts = row["last_session_created"]
+                            created_dt = datetime.strptime(created_ts, "%Y-%m-%d %H:%M:%S") if created_ts else None
+                        except Exception:
+                            created_dt = None
 
-                        if (time.time() - state['last_seen_active']) > DISCONNECT_GRACE_SECONDS:
-                             stale_clients.append(client_id)
-                         
+                        if created_dt is not None:
+                            in_grace = (datetime.utcnow() - created_dt).total_seconds() < grace_seconds
+
+                        if not in_grace:
+                            state = _MONITOR_CLIENT_STATE.get(client_id, {
+                                'last_rx': 0,
+                                'last_handshake': 0,
+                                'last_seen_active': time.time()
+                            })
+
+                            is_active = False
+                            if curr_server_rx > state['last_rx']:
+                                is_active = True
+                                state['last_rx'] = curr_server_rx
+                            if curr_handshake > state['last_handshake']:
+                                is_active = True
+                                state['last_handshake'] = curr_handshake
+
+                            if is_active:
+                                 state['last_seen_active'] = time.time()
+
+                            _MONITOR_CLIENT_STATE[client_id] = state
+
+                            if (time.time() - state['last_seen_active']) > DISCONNECT_GRACE_SECONDS:
+                                 stale_clients.append(client_id)
+
                     conn.commit() # Commit active updates
             finally:
                 conn.close()
