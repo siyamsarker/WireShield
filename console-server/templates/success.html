@@ -5,134 +5,149 @@
 {% block styles %}
 {{ super() }}
 <style>
-    .success-container {
-        max-width: 500px;
-        margin: 80px auto;
+    body {
+        padding: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f8fafc;
+    }
+    .success-wrap {
+        width: 100%;
+        max-width: 440px;
+        padding: 24px;
+    }
+    .success-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 40px 32px;
         text-align: center;
     }
-    .card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 40px 32px;
-        box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
-    }
-    .success-icon {
-        width: 80px;
-        height: 80px;
+    .success-icon-ring {
+        width: 72px;
+        height: 72px;
         border-radius: 50%;
-        background: var(--success);
+        background: #f0fdf4;
+        border: 2px solid #bbf7d0;
         display: flex;
         align-items: center;
         justify-content: center;
         margin: 0 auto 24px;
-        animation: successPulse 2s ease-in-out infinite;
+        animation: successPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     }
-    .success-icon svg {
-        width: 40px;
-        height: 40px;
-        color: white;
+    @keyframes successPop {
+        from { transform: scale(0.6); opacity: 0; }
+        to   { transform: scale(1);   opacity: 1; }
     }
-    @keyframes successPulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
+    .success-icon-ring svg {
+        width: 36px;
+        height: 36px;
+        color: #16a34a;
     }
-    .title {
-        font-size: 28px;
+    .success-tag {
+        display: inline-block;
+        font-size: 11px;
         font-weight: 700;
-        color: var(--text);
-        margin-bottom: 12px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #16a34a;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 20px;
+        padding: 4px 12px;
+        margin-bottom: 14px;
     }
-    .subtitle {
-        font-size: 16px;
-        color: var(--muted);
-        margin-bottom: 32px;
-        line-height: 1.5;
+    .success-title {
+        font-size: 26px;
+        font-weight: 800;
+        color: #1e293b;
+        letter-spacing: -0.02em;
+        margin-bottom: 10px;
+    }
+    .success-sub {
+        font-size: 14px;
+        color: #64748b;
+        line-height: 1.6;
+        margin-bottom: 28px;
     }
     .status-grid {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 16px;
-        margin-bottom: 32px;
-    }
-    .status-item {
-        background: var(--card-alt);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 16px;
-        text-align: center;
-    }
-    .status-item .label {
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--muted);
-        margin-bottom: 4px;
-    }
-    .status-item .value {
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--success);
-    }
-    .info-box {
-        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-        border: 1px solid #0ea5e9;
-        border-radius: 8px;
-        padding: 20px;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
         margin-bottom: 24px;
     }
-    .info-box h3 {
-        font-size: 14px;
+    .status-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 14px 12px;
+    }
+    .status-item .label {
+        font-size: 11px;
         font-weight: 600;
-        color: #0369a1;
-        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #94a3b8;
+        margin-bottom: 5px;
+    }
+    .status-item .value {
+        font-size: 15px;
+        font-weight: 700;
+        color: #16a34a;
+    }
+    .info-box {
+        background: #f0f9ff;
+        border: 1px solid #bae6fd;
+        border-radius: 10px;
+        padding: 16px;
+        text-align: left;
+        margin-bottom: 20px;
+    }
+    .info-box-header {
         display: flex;
         align-items: center;
         gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #0369a1;
+        margin-bottom: 8px;
+    }
+    .info-box-header svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
     }
     .info-box p {
         font-size: 13px;
         color: #0c4a6e;
+        line-height: 1.55;
+    }
+    .close-note {
+        font-size: 12px;
+        color: #94a3b8;
         line-height: 1.5;
-    }
-    .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 12px 24px;
-        font-size: 14px;
-        font-weight: 500;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        text-decoration: none;
-        background: var(--accent);
-        color: #fff;
-        transition: all 0.2s ease;
-    }
-    .btn:hover {
-        background: var(--accent-hover);
-        transform: translateY(-1px);
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="success-container">
-    <div class="card">
-        <div class="success-icon">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+<div class="success-wrap">
+    <div class="success-card">
+        <div class="success-icon-ring">
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <polyline points="20 6 9 17 4 12"/>
             </svg>
         </div>
-        
-        <h1 class="title">Access Granted!</h1>
-        <p class="subtitle">
+
+        <div class="success-tag">Access Granted</div>
+        <div class="success-title">You're Connected</div>
+        <p class="success-sub">
             Two-factor authentication successful.<br>
             Your VPN connection is now active and secured.
         </p>
-        
+
         <div class="status-grid">
             <div class="status-item">
                 <div class="label">2FA Status</div>
@@ -143,49 +158,27 @@
                 <div class="value">Active</div>
             </div>
         </div>
-        
+
         <div class="info-box">
-            <h3>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            <div class="info-box-header">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
                 Session Information
-            </h3>
+            </div>
             <p>
-                Your authenticated session is valid for 24 hours. If you disconnect for more than 1 hour, 
-                you'll need to re-authenticate. Keep this browser tab open or bookmark this page for future reference.
+                Your authenticated session is valid for 24 hours. If you disconnect for more than 1 hour,
+                you'll need to re-authenticate. Your traffic is now encrypted through WireShield VPN.
             </p>
         </div>
-        
-        <p style="font-size: 12px; color: var(--muted); margin-top: 20px;">
-            You can now safely close this browser tab and enjoy secure internet access through WireShield VPN.
+
+        <p class="close-note">
+            You can safely close this tab and enjoy secure internet access through WireShield VPN.
         </p>
     </div>
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script>
-    // Auto-close functionality (optional)
-    document.addEventListener('DOMContentLoaded', function() {
-        // Show a subtle notification that the tab can be closed
-        setTimeout(function() {
-            if (confirm('VPN access is now active. Would you like to close this tab?')) {
-                // Try multiple methods to close the window/tab
-                // Method 1: Standard window.close()
-                window.close();
-                
-                // Method 2: If window.close() fails, try to open a blank page and close it
-                setTimeout(function() {
-                    window.open('', '_self').close();
-                }, 100);
-                
-                // Method 3: If still can't close, navigate to about:blank
-                setTimeout(function() {
-                    window.location.href = 'about:blank';
-                }, 200);
-            }
-        }, 5000);
-    });
-</script>
-{% endblock %}
+{% block scripts %}{% endblock %}

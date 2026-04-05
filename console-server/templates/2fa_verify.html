@@ -5,162 +5,331 @@
 {% block styles %}
 {{ super() }}
 <style>
-    .auth-container {
-        min-height: calc(100vh - 48px);
+    body {
+        padding: 0;
+        min-height: 100vh;
         display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 24px 0;
-        text-align: center;
     }
-    .card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 32px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-    .logo {
-        width: 64px;
-        height: 64px;
-        border-radius: 16px;
+    .auth-split {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 20px;
-    }
-    .logo img {
+        min-height: 100vh;
         width: 100%;
-        height: 100%;
+    }
+    /* LEFT PANEL */
+    .auth-left {
+        width: 380px;
+        flex-shrink: 0;
+        background: #0f172a;
+        display: flex;
+        flex-direction: column;
+        padding: 48px 40px;
+    }
+    .auth-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 60px;
+    }
+    .auth-brand-logo {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        border-radius: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .auth-brand-logo img {
+        width: 22px;
+        height: 22px;
         object-fit: contain;
     }
-    .title {
-        font-size: 24px;
+    .auth-brand-name {
+        font-size: 18px;
         font-weight: 700;
-        color: var(--text);
-        margin-bottom: 8px;
+        color: #ffffff;
+        letter-spacing: -0.01em;
     }
-    .subtitle {
+    .auth-left-content {
+        flex: 1;
+    }
+    .auth-left-title {
+        font-size: 26px;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1.25;
+        margin-bottom: 12px;
+        letter-spacing: -0.02em;
+    }
+    .auth-left-sub {
         font-size: 14px;
-        color: var(--muted);
+        color: #94a3b8;
+        line-height: 1.6;
+        margin-bottom: 40px;
+    }
+    .auth-features {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    .auth-feature {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+    }
+    .auth-feature-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        background: rgba(59, 130, 246, 0.12);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .auth-feature-icon svg {
+        width: 17px;
+        height: 17px;
+        color: #3b82f6;
+    }
+    .auth-feature-text strong {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #e2e8f0;
+        margin-bottom: 3px;
+    }
+    .auth-feature-text span {
+        font-size: 12px;
+        color: #64748b;
+        line-height: 1.45;
+    }
+    .auth-left-footer {
+        font-size: 11px;
+        color: #334155;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-top: 40px;
+    }
+    /* RIGHT PANEL */
+    .auth-right {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 24px;
+        background: #f8fafc;
+    }
+    .auth-form-inner {
+        width: 100%;
+        max-width: 380px;
+    }
+    .auth-form-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 6px;
+        letter-spacing: -0.01em;
+    }
+    .auth-form-sub {
+        font-size: 13px;
+        color: #64748b;
         margin-bottom: 24px;
+        line-height: 1.5;
     }
     .client-badge {
-        background: var(--card-alt);
-        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
         border-radius: 8px;
-        padding: 12px;
+        padding: 10px 14px;
         font-family: 'SF Mono', 'Consolas', monospace;
-        font-size: 13px;
+        font-size: 12px;
+        color: #475569;
         margin-bottom: 24px;
-        color: var(--text);
+    }
+    .client-badge-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #22c55e;
+        flex-shrink: 0;
+        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
     }
     .input-group {
-        text-align: left;
-        margin-bottom: 20px;
+        margin-bottom: 14px;
     }
     .input-group label {
         display: block;
-        margin-bottom: 8px;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
-        color: var(--text);
+        color: #1e293b;
+        margin-bottom: 6px;
     }
     .code-input {
         width: 100%;
-        padding: 16px;
-        border: 2px solid var(--border);
-        border-radius: 8px;
-        font-size: 18px;
+        padding: 14px 16px;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 9px;
+        font-size: 22px;
         text-align: center;
         font-family: 'SF Mono', 'Consolas', monospace;
-        letter-spacing: 0.1em;
-        background: #fff;
-        transition: all 0.2s ease;
+        letter-spacing: 0.25em;
+        background: #ffffff;
+        color: #1e293b;
+        transition: border-color 0.15s, box-shadow 0.15s;
     }
     .code-input:focus {
         outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
-    .btn {
+    .code-input::placeholder {
+        letter-spacing: 0.15em;
+        color: #cbd5e1;
+        font-size: 20px;
+    }
+    .btn-verify {
         width: 100%;
-        padding: 16px;
-        font-size: 16px;
+        padding: 13px 16px;
+        font-size: 14px;
         font-weight: 600;
         border: none;
-        border-radius: 8px;
+        border-radius: 9px;
         cursor: pointer;
-        transition: all 0.15s ease;
-        background: var(--accent);
+        background: #3b82f6;
         color: #fff;
+        transition: background 0.15s, transform 0.1s;
     }
-    .btn:hover:not(:disabled) {
-        background: var(--accent-hover);
-        transform: translateY(-2px);
+    .btn-verify:hover:not(:disabled) {
+        background: #2563eb;
     }
-    .btn:disabled {
+    .btn-verify:active:not(:disabled) {
+        transform: scale(0.99);
+    }
+    .btn-verify:disabled {
         opacity: 0.6;
         cursor: not-allowed;
-        transform: none;
     }
     .status {
-        margin: 16px 0;
-        padding: 12px;
+        margin: 14px 0 0;
+        padding: 11px 14px;
         border-radius: 8px;
-        font-size: 14px;
-        text-align: center;
+        font-size: 13px;
     }
     .status.success {
-        background: #dcfce7;
-        border: 1px solid #16a34a;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
         color: #16a34a;
     }
     .status.error {
-        background: #fee2e2;
-        border: 1px solid #dc2626;
+        background: #fff1f2;
+        border: 1px solid #fecdd3;
         color: #dc2626;
     }
     .help-text {
         font-size: 12px;
-        color: var(--muted);
-        margin-top: 16px;
+        color: #94a3b8;
+        text-align: center;
+        margin-top: 20px;
+        line-height: 1.6;
+    }
+    @media (max-width: 700px) {
+        .auth-left { display: none; }
+        .auth-right { padding: 32px 16px; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="auth-container">
-    <div class="card">
-        <div class="logo"><img src="/static/logo.svg" alt="WireShield Logo"></div>
-        <h1 class="title">Two-Factor Authentication</h1>
-        <p class="subtitle">Enter the code from your authenticator app</p>
-        
-        <div class="client-badge">
-            Client: {{ client_id }}
+<div class="auth-split">
+    <div class="auth-left">
+        <div class="auth-brand">
+            <div class="auth-brand-logo">
+                <img src="/static/logo.svg" alt="WireShield">
+            </div>
+            <span class="auth-brand-name">WireShield</span>
         </div>
-        
-        <div class="input-group">
-            <label for="authCode">6-Digit Code</label>
-            <input 
-                type="text" 
-                id="authCode" 
-                class="code-input" 
-                placeholder="000000" 
-                maxlength="6" 
-                pattern="[0-9]{6}"
-                autocomplete="one-time-code"
-            >
+        <div class="auth-left-content">
+            <div class="auth-left-title">Secure VPN<br>Authentication</div>
+            <div class="auth-left-sub">Two-factor authentication protects your VPN session with an additional layer of cryptographic security.</div>
+            <div class="auth-features">
+                <div class="auth-feature">
+                    <div class="auth-feature-icon">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
+                    <div class="auth-feature-text">
+                        <strong>Zero-Trust Security</strong>
+                        <span>Every session requires cryptographic verification before access is granted.</span>
+                    </div>
+                </div>
+                <div class="auth-feature">
+                    <div class="auth-feature-icon">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                    </div>
+                    <div class="auth-feature-text">
+                        <strong>Encrypted Tunnel</strong>
+                        <span>WireGuard® encrypts all traffic with state-of-the-art cryptography.</span>
+                    </div>
+                </div>
+                <div class="auth-feature">
+                    <div class="auth-feature-icon">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                    </div>
+                    <div class="auth-feature-text">
+                        <strong>Session-Based Access</strong>
+                        <span>Sessions are time-limited and automatically revoked on disconnect.</span>
+                    </div>
+                </div>
+            </div>
         </div>
-        
-        <button id="verifyBtn" class="btn">Verify Access</button>
-        
-        <div id="statusMessage"></div>
-        
-        <p class="help-text">
-            Your authenticator app generates new codes every 30 seconds.<br>
-            Enter the current 6-digit code to access the VPN.
-        </p>
+        <div class="auth-left-footer">WireShield Security</div>
+    </div>
+
+    <div class="auth-right">
+        <div class="auth-form-inner">
+            <div class="auth-form-title">Two-Factor Authentication</div>
+            <div class="auth-form-sub">Enter the 6-digit code from your authenticator app to access the VPN.</div>
+
+            <div class="client-badge">
+                <div class="client-badge-dot"></div>
+                {{ client_id }}
+            </div>
+
+            <div class="input-group">
+                <label for="authCode">Authentication Code</label>
+                <input
+                    type="text"
+                    id="authCode"
+                    class="code-input"
+                    placeholder="000000"
+                    maxlength="6"
+                    pattern="[0-9]{6}"
+                    autocomplete="one-time-code"
+                    inputmode="numeric"
+                >
+            </div>
+
+            <button id="verifyBtn" class="btn-verify">Verify Access</button>
+
+            <div id="statusMessage"></div>
+
+            <p class="help-text">
+                Codes rotate every 30 seconds.<br>
+                Enter the current code shown in your authenticator app.
+            </p>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -168,13 +337,13 @@
 {% block scripts %}
 <script>
     const CLIENT_ID = '{{ client_id }}';
-    
+
     const elements = {
         authCode: document.getElementById('authCode'),
         verifyBtn: document.getElementById('verifyBtn'),
         statusMessage: document.getElementById('statusMessage')
     };
-    
+
     function showStatus(message, type = 'success') {
         elements.statusMessage.innerHTML = `<div class="status ${type}">${message}</div>`;
         if (type !== 'error') {
@@ -183,26 +352,26 @@
             }, 5000);
         }
     }
-    
+
     async function verifyAuth() {
         const code = elements.authCode.value.trim();
         if (!/^\d{6}$/.test(code)) {
             showStatus('Please enter a valid 6-digit code', 'error');
             return;
         }
-        
+
         elements.verifyBtn.disabled = true;
         elements.verifyBtn.textContent = 'Verifying...';
-        
+
         try {
             const response = await fetch('/api/verify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ client_id: CLIENT_ID, code: code })
             });
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
                 showStatus('Access granted! Redirecting...', 'success');
                 setTimeout(() => {
@@ -221,18 +390,18 @@
             elements.verifyBtn.textContent = 'Verify Access';
         }
     }
-    
+
     // Event listeners
     elements.verifyBtn.addEventListener('click', verifyAuth);
     elements.authCode.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') verifyAuth();
     });
-    
+
     // Auto-format input to numbers only
     elements.authCode.addEventListener('input', (e) => {
         e.target.value = e.target.value.replace(/\D/g, '').substring(0, 6);
     });
-    
+
     // Auto-focus
     elements.authCode.focus();
 </script>
