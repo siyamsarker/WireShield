@@ -375,6 +375,26 @@ def _ingest_activity_logs():
             except Exception:
                 pass
 
+            # Retroactively backfill client_id for any historical NULL records
+            # that can now be resolved (e.g. client authenticated after traffic was logged)
+            if ip_to_client:
+                try:
+                    conn = get_db()
+                    c = conn.cursor()
+                    c.execute("SELECT COUNT(*) FROM activity_log WHERE client_id IS NULL")
+                    null_count = c.fetchone()[0]
+                    if null_count > 0:
+                        for ip, cid in ip_to_client.items():
+                            c.execute(
+                                "UPDATE activity_log SET client_id = ? "
+                                "WHERE client_id IS NULL AND (src_ip = ? OR dst_ip = ?)",
+                                (cid, ip, ip)
+                            )
+                        conn.commit()
+                    conn.close()
+                except Exception:
+                    pass
+
             entries = []
             for line in wg_lines:
                 parts = line.split(" ", 3)
