@@ -29,10 +29,46 @@
 # Version: 2.3.0
 # ============================================================================
 
+# ── Color System ──────────────────────────────────────────────────────────────
+# Core (backward compat)
 RED='\033[0;31m'
 ORANGE='\033[0;33m'
 GREEN='\033[0;32m'
 NC='\033[0m'
+# Extended palette
+BOLD='\033[1m'
+DIM='\033[2m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+GRAY='\033[0;90m'
+BGREEN='\033[1;32m'
+BRED='\033[1;31m'
+BYELLOW='\033[1;33m'
+
+# ── UI Helper Functions ──────────────────────────────────────────────────────
+_ws_ui_success() { echo -e "  ${GREEN}✓${NC} $1"; }
+_ws_ui_error()   { echo -e "  ${RED}✗${NC} $1"; }
+_ws_ui_warn()    { echo -e "  ${ORANGE}!${NC} $1"; }
+_ws_ui_info()    { echo -e "  ${BLUE}ℹ${NC} ${DIM}$1${NC}"; }
+
+_ws_ui_divider() {
+	echo -e "  ${GRAY}$(printf '%.0s─' {1..54})${NC}"
+}
+
+_ws_ui_section() {
+	echo -e "\n  ${CYAN}$1${NC}"
+}
+
+_ws_ui_menu_item() {
+	# Usage: _ws_ui_menu_item "num" "Label" "Description"
+	printf "  \033[1;37m%3s\033[0m  %-26s \033[0;90m%s\033[0m\n" "$1" "$2" "$3"
+}
+
+_ws_ui_kv() {
+	# Usage: _ws_ui_kv "Key" "value"
+	printf "  \033[0;90m%-14s\033[0m %s\n" "$1" "$2"
+}
 
 # Detect UTF-8 capability; fall back to plain ASCII boxes when unavailable.
 USE_ASCII_BOX=0
@@ -1254,36 +1290,40 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 }
 
 function listClients() {
-    # Print numbered list of existing clients (peers) from the server config.
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	# Print numbered list of existing clients (peers) from the server config.
 	echo ""
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Client List${NC}"
+	_ws_ui_divider
+
 	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 	if [[ ${NUMBER_OF_CLIENTS} -eq 0 ]]; then
 		echo ""
-		echo "You have no existing clients!"
+		_ws_ui_warn "No clients registered."
 		return
 	fi
 
 	echo ""
-	echo -e "${GREEN}Current clients:${NC}"
-	echo ""
-	
+	printf "  \033[0;90m%3s  %-22s %s\033[0m\n" "#" "Name" "Expires"
+	_ws_ui_divider
+
 	local count=0
 	while IFS= read -r line; do
 		if [[ $line =~ ^###[[:space:]]Client[[:space:]](.+) ]]; then
 			count=$((count + 1))
 			local client_info="${BASH_REMATCH[1]}"
-			
-			# Check if there's an expiration date
+
 			if [[ $client_info =~ ^([^[:space:]]+)[[:space:]]\|[[:space:]]Expires:[[:space:]]([0-9]{4}-[0-9]{2}-[0-9]{2})$ ]]; then
 				local client_name="${BASH_REMATCH[1]}"
 				local expiry_date="${BASH_REMATCH[2]}"
-				echo -e "   ${count}) ${client_name} ${ORANGE}(expires: ${expiry_date})${NC}"
+				printf "  \033[1;37m%3s\033[0m  %-22s \033[0;33m%s\033[0m\n" "$count" "$client_name" "$expiry_date"
 			else
-				echo -e "   ${count}) ${client_info}"
+				printf "  \033[1;37m%3s\033[0m  %-22s \033[0;90m%s\033[0m\n" "$count" "$client_info" "never"
 			fi
 		fi
 	done < "/etc/wireguard/${SERVER_WG_NIC}.conf"
+
+	echo ""
+	echo -e "  ${GRAY}${count} client(s) registered${NC}"
 }
 
 function revokeClient() {
@@ -1693,129 +1733,148 @@ function uninstallWg() {
 }
 
 function _ws_header() {
-    # Draw a simple header for the interactive menu.
-	echo -e "${GREEN}WireShield — Modern VPN Management${NC}"
-	echo "Project: https://github.com/siyamsarker/WireShield"
+	# Compact branded header for management screens.
+	local version="2.3.0"
 	echo ""
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}v${version}${NC}"
+	_ws_summary
 }
 
 function _ws_summary() {
-    # Show a concise summary of interface, endpoint, peer count, and service status.
-	local peers
+	# One-line status: interface · endpoint · peers · service state.
+	local peers svc_status dot
 	peers=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || echo 0)
-	echo "Interface  : ${SERVER_WG_NIC}"
-	echo "Endpoint   : ${SERVER_PUB_IP}:${SERVER_PORT}"
-	echo "Clients    : ${peers}"
 	if [[ ${OS} == 'alpine' ]]; then
-		rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status && echo "Service    : Active" || echo "Service    : Inactive"
+		rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status 2>/dev/null && svc_status="active" || svc_status="inactive"
 	else
-		systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" && echo "Service    : Active" || echo "Service    : Inactive"
+		systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" 2>/dev/null && svc_status="active" || svc_status="inactive"
 	fi
-	echo ""
+	[[ "$svc_status" == "active" ]] && dot="${GREEN}●${NC}" || dot="${RED}●${NC}"
+	echo -e "  ${GRAY}${SERVER_WG_NIC} · ${SERVER_PUB_IP}:${SERVER_PORT} · ${peers} clients ·${NC} ${dot} ${GRAY}${svc_status}${NC}"
 }
 
 function _ws_choose_client() {
-    # Prompt the user to select one client from the existing list; prints the name.
+	# Prompt the user to select one client from the existing list; prints the name.
 	local number_of_clients
 	number_of_clients=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
-	
+
 	if [[ ${number_of_clients} -eq 0 ]]; then
-		echo -e "${RED}No clients found.${NC}" >&2
+		echo -e "  ${RED}✗${NC} No clients found." >&2
 		return 1
 	fi
-	
-	echo "Select a client:" >&2
-	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | nl -s ') ' >&2
-	
+
+	echo "" >&2
+	echo -e "  ${CYAN}Select a client${NC}" >&2
+	echo "" >&2
+	local i=1
+	while IFS= read -r name; do
+		printf "  \033[1;37m%3s\033[0m  %s\n" "$i" "$name" >&2
+		((i++))
+	done < <(grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3)
+	echo "" >&2
+
 	local choice
 	until [[ ${choice} =~ ^[0-9]+$ ]] && [[ ${choice} -ge 1 ]] && [[ ${choice} -le ${number_of_clients} ]]; do
-		read -rp "Client [1-${number_of_clients}]: " choice
+		read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" choice
 		if [[ ! ${choice} =~ ^[0-9]+$ ]]; then
-			echo -e "${ORANGE}Please enter a valid number.${NC}" >&2
+			echo -e "  ${ORANGE}Please enter a valid number.${NC}" >&2
 		fi
 	done
-	
+
 	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | sed -n "${choice}p"
 }
 
 function showClientQR() {
-    # Render a QR code for a selected client's configuration (if available).
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	# Render a QR code for a selected client's configuration (if available).
 	echo ""
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Client QR Code${NC}"
+	_ws_ui_divider
+
 	if ! command -v qrencode &>/dev/null; then
-		echo -e "${ORANGE}qrencode is not installed; cannot render QR in terminal.${NC}"
-		echo "You can still use the .conf file on your device."
+		echo ""
+		_ws_ui_warn "qrencode is not installed; cannot render QR in terminal."
+		_ws_ui_info "You can still use the .conf file on your device."
 		return 0
 	fi
-	
+
 	local name home_dir cfg
 	name=$(_ws_choose_client)
-	
-	# Check if client selection failed
+
 	if [[ -z "${name}" ]]; then
-		echo -e "${RED}No client selected.${NC}"
+		_ws_ui_error "No client selected."
 		return 1
 	fi
-	
+
 	home_dir=$(getHomeDirForClient "${name}")
 	cfg="${home_dir}/${name}.conf"
-	
+
 	if [[ ! -f "${cfg}" ]]; then
-		echo -e "${RED}Config file for client '${name}' was not found:${NC}"
-		echo -e "  ${cfg}"
+		_ws_ui_error "Config file not found: ${cfg}"
 		return 1
 	fi
-	
-	echo -e "${GREEN}\nQR Code for ${name}:${NC}\n"
+
+	echo ""
+	echo -e "  ${WHITE}${name}${NC}"
+	echo ""
 	# Strip comments and empty lines to reduce QR code size
 	grep -vE '^\s*(#|$)' "${cfg}" | qrencode -t ansiutf8 -l L -m 1
 }
 
 function showStatus() {
-    # Display WireGuard runtime status via `wg show`.
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	# Display WireGuard runtime status via `wg show`.
 	echo ""
-	echo -e "${GREEN}WireGuard status:${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Server Status${NC}"
+	_ws_ui_divider
+	echo ""
 	wg show || true
 }
 
 function restartWireGuard() {
-    # Restart the WireGuard interface service using the appropriate init system.
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	# Restart the WireGuard interface service using the appropriate init system.
 	echo ""
-	echo "Restarting WireGuard (${SERVER_WG_NIC})..."
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Restart VPN${NC}"
+	_ws_ui_divider
+	echo ""
 	if [[ ${OS} == 'alpine' ]]; then
 		rc-service "wg-quick.${SERVER_WG_NIC}" restart
 	else
 		systemctl restart "wg-quick@${SERVER_WG_NIC}"
 	fi
-	echo "Done."
+	_ws_ui_success "WireGuard (${SERVER_WG_NIC}) restarted"
 }
 
 function backupConfigs() {
-    # Create a timestamped archive of /etc/wireguard for backup/portability.
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	# Create a timestamped archive of /etc/wireguard for backup/portability.
+	echo ""
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Backup${NC}"
+	_ws_ui_divider
 	echo ""
 	local ts out
 	ts=$(date +%Y%m%d-%H%M%S)
 	out="/root/wireshield-backup-${ts}.tar.gz"
-	tar czf "${out}" /etc/wireguard 2>/dev/null && echo -e "${GREEN}Backup saved to ${out}${NC}" || echo -e "${RED}Backup failed.${NC}"
+	if tar czf "${out}" /etc/wireguard 2>/dev/null; then
+		_ws_ui_success "Backup saved to ${out}"
+	else
+		_ws_ui_error "Backup failed"
+	fi
 }
 
 function viewAuditLogs() {
-    # Display audit logs menu for users to view 2FA authentication logs.
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
+	# Display audit logs menu for users to view 2FA authentication logs.
 	echo ""
-	
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Audit Logs${NC}"
+	_ws_ui_divider
+	echo ""
+	_ws_ui_menu_item "1" "View All" "Last 100 audit events"
+	_ws_ui_menu_item "2" "Filter by User" "Logs for a specific client"
+	_ws_ui_menu_item "3" "Statistics" "Audit event summary"
+	_ws_ui_menu_item "4" "Export to CSV" "Save logs to file"
+	_ws_ui_menu_item "b" "Back" ""
+	echo ""
+
 	local AUDIT_OPTION
-	echo "=== Audit Logs ==="
-	echo "   1) View all audit logs (last 100)"
-	echo "   2) View logs for specific user"
-	echo "   3) View audit statistics"
-	echo "   4) Export audit logs to CSV"
-	echo "   5) Back to menu"
-	read -rp "Select option [1-5]: " AUDIT_OPTION
-	
+	read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" AUDIT_OPTION
+
 	case "$AUDIT_OPTION" in
 		1)
 			echo ""
@@ -1823,7 +1882,7 @@ function viewAuditLogs() {
 			;;
 		2)
 			echo ""
-			read -rp "Enter client/user ID: " client_id
+			read -rp "$(echo -ne "  Client ID \033[0;36m›\033[0m ")" client_id
 			if [ -n "$client_id" ]; then
 				sudo /etc/wireshield/2fa/2fa-helper.sh audit-logs-user "$client_id"
 			fi
@@ -1834,75 +1893,76 @@ function viewAuditLogs() {
 			;;
 		4)
 			echo ""
-			read -rp "Enter output file path [/tmp/wireshield_audit_logs.csv]: " output_file
+			read -rp "$(echo -ne "  Output path ${GRAY}[/tmp/wireshield_audit_logs.csv]${NC} \033[0;36m›\033[0m ")" output_file
 			output_file=${output_file:-/tmp/wireshield_audit_logs.csv}
 			sudo /etc/wireshield/2fa/2fa-helper.sh export-audit "$output_file"
-			echo -e "${GREEN}Audit logs exported to: ${output_file}${NC}"
+			_ws_ui_success "Exported to ${output_file}"
 			;;
-		5)
+		b|B|5)
 			return
 			;;
 		*)
-			echo "Invalid option"
+			_ws_ui_warn "Invalid option"
 			;;
 	esac
 }
 
 function removeClient2FA() {
-    # Remove 2FA configuration for a specific client, allowing them to set it up again
+	# Remove 2FA configuration for a specific client, allowing them to set it up again
 	echo ""
-	echo -e "${ORANGE}=== Remove Client 2FA ===${NC}"
-	echo ""
-	
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Remove Client 2FA${NC}"
+	_ws_ui_divider
+
 	# Check if 2FA service is installed
 	if [[ ! -f /etc/wireshield/2fa/auth.db ]]; then
-		echo -e "${RED}Error: 2FA database not found. Is 2FA service installed?${NC}"
+		echo ""
+		_ws_ui_error "2FA database not found. Is 2FA service installed?"
 		return 1
 	fi
-	
-	# List all clients with 2FA configured
-	echo "Clients with 2FA configured:"
-	echo ""
-	
+
 	local sqlite3_cmd="sqlite3 /etc/wireshield/2fa/auth.db"
 	local client_list
 	client_list=$($sqlite3_cmd "SELECT client_id, enabled, totp_secret FROM users ORDER BY client_id ASC;")
-	
+
 	if [[ -z "$client_list" ]]; then
-		echo -e "${RED}No clients have 2FA configured.${NC}"
+		echo ""
+		_ws_ui_warn "No clients have 2FA configured."
 		return 1
 	fi
-	
+
 	# Display formatted list
+	echo ""
+	printf "  \033[0;90m%3s  %-22s %s\033[0m\n" "#" "Client" "Status"
+	_ws_ui_divider
 	local index=1
 	declare -a client_ids
 	while IFS='|' read -r client_id enabled secret; do
 		client_ids[$index]="$client_id"
-		local status="DISABLED"
-		[[ "$enabled" == "1" ]] && status="ACTIVE"
-		echo "   $index) $client_id [$status]"
+		local status_str="${RED}disabled${NC}"
+		[[ "$enabled" == "1" ]] && status_str="${GREEN}active${NC}"
+		printf "  \033[1;37m%3s\033[0m  %-22s %b\n" "$index" "$client_id" "$status_str"
 		((index++))
 	done <<< "$client_list"
-	
+
 	echo ""
-	read -rp "Select client number to remove 2FA (or press Enter to cancel): " selection
-	
+	read -rp "$(echo -ne "  Select client ${GRAY}(Enter to cancel)${NC} \033[0;36m›\033[0m ")" selection
+
 	if [[ -z "$selection" ]] || [[ ! "$selection" =~ ^[0-9]+$ ]] || [[ $selection -lt 1 ]] || [[ $selection -gt ${#client_ids[@]} ]]; then
-		echo "Cancelled."
+		_ws_ui_info "Cancelled"
 		return 0
 	fi
-	
+
 	local target_client="${client_ids[$selection]}"
-	
+
 	# Confirm removal
 	echo ""
-	echo -e "${ORANGE}WARNING: This will remove 2FA for client: ${GREEN}${target_client}${NC}"
-	echo "The user will need to set up 2FA again to access the VPN."
+	_ws_ui_warn "This will remove 2FA for: ${WHITE}${target_client}${NC}"
+	_ws_ui_info "The user will need to set up 2FA again on next connection."
 	echo ""
-	read -rp "Type the client ID '${target_client}' to confirm: " confirm_input
-	
+	read -rp "$(echo -ne "  Type '${target_client}' to confirm \033[0;36m›\033[0m ")" confirm_input
+
 	if [[ "$confirm_input" != "$target_client" ]]; then
-		echo "Cancelled."
+		_ws_ui_info "Cancelled"
 		return 0
 	fi
 	
@@ -1937,9 +1997,9 @@ function removeClient2FA() {
 		fi
 	fi
 	
-	echo -e "${GREEN}✓ 2FA removed for client: ${target_client}${NC}"
-	echo "  User must now verify 2FA again on next connection."
 	echo ""
+	_ws_ui_success "2FA removed for ${WHITE}${target_client}${NC}"
+	_ws_ui_info "User must verify 2FA again on next connection."
 	
 	# Log this action
 	audit_log "$target_client" "2FA_REMOVED" "admin_action" "cli"
@@ -2254,24 +2314,28 @@ function viewUserActivityLogs() {
 function activityLogsMenu() {
 	while true; do
 		clear
-		echo -e "${GREEN}Activity Logs Management${NC}"
 		echo ""
-		echo "   1) Enable/Disable Activity Logging"
-		echo "   2) Configure Retention Period"
-		echo "   3) View User Logs"
-		echo "   4) Back to Main Menu"
+		echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Activity Logs${NC}"
+		_ws_ui_divider
 		echo ""
-		read -rp "Select option [1-4]: " OPT
-		
+		_ws_ui_menu_item "1" "Toggle Logging" "Enable or disable traffic capture"
+		_ws_ui_menu_item "2" "Retention Period" "Configure log retention days"
+		_ws_ui_menu_item "3" "View Logs" "Browse activity records"
+		_ws_ui_menu_item "b" "Back" ""
+		echo ""
+
+		local OPT
+		read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" OPT
+
 		case "$OPT" in
 			1) toggleActivityLogging ;;
 			2) configureLogRetention ;;
 			3) viewUserActivityLogs ;;
-			4) return ;;
+			b|B|4) return ;;
 			*) ;;
 		esac
 		echo ""
-		read -rp "Press Enter to continue..." _
+		read -rp "  Press Enter to continue..." _
 	done
 }
 
@@ -2290,159 +2354,126 @@ function consoleAccessMenu() {
 	# Submenu for managing Web Console access permissions
 	while true; do
 		clear
-		echo -e "${GREEN}Web Console Access Management${NC}"
 		echo ""
-		echo -e "Dashboard URL: ${ORANGE}https://${SERVER_PUB_IP}:${WS_2FA_PORT:-443}/console${NC}"
+		echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Console Access${NC}"
+		_ws_ui_divider
 		echo ""
-		
+		echo -e "  ${GRAY}Dashboard${NC}  https://${SERVER_PUB_IP}:${WS_2FA_PORT:-443}/console"
+
 		# Check DB
 		if [[ ! -f /etc/wireshield/2fa/auth.db ]]; then
-			echo -e "${RED}Error: 2FA database not found.${NC}"
-			read -rp "Press Enter to return..." _
+			echo ""
+			_ws_ui_error "2FA database not found."
+			read -rp "  Press Enter to return..." _
 			return
 		fi
-		
+
 		local sqlite3_cmd="sqlite3 /etc/wireshield/2fa/auth.db"
 		local user_list
 		user_list=$($sqlite3_cmd "SELECT client_id, console_access FROM users ORDER BY client_id ASC;" 2>/dev/null)
-		
+
 		if [[ -z "$user_list" ]]; then
-			echo "No users found in 2FA database."
+			echo ""
+			_ws_ui_warn "No users found in 2FA database."
 		else
-			echo "   User List & Status:"
+			echo ""
+			printf "  \033[0;90m%3s  %-22s %s\033[0m\n" "#" "Client" "Access"
+			_ws_ui_divider
 			local i=1
 			declare -a ids
 			declare -a statuses
-			
+
 			while IFS='|' read -r client_id access; do
 				ids[$i]="$client_id"
 				statuses[$i]="$access"
-				local status_str="${RED}DENIED${NC}"
-				[[ "$access" == "1" ]] && status_str="${GREEN}ALLOWED${NC}"
-				
-				# Handle variable expansion in printf safely
-				printf "   %2d) %-20s [%b]\n" "$i" "$client_id" "$status_str"
+				local dot="${RED}○ denied${NC}"
+				[[ "$access" == "1" ]] && dot="${GREEN}● allowed${NC}"
+				printf "  \033[1;37m%3s\033[0m  %-22s %b\n" "$i" "$client_id" "$dot"
 				((i++))
 			done <<< "$user_list"
 		fi
-		
+
 		echo ""
-		echo "   Actions:"
-		echo "   Input number to toggle access for a user"
-		echo "   Or type 'q' or 'b' to go back"
+		_ws_ui_info "Enter number to toggle access, or ${WHITE}b${NC}${DIM} to go back${NC}"
 		echo ""
-		read -rp "Select option: " SEL
-		
+
+		local SEL
+		read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" SEL
+
 		if [[ "$SEL" == "q" ]] || [[ "$SEL" == "b" ]] || [[ -z "$SEL" ]]; then
 			return
 		fi
-		
+
 		if [[ "$SEL" =~ ^[0-9]+$ ]] && [[ "$SEL" -ge 1 ]] && [[ "$SEL" -lt $i ]]; then
 			local target="${ids[$SEL]}"
 			local current="${statuses[$SEL]}"
 			local new_status=1
-			local verb="grant"
+			local verb="granted"
 			if [[ "$current" == "1" ]]; then
 				new_status=0
-				verb="revoke"
+				verb="revoked"
 			fi
-			
-			echo ""
-			echo "Changing access for ${target}..."
+
 			$sqlite3_cmd "UPDATE users SET console_access = ${new_status} WHERE client_id = '${target}';"
-			echo -e "${GREEN}Success: Access ${verb}ed for ${target}.${NC}"
+			echo ""
+			_ws_ui_success "Access ${verb} for ${WHITE}${target}${NC}"
 			sleep 1
 		fi
 	done
 }
 
 function manageMenu() {
-    # Main interactive loop used after installation to manage clients and server.
+	# Main interactive loop — categorized menu with inline descriptions.
 	while true; do
 		clear
 		_ws_header
-		_ws_summary
 
-		local MENU_OPTION
-		if command -v whiptail &>/dev/null; then
-			# Center the prompt text within the specified width (approximate centering)
-			local MENU_HEIGHT=22 MENU_WIDTH=72 MENU_CHOICES=14
-			local _prompt="Select a management task"
-			local _pad=$(( (MENU_WIDTH - ${#_prompt}) / 2 ))
-			((_pad<0)) && _pad=0
-			local _prompt_centered
-			_prompt_centered=$(printf "%*s%s" "${_pad}" "" "${_prompt}")
-			MENU_OPTION=$(whiptail --title "WireShield — Main Menu" --menu "${_prompt_centered}" ${MENU_HEIGHT} ${MENU_WIDTH} ${MENU_CHOICES} \
-				1 "Create Client" \
-				2 "List Clients" \
-				3 "Display Client QR" \
-				4 "Revoke Client Access" \
-				5 "Clean Up Expired Clients" \
-				6 "View Server Status" \
-				7 "Restart VPN Service" \
-				8 "View Audit Logs" \
-				9 "Backup Configuration" \
-				10 "Remove Client 2FA" \
-				11 "User Activity Logs" \
-				12 "Console Access Management" \
-				13 "Uninstall WireShield" \
-				14 "Exit" 3>&1 1>&2 2>&3) || MENU_OPTION=14
-		else
-			local msg="Select a management task"
-			echo ""
-			echo "================ ${msg} ================"
-			echo "   1) Create Client"
-			echo "   2) List Clients"
-			echo "   3) Display Client QR"
-			echo "   4) Revoke Client Access"
-			echo "   5) Clean Up Expired Clients"
-			echo "   6) View Server Status"
-			echo "   7) Restart VPN Service"
-			echo "   8) View Audit Logs"
-			echo "   9) Backup Configuration"
-			echo "  10) Remove Client 2FA"
-			echo "  11) User Activity Logs"
-			echo "  12) Console Access Management"
-			echo "  13) Uninstall WireShield"
-			echo "  14) Exit"
-			until [[ ${MENU_OPTION} =~ ^[1-9]$|^1[0-4]$ ]]; do
-				read -rp "Select an option [1-14]: " MENU_OPTION
-			done
-		fi
+		_ws_ui_section "Client Management"
+		_ws_ui_menu_item "1" "Create Client" "Add a new VPN peer"
+		_ws_ui_menu_item "2" "List Clients" "Show all registered clients"
+		_ws_ui_menu_item "3" "Display Client QR" "Render config as QR code"
+		_ws_ui_menu_item "4" "Revoke Client" "Remove a client's access"
+		_ws_ui_menu_item "5" "Clean Up Expired" "Remove expired clients"
+
+		_ws_ui_section "Server Operations"
+		_ws_ui_menu_item "6" "View Status" "WireGuard runtime info"
+		_ws_ui_menu_item "7" "Restart VPN" "Restart the WireGuard service"
+		_ws_ui_menu_item "8" "Backup Config" "Archive /etc/wireguard"
+
+		_ws_ui_section "Security & Logging"
+		_ws_ui_menu_item "9" "Audit Logs" "View 2FA authentication events"
+		_ws_ui_menu_item "10" "Remove Client 2FA" "Reset a client's authenticator"
+		_ws_ui_menu_item "11" "Activity Logs" "Traffic logging management"
+		_ws_ui_menu_item "12" "Console Access" "Web dashboard permissions"
+
+		_ws_ui_section "System"
+		_ws_ui_menu_item "13" "Uninstall" "Remove WireShield completely"
+		_ws_ui_menu_item "q" "Exit" ""
+		echo ""
+
+		local MENU_OPTION=""
+		read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" MENU_OPTION
 
 		case "${MENU_OPTION}" in
-		1)
-			newClient ;;
-		2)
-			listClients ;;
-		3)
-			showClientQR ;;
-		4)
-			revokeClient ;;
-		5)
-			checkExpiredClients ;;
-		6)
-			showStatus ;;
-		7)
-			restartWireGuard ;;
-		8)
-			viewAuditLogs ;;
-		9)
-			backupConfigs ;;
-		10)
-			removeClient2FA ;;
-		11)
-			activityLogsMenu ;;
-		12)
-			consoleAccessMenu ;;
-		13)
-			uninstallWg ;;
-		14)
-			exit 0 ;;
+		1) newClient ;;
+		2) listClients ;;
+		3) showClientQR ;;
+		4) revokeClient ;;
+		5) checkExpiredClients ;;
+		6) showStatus ;;
+		7) restartWireGuard ;;
+		8) backupConfigs ;;
+		9) viewAuditLogs ;;
+		10) removeClient2FA ;;
+		11) activityLogsMenu ;;
+		12) consoleAccessMenu ;;
+		13) uninstallWg ;;
+		q|Q|14) exit 0 ;;
+		*) continue ;;
 		esac
 
 		echo ""
-		read -rp "Press Enter to continue..." _
+		read -rp "  Press Enter to continue..." _
 	done
 }
 
