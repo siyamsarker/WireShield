@@ -226,39 +226,7 @@ function installQuestions() {
     # Collect installation inputs with validation and a final confirmation step.
     # Uses whiptail for a modern confirmation dialog when available.
 
-	# Render the install wizard intro box with a UTF-8 or ASCII fallback.
-	_ws_print_installation_wizard_box() {
-		if [[ ${USE_ASCII_BOX:-0} -eq 1 ]]; then
-			printf "%b\n" "${ORANGE}============================================================${NC}"
-			printf "%b\n" "${ORANGE}=                  Installation Wizard                     =${NC}"
-			printf "%b\n" "${ORANGE}============================================================${NC}"
-			printf "\n"
-			printf "%s\n" "This setup wizard will guide you through the VPN configuration."
-			printf "%s\n" "Default values are optimized for most use cases."
-			printf "\n"
-			printf "%s\n" "  -> Press Enter to accept defaults"
-			printf "%s\n" "  -> Customize values as needed for your environment"
-			printf "%s\n" "  -> Press Ctrl+C at any time to exit the installer"
-			printf "\n"
-			printf "%b\n" "${ORANGE}============================================================${NC}"
-		else
-			echo -e "${ORANGE}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-			echo -e "${ORANGE}┃${NC}                       ${ORANGE}⚙  Installation Wizard${NC}                           ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
-			echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┃${NC}  This setup wizard will guide you through the VPN configuration.      ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┃${NC}  Default values are optimized for most use cases.                     ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Press ${GREEN}Enter${NC} to accept defaults                                      ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Customize values as needed for your environment                   ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┃${NC}  ${GREEN}→${NC} Press ${GREEN}Ctrl+C${NC} at any time to exit the installer                     ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┃${NC}                                                                        ${ORANGE}┃${NC}"
-			echo -e "${ORANGE}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-		fi
-	}
-
-		# Ensure locale is set so UTF-8 boxes render correctly; otherwise fall back to ASCII.
-		_ws_init_locale
+	_ws_init_locale
 
 	# helper: check interface existence
 	interface_exists() {
@@ -274,42 +242,38 @@ function installQuestions() {
 	while true; do
 		clear
 		echo ""
-		echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════════════════════════╗${NC}"
-		echo -e "${GREEN}║                                                                                   ║${NC}"
-		echo -e "${GREEN}║${NC}      ██╗    ██╗██╗██████╗ ███████╗███████╗██╗  ██╗██╗███████╗██╗     ██████╗      ${GREEN}║${NC}"
-		echo -e "${GREEN}║${NC}      ██║    ██║██║██╔══██╗██╔════╝██╔════╝██║  ██║██║██╔════╝██║     ██╔══██╗     ${GREEN}║${NC}"
-		echo -e "${GREEN}║${NC}      ██║ █╗ ██║██║██████╔╝█████╗  ███████╗███████║██║█████╗  ██║     ██║  ██║     ${GREEN}║${NC}"
-		echo -e "${GREEN}║${NC}      ██║███╗██║██║██╔══██╗██╔══╝  ╚════██║██╔══██║██║██╔══╝  ██║     ██║  ██║     ${GREEN}║${NC}"
-		echo -e "${GREEN}║${NC}      ╚███╔███╔╝██║██║  ██║███████╗███████║██║  ██║██║███████╗███████╗██████╔╝     ${GREEN}║${NC}"
-		echo -e "${GREEN}║${NC}      ╚══╝╚══╝ ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═════╝       ${GREEN}║${NC}"
-		echo -e "${GREEN}║                                                                                   ║${NC}"
-		echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════════════╝${NC}"
+		echo -e "  ${WHITE}WireShield${NC} ${GRAY}v2.3.0${NC}"
+		echo -e "  ${GRAY}Secure WireGuard VPN Deployment System${NC}"
 		echo ""
-		echo -e "          ${GREEN}● Secure${NC}  ${ORANGE}● Simple${NC}  ${GREEN}● Enterprise-Grade${NC}          "
-		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-		echo -e "          ${GREEN}Professional WireGuard VPN Deployment System${NC}"
+		_ws_ui_divider
 		echo ""
-		echo -e "         Version ${GREEN}2.3.0${NC} • Built with ${RED}❤${NC}  by ${GREEN}Siyam Sarker${NC}"
-		echo -e "         Repository: ${GREEN}github.com/siyamsarker/WireShield${NC}"
-		echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-		echo -e ""
-		_ws_print_installation_wizard_box
+		echo -e "  ${CYAN}Installation Wizard${NC}"
+		echo ""
+		echo -e "  ${GRAY}This wizard will configure your WireGuard VPN server.${NC}"
+		echo -e "  ${GRAY}Defaults are optimized for most deployments.${NC}"
+		echo ""
+		echo -e "  ${WHITE}Enter${NC}${GRAY}     accept default value${NC}"
+		echo -e "  ${WHITE}Ctrl+C${NC}${GRAY}    exit the installer${NC}"
+		echo ""
+		_ws_ui_divider
+		echo ""
+
+		# ── Network ──
+		echo -e "  ${CYAN}Network${NC}"
 		echo ""
 
 		# Detect public IPv4 or IPv6 address and pre-fill for the user
 		SERVER_PUB_IP=$(ip -4 addr | sed -ne 's|^.* inet \([^/]*\)/.* scope global.*$|\1|p' | awk '{print $1}' | head -1)
 		if [[ -z ${SERVER_PUB_IP} ]]; then
-			# Detect public IPv6 address
 			SERVER_PUB_IP=$(ip -6 addr | sed -ne 's|^.* inet6 \([^/]*\)/.* scope global.*$|\1|p' | head -1)
 		fi
-		read -rp "IPv4 or IPv6 public address (or hostname): " -e -i "${SERVER_PUB_IP}" SERVER_PUB_IP
+		read -rp "$(echo -ne "  ${GRAY}Public address${NC}  › ")" -e -i "${SERVER_PUB_IP}" SERVER_PUB_IP
 
-		# Detect public interface and pre-fill for the user
 		SERVER_NIC="$(ip -4 route ls | grep default | awk '/dev/ {for (i=1; i<=NF; i++) if ($i == "dev") print $(i+1)}' | head -1)"
 		until [[ ${SERVER_PUB_NIC} =~ ^[a-zA-Z0-9_]+$ ]] && interface_exists "${SERVER_PUB_NIC}"; do
-			read -rp "Public interface: " -e -i "${SERVER_NIC}" SERVER_PUB_NIC
+			read -rp "$(echo -ne "  ${GRAY}Public interface${NC} › ")" -e -i "${SERVER_NIC}" SERVER_PUB_NIC
 			if ! interface_exists "${SERVER_PUB_NIC}"; then
-				echo -e "${ORANGE}Interface '${SERVER_PUB_NIC}' does not exist. Please enter an existing interface (e.g., ${SERVER_NIC}).${NC}"
+				_ws_ui_warn "Interface '${SERVER_PUB_NIC}' not found. Try: ${SERVER_NIC}"
 			fi
 		done
 
@@ -318,12 +282,17 @@ function installQuestions() {
 			SERVER_LOCAL_IPV4=$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $4}' | cut -d'/' -f1 | head -1)
 		fi
 
+		echo ""
+		# ── WireGuard ──
+		echo -e "  ${CYAN}WireGuard${NC}"
+		echo ""
+
 		until [[ ${SERVER_WG_NIC} =~ ^[a-zA-Z0-9_]+$ && ${#SERVER_WG_NIC} -lt 16 ]]; do
-			read -rp "WireGuard interface name: " -e -i wg0 SERVER_WG_NIC
+			read -rp "$(echo -ne "  ${GRAY}Interface name${NC}  › ")" -e -i wg0 SERVER_WG_NIC
 		done
 
 		until [[ ${SERVER_WG_IPV4} =~ ^([0-9]{1,3}\.){3} ]]; do
-			read -rp "Server WireGuard IPv4: " -e -i 10.66.66.1 SERVER_WG_IPV4
+			read -rp "$(echo -ne "  ${GRAY}Server IPv4${NC}     › ")" -e -i 10.66.66.1 SERVER_WG_IPV4
 		done
 
 		if [[ -z ${SERVER_LOCAL_IPV4} ]]; then
@@ -331,76 +300,89 @@ function installQuestions() {
 		fi
 
 		until [[ ${SERVER_WG_IPV6} =~ ^([a-f0-9]{1,4}:){3,4}: ]]; do
-			read -rp "Server WireGuard IPv6: " -e -i fd42:42:42::1 SERVER_WG_IPV6
+			read -rp "$(echo -ne "  ${GRAY}Server IPv6${NC}     › ")" -e -i fd42:42:42::1 SERVER_WG_IPV6
 		done
 
-		# Generate random number within private ports range
 		RANDOM_PORT=$(shuf -i49152-65535 -n1)
 		until [[ ${SERVER_PORT} =~ ^[0-9]+$ ]] && [ "${SERVER_PORT}" -ge 1 ] && [ "${SERVER_PORT}" -le 65535 ]; do
-			read -rp "Server WireGuard port [1-65535]: " -e -i "${RANDOM_PORT}" SERVER_PORT
+			read -rp "$(echo -ne "  ${GRAY}UDP port${NC}        › ")" -e -i "${RANDOM_PORT}" SERVER_PORT
 		done
 
-		# Adguard DNS by default
+		echo ""
+		# ── DNS ──
+		echo -e "  ${CYAN}Client DNS${NC}"
+		echo ""
+
 		until [[ ${CLIENT_DNS_1} =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
-			read -rp "First DNS resolver to use for the clients: " -e -i 1.1.1.1 CLIENT_DNS_1
+			read -rp "$(echo -ne "  ${GRAY}Primary DNS${NC}     › ")" -e -i 1.1.1.1 CLIENT_DNS_1
 		done
 		until [[ ${CLIENT_DNS_2} =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
-			read -rp "Second DNS resolver to use for the clients (optional): " -e -i 1.0.0.1 CLIENT_DNS_2
+			read -rp "$(echo -ne "  ${GRAY}Secondary DNS${NC}   › ")" -e -i 1.0.0.1 CLIENT_DNS_2
 			if [[ ${CLIENT_DNS_2} == "" ]]; then
 				CLIENT_DNS_2="${CLIENT_DNS_1}"
 			fi
 		done
 
+		echo ""
+		# ── Routing ──
+		echo -e "  ${CYAN}Routing${NC}"
+		echo ""
+
 		until [[ ${ALLOWED_IPS} =~ ^.+$ ]]; do
-			echo -e "\nWireGuard uses a parameter called AllowedIPs to determine what is routed over the VPN."
-			read -rp "Allowed IPs list for generated clients (leave default to route everything): " -e -i '0.0.0.0/0,::/0' ALLOWED_IPS
+			_ws_ui_info "AllowedIPs controls what traffic is routed through the VPN."
+			read -rp "$(echo -ne "  ${GRAY}Allowed IPs${NC}     › ")" -e -i '0.0.0.0/0,::/0' ALLOWED_IPS
 			if [[ ${ALLOWED_IPS} == "" ]]; then
 				ALLOWED_IPS="0.0.0.0/0,::/0"
 			fi
 		done
 
-		# Final confirmation summary with concise, modern copy for whiptail/CLI
-		SUMMARY=$(cat <<-EOT
-		WireShield install plan
-		───────────────────────
-		Public address : ${SERVER_PUB_IP}
-		Public NIC     : ${SERVER_PUB_NIC}
-		WG interface   : ${SERVER_WG_NIC}
-		WG IPv4        : ${SERVER_WG_IPV4}/24
-		WG IPv6        : ${SERVER_WG_IPV6}/64
-		WG Port        : ${SERVER_PORT}/udp
-		Client DNS     : ${CLIENT_DNS_1}, ${CLIENT_DNS_2}
-		Allowed IPs    : ${ALLOWED_IPS}
-
-		Install target: ${SERVER_PUB_IP}:${SERVER_PORT}
-		EOT
-		)
+		# ── Confirmation ──
+		echo ""
+		_ws_ui_divider
+		echo ""
+		echo -e "  ${CYAN}Review Configuration${NC}"
+		echo ""
+		_ws_ui_kv "Public address" "${SERVER_PUB_IP}"
+		_ws_ui_kv "Public NIC" "${SERVER_PUB_NIC}"
+		_ws_ui_kv "WG interface" "${SERVER_WG_NIC}"
+		_ws_ui_kv "WG IPv4" "${SERVER_WG_IPV4}/24"
+		_ws_ui_kv "WG IPv6" "${SERVER_WG_IPV6}/64"
+		_ws_ui_kv "WG port" "${SERVER_PORT}/udp"
+		_ws_ui_kv "Client DNS" "${CLIENT_DNS_1}, ${CLIENT_DNS_2}"
+		_ws_ui_kv "Allowed IPs" "${ALLOWED_IPS}"
+		echo ""
+		_ws_ui_divider
 
 		if command -v whiptail &>/dev/null; then
+			SUMMARY=$(printf "Public address : %s\nPublic NIC     : %s\nWG interface   : %s\nWG IPv4        : %s/24\nWG IPv6        : %s/64\nWG Port        : %s/udp\nClient DNS     : %s, %s\nAllowed IPs    : %s" \
+				"${SERVER_PUB_IP}" "${SERVER_PUB_NIC}" "${SERVER_WG_NIC}" "${SERVER_WG_IPV4}" "${SERVER_WG_IPV6}" "${SERVER_PORT}" "${CLIENT_DNS_1}" "${CLIENT_DNS_2}" "${ALLOWED_IPS}")
 			whiptail --title "Review & confirm" \
-				--yes-button "Start install" \
+				--yes-button "Install" \
 				--no-button "Edit" \
-				--yesno "${SUMMARY}\nProceed with installation now?" 22 78
+				--yesno "${SUMMARY}\n\nProceed with installation?" 18 64
 			if [[ $? -eq 0 ]]; then
 				break
 			else
-				echo -e "${ORANGE}Let's adjust your inputs...${NC}\n"
+				_ws_ui_info "Restarting configuration..."
+				echo ""
 			fi
 		else
-			echo -e "\n${SUMMARY}"
-			read -rp "Proceed with installation? [Y/n]: " -e CONFIRM
+			echo ""
+			read -rp "$(echo -ne "  Proceed with installation? ${GRAY}[Y/n]${NC} › ")" -e CONFIRM
 			CONFIRM=${CONFIRM:-Y}
 			if [[ ${CONFIRM} =~ ^[Yy]$ ]]; then
 				break
 			else
-				echo -e "${ORANGE}Let's adjust your inputs...${NC}\n"
+				_ws_ui_info "Restarting configuration..."
+				echo ""
 			fi
 		fi
 	done
 
 	echo ""
-	echo "Great—settings locked in. Starting WireShield setup now."
-	echo "A first client will be generated automatically at the end."
+	_ws_ui_success "Configuration locked in. Starting installation..."
+	_ws_ui_info "A first client will be generated automatically."
+	echo ""
 }
 
 function _ws_upgrade_wireguard_packages() {
