@@ -1497,16 +1497,19 @@ EOF
 function uninstallWg() {
 	# Complete uninstall of WireShield including WireGuard, 2FA service, and all related configs
 	echo ""
-	echo -e "\n${RED}⚠ Warning:${NC} You are about to uninstall WireShield completely."
-	echo -e "${ORANGE}This will remove:${NC}"
-	echo "  • WireGuard and all VPN configurations"
-	echo "  • 2FA service (FastAPI, database, certificates)"
-	echo "  • SSL certificates (Let's Encrypt symlinks, self-signed certs)"
-	echo "  • Auto-renewal timers and services"
-	echo "  • All client configurations"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Uninstall${NC}"
+	_ws_ui_divider
 	echo ""
-	echo -e "${ORANGE}Back up /etc/wireguard and /etc/wireshield if you wish to keep settings.${NC}\n"
-	read -rp "Proceed with complete removal? [y/N]: " -e REMOVE
+	echo -e "  ${BRED}This will permanently remove:${NC}"
+	echo ""
+	echo -e "  ${GRAY}•${NC} WireGuard and all VPN configurations"
+	echo -e "  ${GRAY}•${NC} 2FA service, database, and certificates"
+	echo -e "  ${GRAY}•${NC} SSL certificates and auto-renewal timers"
+	echo -e "  ${GRAY}•${NC} All client configurations"
+	echo ""
+	_ws_ui_warn "Back up /etc/wireguard and /etc/wireshield first if needed."
+	echo ""
+	read -rp "$(echo -ne "  Proceed with removal? ${GRAY}[y/N]${NC} › ")" -e REMOVE
 	REMOVE=${REMOVE:-N}
 	if [[ $REMOVE == 'y' ]]; then
 		# Collect client names before removing /etc/wireguard
@@ -1522,7 +1525,7 @@ function uninstallWg() {
 
 		checkOS
 
-		echo -e "${ORANGE}Removing WireGuard services...${NC}"
+		_ws_ui_info "Removing WireGuard services..."
 		
 		if [[ ${OS} == 'alpine' ]]; then
 			rc-service "wg-quick.${SERVER_WG_NIC}" stop 2>/dev/null || true
@@ -1559,12 +1562,12 @@ function uninstallWg() {
 			apk del wireguard-tools libqrencode libqrencode-tools 2>/dev/null || true
 		fi
 
-		echo -e "${ORANGE}Removing WireGuard configuration...${NC}"
+		_ws_ui_info "Removing WireGuard configuration..."
 		rm -rf /etc/wireguard 2>/dev/null || true
 		rm -f /etc/sysctl.d/wg.conf 2>/dev/null || true
 
 		# Remove 2FA gating firewall structures
-		echo -e "${ORANGE}Removing 2FA gating firewall rules...${NC}"
+		_ws_ui_info "Removing 2FA firewall rules..."
 		iptables -D FORWARD -j WS_2FA_PORTAL 2>/dev/null || true
 		iptables -F WS_2FA_PORTAL 2>/dev/null || true
 		iptables -X WS_2FA_PORTAL 2>/dev/null || true
@@ -1613,7 +1616,7 @@ function uninstallWg() {
 		fi
 
 		# Remove automatic expiration cron job and helper script
-		echo -e "${ORANGE}Removing client expiration service...${NC}"
+		_ws_ui_info "Removing client expiration service..."
 		rm -f /usr/local/bin/wireshield-check-expired 2>/dev/null || true
 		# Remove crontab entry if present (ignore errors when crontab unset)
 		if crontab -l 2>/dev/null | grep -q "wireshield-check-expired"; then
@@ -1621,7 +1624,7 @@ function uninstallWg() {
 		fi
 
 		# Remove activity log archiving
-		echo -e "${ORANGE}Removing activity log services...${NC}"
+		_ws_ui_info "Removing activity log services..."
 		rm -f /usr/local/bin/wireshield-archive-logs 2>/dev/null || true
 		rm -rf /var/log/wireshield 2>/dev/null || true
 		if crontab -l 2>/dev/null | grep -q "wireshield-archive-logs"; then
@@ -1629,7 +1632,7 @@ function uninstallWg() {
 		fi
 
 		# Remove 2FA service and related services
-		echo -e "${ORANGE}Removing 2FA services...${NC}"
+		_ws_ui_info "Removing 2FA services..."
 		systemctl stop wireshield 2>/dev/null || true
 		systemctl disable wireshield 2>/dev/null || true
 		systemctl stop wireshield-2fa 2>/dev/null || true
@@ -1647,7 +1650,7 @@ function uninstallWg() {
 		systemctl daemon-reload 2>/dev/null || true
 
 		# Remove 2FA directory (database, certificates, configs, console assets)
-		echo -e "${ORANGE}Removing 2FA configuration, database, and Console data...${NC}"
+		_ws_ui_info "Removing 2FA configuration, database, and console data..."
 		rm -rf /etc/wireshield 2>/dev/null || true
 
 		# Clean up Console/2FA ipsets
@@ -1662,7 +1665,7 @@ function uninstallWg() {
 		# apt-get remove -y python3-fastapi python3-uvicorn python3-pyotp 2>/dev/null || true
 
 		# Remove client config files from user home directories
-		echo -e "${ORANGE}Removing client configurations...${NC}"
+		_ws_ui_info "Removing client configurations..."
 		SEARCH_DIRS=(/root /home)
 		for cname in "${CLIENT_NAMES[@]}"; do
 			for base in "${SEARCH_DIRS[@]}"; do
@@ -1684,22 +1687,26 @@ function uninstallWg() {
 		WG_RUNNING=$?
 
 		if [[ ${WG_RUNNING} -eq 0 ]]; then
-			echo -e "${RED}✗ WireGuard service still running. Manual cleanup may be needed.${NC}"
+			echo ""
+			_ws_ui_error "WireGuard service still running. Manual cleanup may be needed."
 			exit 1
 		else
 			echo ""
-			echo -e "${GREEN}✓ WireGuard uninstalled successfully${NC}"
-			echo -e "${GREEN}✓ 2FA service removed completely${NC}"
-			echo -e "${GREEN}✓ SSL certificates and auto-renewal cleaned up${NC}"
-			echo -e "${GREEN}✓ All client configurations removed${NC}"
-			echo -e "${GREEN}✓ All systemd services and timers removed${NC}"
+			_ws_ui_divider
 			echo ""
-			echo -e "${ORANGE}Note:${NC} Python packages remain installed (safe, may be used by other services)"
+			_ws_ui_success "WireGuard uninstalled"
+			_ws_ui_success "2FA service removed"
+			_ws_ui_success "SSL certificates cleaned up"
+			_ws_ui_success "Client configurations removed"
+			_ws_ui_success "Systemd services and timers removed"
+			echo ""
+			_ws_ui_info "Python packages remain installed (safe, may be used by other services)."
+			echo ""
 			exit 0
 		fi
 	else
 		echo ""
-		echo "Removal aborted!"
+		_ws_ui_info "Removal aborted."
 	fi
 }
 
@@ -2155,7 +2162,7 @@ function configureLogRetention() {
 	DAYS=${DAYS:-$current_retention}
 	
 	if [[ ! "${DAYS}" =~ ^[0-9]+$ ]] || [[ "${DAYS}" -le 0 ]]; then
-		echo -e "${ORANGE}Invalid input. Please enter a positive number.${NC}"
+		_ws_ui_warn "Invalid input. Please enter a positive number."
 		return
 	fi
 	
@@ -2172,8 +2179,7 @@ function configureLogRetention() {
 	fi
 	
 	echo -e "${GREEN}Retention period updated to ${DAYS} days.${NC}"
-	echo -e "${ORANGE}Restart WireShield 2FA service for changes to take effect:${NC}"
-	echo -e "  sudo systemctl restart wireshield"
+	_ws_ui_info "Restart service for changes to take effect: sudo systemctl restart wireshield"
 }
 
 function viewUserActivityLogs() {
@@ -2193,7 +2199,7 @@ function viewUserActivityLogs() {
 	# Check if there are any logs
 	local log_count=$($sqlite3_cmd "SELECT COUNT(*) FROM activity_log;" 2>/dev/null)
 	if [[ -z "$log_count" ]] || [[ "$log_count" -eq 0 ]]; then
-		echo -e "${ORANGE}No activity logs found in database.${NC}"
+		_ws_ui_warn "No activity logs found in database."
 		echo "Make sure activity logging is enabled and traffic is flowing."
 		return
 	fi
@@ -2213,7 +2219,7 @@ function viewUserActivityLogs() {
 		local user_list=$($sqlite3_cmd "SELECT DISTINCT client_id FROM activity_log WHERE client_id IS NOT NULL ORDER BY client_id;" 2>/dev/null)
 		
 		if [[ -z "$user_list" ]]; then
-			echo -e "${ORANGE}No user-associated logs found.${NC}"
+			_ws_ui_warn "No user-associated logs found."
 			return
 		fi
 		
@@ -2229,7 +2235,7 @@ function viewUserActivityLogs() {
 		read -rp "Select user number [1-$((i-1))]: " USER_NUM
 		
 		if [[ ! "$USER_NUM" =~ ^[0-9]+$ ]] || [[ "$USER_NUM" -lt 1 ]] || [[ "$USER_NUM" -ge "$i" ]]; then
-			echo -e "${ORANGE}Invalid selection.${NC}"
+			_ws_ui_warn "Invalid selection."
 			return
 		fi
 		
@@ -2240,7 +2246,7 @@ function viewUserActivityLogs() {
 		echo -e "Showing logs for ${GREEN}ALL USERS${NC}"
 	fi
 	
-	echo -e "${ORANGE}Retrieving logs from database...${NC}"
+	_ws_ui_info "Retrieving logs from database..."
 	echo ""
 	
 	# Query database with optional domain resolution
