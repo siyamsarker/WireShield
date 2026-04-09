@@ -41,8 +41,7 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
          │  Connect VPN tunnel
          ▼
 ┌──────────────────────────────────────────────────┐
-│              WireGuard Server                    │
-│                                                  │
+│                 WireGuard Server                 │
 │  ┌────────────────────────────────────────────┐  │
 │  │       iptables / ipset Firewall            │  │
 │  │                                            │  │
@@ -137,8 +136,6 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 
 ## Installation
 
-### Install
-
 ```bash
 git clone https://github.com/siyamsarker/WireShield.git
 cd WireShield
@@ -146,11 +143,17 @@ chmod +x wireshield.sh
 sudo ./wireshield.sh
 ```
 
-The installer prompts for:
-- Public IP or domain (auto-detected)
-- WireGuard interface, subnet, and UDP port
-- DNS servers (default: Cloudflare 1.1.1.1, 1.0.0.1)
-- SSL/TLS type: Let's Encrypt, self-signed, or disabled
+The interactive wizard walks you through configuration in clear sections:
+
+| Section | Prompts |
+|---------|---------|
+| **Network** | Public IP/hostname (auto-detected), public interface |
+| **WireGuard** | Interface name, server IPv4/IPv6, UDP port |
+| **Client DNS** | Primary and secondary resolvers (default: Cloudflare) |
+| **Routing** | AllowedIPs for client traffic routing |
+| **SSL/TLS** | Let's Encrypt, self-signed, or disabled |
+
+A review summary is shown before installation begins. All prompts have sensible defaults — press Enter to accept.
 
 ### Verify
 
@@ -234,15 +237,23 @@ All client operations are available through the interactive menu:
 sudo ./wireshield.sh
 ```
 
-| Option | Description |
-|--------|-------------|
-| Add a new client | Generate WireGuard config and QR code |
-| List existing clients | Show all registered VPN clients |
-| Revoke an existing client | Remove client, sessions, and firewall entries |
-| Remove Client 2FA | Reset 2FA for lost authenticator devices |
-| Console Access Management | Toggle admin console access per client |
-| View Audit Logs | Display authentication event history |
-| Activity Logs Management | Enable/disable logging, set retention, view traffic |
+The menu is organized into categories: **Client Management**, **Server Operations**, **Security & Logging**, and **System**. Enter a number to select or `q` to exit.
+
+| # | Option | Description |
+|---|--------|-------------|
+| 1 | Create Client | Generate WireGuard config and QR code |
+| 2 | List Clients | Show all registered VPN clients |
+| 3 | Display Client QR | Render config as terminal QR code |
+| 4 | Revoke Client | Remove client, sessions, and firewall entries |
+| 5 | Clean Up Expired | Remove expired clients automatically |
+| 6 | View Status | WireGuard runtime info |
+| 7 | Restart VPN | Restart the WireGuard service |
+| 8 | Backup Config | Archive /etc/wireguard |
+| 9 | Audit Logs | View 2FA authentication events |
+| 10 | Remove Client 2FA | Reset 2FA for lost authenticator devices |
+| 11 | Activity Logs | Enable/disable logging, set retention, view traffic |
+| 12 | Console Access | Toggle admin console access per client |
+| 13 | Uninstall | Remove WireShield completely |
 
 ### For VPN Users
 
