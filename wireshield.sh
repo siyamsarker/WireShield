@@ -26,7 +26,7 @@
 # Repository
 #   https://github.com/siyamsarker/WireShield
 #
-# Version: 2.3.0
+# Version: 2.5.0
 # ============================================================================
 
 # ── Color System ──────────────────────────────────────────────────────────────
@@ -57,12 +57,12 @@ _ws_ui_divider() {
 }
 
 _ws_ui_section() {
-	echo -e "\n  ${CYAN}$1${NC}"
+	echo -e "\n  ${DIM}$1${NC}"
 }
 
 _ws_ui_menu_item() {
 	# Usage: _ws_ui_menu_item "num" "Label" "Description"
-	printf "  \033[1;37m%3s\033[0m  %-26s \033[0;90m%s\033[0m\n" "$1" "$2" "$3"
+	printf "  \033[0;90m%3s\033[0m  %-24s \033[0;90m%s\033[0m\n" "$1" "$2" "$3"
 }
 
 _ws_ui_kv() {
@@ -242,20 +242,15 @@ function installQuestions() {
 	while true; do
 		clear
 		echo ""
-		echo -e "  ${WHITE}WireShield${NC} ${GRAY}v2.3.0${NC}"
-		echo -e "  ${GRAY}Secure WireGuard VPN Deployment System${NC}"
-		echo ""
-		_ws_ui_divider
-		echo ""
-		echo -e "  ${CYAN}Installation Wizard${NC}"
-		echo ""
-		echo -e "  ${GRAY}This wizard will configure your WireGuard VPN server.${NC}"
-		echo -e "  ${GRAY}Defaults are optimized for most deployments.${NC}"
-		echo ""
-		echo -e "  ${WHITE}Enter${NC}${GRAY}     accept default value${NC}"
-		echo -e "  ${WHITE}Ctrl+C${NC}${GRAY}    exit the installer${NC}"
-		echo ""
-		_ws_ui_divider
+		echo -e "  ╭──────────────────────────────────────────────────────╮"
+		echo -e "  │                                                      │"
+		echo -e "  │   ${WHITE}✻  WireShield${NC} ${GRAY}v2.5.0${NC}                               │"
+		echo -e "  │                                                      │"
+		echo -e "  │   ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}                  │"
+		echo -e "  │                                                      │"
+		echo -e "  │   ${DIM}Enter to accept defaults · Ctrl+C to cancel${NC}       │"
+		echo -e "  │                                                      │"
+		echo -e "  ╰──────────────────────────────────────────────────────╯"
 		echo ""
 
 		# ── Network ──
@@ -267,11 +262,11 @@ function installQuestions() {
 		if [[ -z ${SERVER_PUB_IP} ]]; then
 			SERVER_PUB_IP=$(ip -6 addr | sed -ne 's|^.* inet6 \([^/]*\)/.* scope global.*$|\1|p' | head -1)
 		fi
-		read -rp "$(echo -ne "  ${GRAY}Public address${NC}  › ")" -e -i "${SERVER_PUB_IP}" SERVER_PUB_IP
+		read -rp "$(echo -ne "  ${GRAY}Public address${NC} > ")" -e -i "${SERVER_PUB_IP}" SERVER_PUB_IP
 
 		SERVER_NIC="$(ip -4 route ls | grep default | awk '/dev/ {for (i=1; i<=NF; i++) if ($i == "dev") print $(i+1)}' | head -1)"
 		until [[ ${SERVER_PUB_NIC} =~ ^[a-zA-Z0-9_]+$ ]] && interface_exists "${SERVER_PUB_NIC}"; do
-			read -rp "$(echo -ne "  ${GRAY}Public interface${NC} › ")" -e -i "${SERVER_NIC}" SERVER_PUB_NIC
+			read -rp "$(echo -ne "  ${GRAY}Public interface${NC} > ")" -e -i "${SERVER_NIC}" SERVER_PUB_NIC
 			if ! interface_exists "${SERVER_PUB_NIC}"; then
 				_ws_ui_warn "Interface '${SERVER_PUB_NIC}' not found. Try: ${SERVER_NIC}"
 			fi
@@ -288,11 +283,11 @@ function installQuestions() {
 		echo ""
 
 		until [[ ${SERVER_WG_NIC} =~ ^[a-zA-Z0-9_]+$ && ${#SERVER_WG_NIC} -lt 16 ]]; do
-			read -rp "$(echo -ne "  ${GRAY}Interface name${NC}  › ")" -e -i wg0 SERVER_WG_NIC
+			read -rp "$(echo -ne "  ${GRAY}Interface name${NC} > ")" -e -i wg0 SERVER_WG_NIC
 		done
 
 		until [[ ${SERVER_WG_IPV4} =~ ^([0-9]{1,3}\.){3} ]]; do
-			read -rp "$(echo -ne "  ${GRAY}Server IPv4${NC}     › ")" -e -i 10.66.66.1 SERVER_WG_IPV4
+			read -rp "$(echo -ne "  ${GRAY}Server IPv4${NC}     > ")" -e -i 10.66.66.1 SERVER_WG_IPV4
 		done
 
 		if [[ -z ${SERVER_LOCAL_IPV4} ]]; then
@@ -300,12 +295,12 @@ function installQuestions() {
 		fi
 
 		until [[ ${SERVER_WG_IPV6} =~ ^([a-f0-9]{1,4}:){3,4}: ]]; do
-			read -rp "$(echo -ne "  ${GRAY}Server IPv6${NC}     › ")" -e -i fd42:42:42::1 SERVER_WG_IPV6
+			read -rp "$(echo -ne "  ${GRAY}Server IPv6${NC}     > ")" -e -i fd42:42:42::1 SERVER_WG_IPV6
 		done
 
 		RANDOM_PORT=$(shuf -i49152-65535 -n1)
 		until [[ ${SERVER_PORT} =~ ^[0-9]+$ ]] && [ "${SERVER_PORT}" -ge 1 ] && [ "${SERVER_PORT}" -le 65535 ]; do
-			read -rp "$(echo -ne "  ${GRAY}UDP port${NC}        › ")" -e -i "${RANDOM_PORT}" SERVER_PORT
+			read -rp "$(echo -ne "  ${GRAY}UDP port${NC}        > ")" -e -i "${RANDOM_PORT}" SERVER_PORT
 		done
 
 		echo ""
@@ -314,10 +309,10 @@ function installQuestions() {
 		echo ""
 
 		until [[ ${CLIENT_DNS_1} =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
-			read -rp "$(echo -ne "  ${GRAY}Primary DNS${NC}     › ")" -e -i 1.1.1.1 CLIENT_DNS_1
+			read -rp "$(echo -ne "  ${GRAY}Primary DNS${NC}     > ")" -e -i 1.1.1.1 CLIENT_DNS_1
 		done
 		until [[ ${CLIENT_DNS_2} =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
-			read -rp "$(echo -ne "  ${GRAY}Secondary DNS${NC}   › ")" -e -i 1.0.0.1 CLIENT_DNS_2
+			read -rp "$(echo -ne "  ${GRAY}Secondary DNS${NC}   > ")" -e -i 1.0.0.1 CLIENT_DNS_2
 			if [[ ${CLIENT_DNS_2} == "" ]]; then
 				CLIENT_DNS_2="${CLIENT_DNS_1}"
 			fi
@@ -330,7 +325,7 @@ function installQuestions() {
 
 		until [[ ${ALLOWED_IPS} =~ ^.+$ ]]; do
 			_ws_ui_info "AllowedIPs controls what traffic is routed through the VPN."
-			read -rp "$(echo -ne "  ${GRAY}Allowed IPs${NC}     › ")" -e -i '0.0.0.0/0,::/0' ALLOWED_IPS
+			read -rp "$(echo -ne "  ${GRAY}Allowed IPs${NC}     > ")" -e -i '0.0.0.0/0,::/0' ALLOWED_IPS
 			if [[ ${ALLOWED_IPS} == "" ]]; then
 				ALLOWED_IPS="0.0.0.0/0,::/0"
 			fi
@@ -368,7 +363,7 @@ function installQuestions() {
 			fi
 		else
 			echo ""
-			read -rp "$(echo -ne "  Proceed with installation? ${GRAY}[Y/n]${NC} › ")" -e CONFIRM
+			read -rp "$(echo -ne "  Proceed with installation? ${GRAY}[Y/n]${NC} > ")" -e CONFIRM
 			CONFIRM=${CONFIRM:-Y}
 			if [[ ${CONFIRM} =~ ^[Yy]$ ]]; then
 				break
@@ -419,7 +414,7 @@ function _ws_configure_2fa_ssl() {
 	echo ""
 
 	# Ask if user wants SSL/TLS
-	read -rp "$(echo -ne "  Configure SSL/TLS? ${GRAY}(y/n)${NC} › ")" -e USE_SSL
+	read -rp "$(echo -ne "  Configure SSL/TLS? ${GRAY}(y/n)${NC} > ")" -e USE_SSL
 	if [[ "${USE_SSL}" != "y" && "${USE_SSL}" != "Y" ]]; then
 		_ws_ui_warn "2FA will run without SSL (only recommended for localhost)"
 		echo "2FA_SSL_ENABLED=false" >> /etc/wireshield/2fa/config.env
@@ -430,11 +425,11 @@ function _ws_configure_2fa_ssl() {
 	_ws_ui_menu_item "1" "Let's Encrypt" "Domain required, auto-renewal"
 	_ws_ui_menu_item "2" "Self-signed" "IP address or any hostname"
 	echo ""
-	read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" -e SSL_TYPE
+	read -rp "$(echo -ne "  \033[0;32m>\033[0m ")" -e SSL_TYPE
 	
 	if [[ "${SSL_TYPE}" == "1" ]]; then
 		# Let's Encrypt with domain
-		read -rp "$(echo -ne "  ${GRAY}Domain name${NC}     › ")" -e WS_2FA_DOMAIN
+		read -rp "$(echo -ne "  ${GRAY}Domain name${NC}     > ")" -e WS_2FA_DOMAIN
 
 		if [[ -z "${WS_2FA_DOMAIN}" ]]; then
 			_ws_ui_error "Domain name required for Let's Encrypt"
@@ -527,7 +522,7 @@ EOFSERVICE
 	fi
 	
 	# Self-signed certificate (for IP or localhost)
-	read -rp "$(echo -ne "  ${GRAY}IP or hostname${NC}  › ")" -e -i "${SERVER_WG_IPV4}" WS_HOSTNAME_2FA
+	read -rp "$(echo -ne "  ${GRAY}IP or hostname${NC} > ")" -e -i "${SERVER_WG_IPV4}" WS_HOSTNAME_2FA
 
 	if [[ -z "${WS_HOSTNAME_2FA}" ]]; then
 		WS_HOSTNAME_2FA="${SERVER_WG_IPV4}"
@@ -1103,7 +1098,7 @@ function newClient() {
 	# IMPORTANT: Localize and reset variables to avoid cross-call leakage that
 	# can cause the function to skip prompts or behave unexpectedly.
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Create Client${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Create Client${NC}"
 	_ws_ui_divider
 	echo ""
 	local CLIENT_NAME="" CLIENT_EXISTS=1
@@ -1125,7 +1120,7 @@ function newClient() {
 	echo ""
 
 	until [[ ${CLIENT_NAME} =~ ^[a-zA-Z0-9_-]+$ && ${CLIENT_EXISTS} == '0' && ${#CLIENT_NAME} -lt 16 ]]; do
-		read -rp "$(echo -ne "  ${GRAY}Client name${NC}     › ")" -e CLIENT_NAME
+		read -rp "$(echo -ne "  ${GRAY}Client name${NC}     > ")" -e CLIENT_NAME
 		CLIENT_EXISTS=$(grep -c -E "^### Client ${CLIENT_NAME}\$" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 
 		if [[ ${CLIENT_EXISTS} != 0 ]]; then
@@ -1148,7 +1143,7 @@ function newClient() {
 
 	BASE_IP=$(echo "$SERVER_WG_IPV4" | awk -F '.' '{ print $1"."$2"."$3 }')
 	until [[ ${IPV4_EXISTS} == '0' ]]; do
-		read -rp "$(echo -ne "  ${GRAY}Client IPv4${NC}     › ${BASE_IP}.")" -e -i "${DOT_IP}" DOT_IP
+		read -rp "$(echo -ne "  ${GRAY}Client IPv4${NC}     > ${BASE_IP}.")" -e -i "${DOT_IP}" DOT_IP
 		CLIENT_WG_IPV4="${BASE_IP}.${DOT_IP}"
 		IPV4_EXISTS=$(grep -c "$CLIENT_WG_IPV4/32" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 
@@ -1159,7 +1154,7 @@ function newClient() {
 
 	BASE_IP=$(echo "$SERVER_WG_IPV6" | awk -F '::' '{ print $1 }')
 	until [[ ${IPV6_EXISTS} == '0' ]]; do
-		read -rp "$(echo -ne "  ${GRAY}Client IPv6${NC}     › ${BASE_IP}::")" -e -i "${DOT_IP}" DOT_IP
+		read -rp "$(echo -ne "  ${GRAY}Client IPv6${NC}     > ${BASE_IP}::")" -e -i "${DOT_IP}" DOT_IP
 		CLIENT_WG_IPV6="${BASE_IP}::${DOT_IP}"
 		IPV6_EXISTS=$(grep -c "${CLIENT_WG_IPV6}/128" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 
@@ -1176,7 +1171,7 @@ function newClient() {
 	# Ask for expiration date (optional)
 	echo ""
 	_ws_ui_info "Leave empty for no expiration."
-	read -rp "$(echo -ne "  ${GRAY}Expires in days${NC}  › ")" -e EXPIRY_DAYS
+	read -rp "$(echo -ne "  ${GRAY}Expires in days${NC} > ")" -e EXPIRY_DAYS
 	
 	EXPIRY_DATE=""
 	if [[ -n "${EXPIRY_DAYS}" ]] && [[ "${EXPIRY_DAYS}" =~ ^[0-9]+$ ]] && [[ ${EXPIRY_DAYS} -gt 0 ]]; then
@@ -1259,7 +1254,7 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 function listClients() {
 	# Print numbered list of existing clients (peers) from the server config.
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Client List${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Client List${NC}"
 	_ws_ui_divider
 
 	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
@@ -1297,7 +1292,7 @@ function revokeClient() {
 	# Remove a client peer from the server config and delete related client
 	# configuration files so the name can be safely reused.
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Revoke Client${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Revoke Client${NC}"
 	_ws_ui_divider
 
 	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
@@ -1348,7 +1343,7 @@ function revokeClient() {
 function checkExpiredClients() {
 	# Check for expired clients and remove them automatically
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Clean Up Expired${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Clean Up Expired${NC}"
 	_ws_ui_divider
 	echo ""
 	
@@ -1497,7 +1492,7 @@ EOF
 function uninstallWg() {
 	# Complete uninstall of WireShield including WireGuard, 2FA service, and all related configs
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Uninstall${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Uninstall${NC}"
 	_ws_ui_divider
 	echo ""
 	echo -e "  ${BRED}This will permanently remove:${NC}"
@@ -1509,7 +1504,7 @@ function uninstallWg() {
 	echo ""
 	_ws_ui_warn "Back up /etc/wireguard and /etc/wireshield first if needed."
 	echo ""
-	read -rp "$(echo -ne "  Proceed with removal? ${GRAY}[y/N]${NC} › ")" -e REMOVE
+	read -rp "$(echo -ne "  Proceed with removal? ${GRAY}[y/N]${NC} > ")" -e REMOVE
 	REMOVE=${REMOVE:-N}
 	if [[ $REMOVE == 'y' ]]; then
 		# Collect client names before removing /etc/wireguard
@@ -1712,10 +1707,10 @@ function uninstallWg() {
 
 function _ws_header() {
 	# Compact branded header for management screens.
-	local version="2.3.0"
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}v${version}${NC}"
+	echo -e "  ${WHITE}✻  WireShield${NC} ${GRAY}v2.5.0${NC}"
 	_ws_summary
+	echo ""
 }
 
 function _ws_summary() {
@@ -1753,7 +1748,7 @@ function _ws_choose_client() {
 
 	local choice
 	until [[ ${choice} =~ ^[0-9]+$ ]] && [[ ${choice} -ge 1 ]] && [[ ${choice} -le ${number_of_clients} ]]; do
-		read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" choice
+		read -rp "$(echo -ne "  \033[0;32m>\033[0m ")" choice
 		if [[ ! ${choice} =~ ^[0-9]+$ ]]; then
 			echo -e "  ${ORANGE}Please enter a valid number.${NC}" >&2
 		fi
@@ -1765,7 +1760,7 @@ function _ws_choose_client() {
 function showClientQR() {
 	# Render a QR code for a selected client's configuration (if available).
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Client QR Code${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Client QR Code${NC}"
 	_ws_ui_divider
 
 	if ! command -v qrencode &>/dev/null; then
@@ -1801,7 +1796,7 @@ function showClientQR() {
 function showStatus() {
 	# Display WireGuard runtime status via `wg show`.
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Server Status${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Server Status${NC}"
 	_ws_ui_divider
 	echo ""
 	wg show || true
@@ -1810,7 +1805,7 @@ function showStatus() {
 function restartWireGuard() {
 	# Restart the WireGuard interface service using the appropriate init system.
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Restart VPN${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Restart VPN${NC}"
 	_ws_ui_divider
 	echo ""
 	if [[ ${OS} == 'alpine' ]]; then
@@ -1824,7 +1819,7 @@ function restartWireGuard() {
 function backupConfigs() {
 	# Create a timestamped archive of /etc/wireguard for backup/portability.
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Backup${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Backup${NC}"
 	_ws_ui_divider
 	echo ""
 	local ts out
@@ -1840,7 +1835,7 @@ function backupConfigs() {
 function viewAuditLogs() {
 	# Display audit logs menu for users to view 2FA authentication logs.
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Audit Logs${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Audit Logs${NC}"
 	_ws_ui_divider
 	echo ""
 	_ws_ui_menu_item "1" "View All" "Last 100 audit events"
@@ -1851,7 +1846,7 @@ function viewAuditLogs() {
 	echo ""
 
 	local AUDIT_OPTION
-	read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" AUDIT_OPTION
+	read -rp "$(echo -ne "  \033[0;32m>\033[0m ")" AUDIT_OPTION
 
 	case "$AUDIT_OPTION" in
 		1)
@@ -1860,7 +1855,7 @@ function viewAuditLogs() {
 			;;
 		2)
 			echo ""
-			read -rp "$(echo -ne "  Client ID \033[0;36m›\033[0m ")" client_id
+			read -rp "$(echo -ne "  Client ID \033[0;32m>\033[0m ")" client_id
 			if [ -n "$client_id" ]; then
 				sudo /etc/wireshield/2fa/2fa-helper.sh audit-logs-user "$client_id"
 			fi
@@ -1871,7 +1866,7 @@ function viewAuditLogs() {
 			;;
 		4)
 			echo ""
-			read -rp "$(echo -ne "  Output path ${GRAY}[/tmp/wireshield_audit_logs.csv]${NC} \033[0;36m›\033[0m ")" output_file
+			read -rp "$(echo -ne "  Output path ${GRAY}[/tmp/wireshield_audit_logs.csv]${NC} \033[0;32m>\033[0m ")" output_file
 			output_file=${output_file:-/tmp/wireshield_audit_logs.csv}
 			sudo /etc/wireshield/2fa/2fa-helper.sh export-audit "$output_file"
 			_ws_ui_success "Exported to ${output_file}"
@@ -1888,7 +1883,7 @@ function viewAuditLogs() {
 function removeClient2FA() {
 	# Remove 2FA configuration for a specific client, allowing them to set it up again
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Remove Client 2FA${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Remove Client 2FA${NC}"
 	_ws_ui_divider
 
 	# Check if 2FA service is installed
@@ -1923,7 +1918,7 @@ function removeClient2FA() {
 	done <<< "$client_list"
 
 	echo ""
-	read -rp "$(echo -ne "  Select client ${GRAY}(Enter to cancel)${NC} \033[0;36m›\033[0m ")" selection
+	read -rp "$(echo -ne "  Select client ${GRAY}(Enter to cancel)${NC} \033[0;32m>\033[0m ")" selection
 
 	if [[ -z "$selection" ]] || [[ ! "$selection" =~ ^[0-9]+$ ]] || [[ $selection -lt 1 ]] || [[ $selection -gt ${#client_ids[@]} ]]; then
 		_ws_ui_info "Cancelled"
@@ -1937,7 +1932,7 @@ function removeClient2FA() {
 	_ws_ui_warn "This will remove 2FA for: ${WHITE}${target_client}${NC}"
 	_ws_ui_info "The user will need to set up 2FA again on next connection."
 	echo ""
-	read -rp "$(echo -ne "  Type '${target_client}' to confirm \033[0;36m›\033[0m ")" confirm_input
+	read -rp "$(echo -ne "  Type '${target_client}' to confirm \033[0;32m>\033[0m ")" confirm_input
 
 	if [[ "$confirm_input" != "$target_client" ]]; then
 		_ws_ui_info "Cancelled"
@@ -2044,7 +2039,7 @@ EOF
 function toggleActivityLogging() {
 	# Enable or Disable traffic logging via iptables/firewalld
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Toggle Activity Logging${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Toggle Activity Logging${NC}"
 	_ws_ui_divider
 	echo ""
 	_ws_ui_info "Tracks NEW connections made by clients via iptables."
@@ -2146,7 +2141,7 @@ function toggleActivityLogging() {
 
 function configureLogRetention() {
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Log Retention${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Log Retention${NC}"
 	_ws_ui_divider
 	echo ""
 	_ws_ui_info "Logs older than the retention period are automatically deleted."
@@ -2184,7 +2179,7 @@ function configureLogRetention() {
 
 function viewUserActivityLogs() {
 	echo ""
-	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› View Activity Logs${NC}"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}/View Activity Logs${NC}"
 	_ws_ui_divider
 	echo ""
 
@@ -2296,7 +2291,7 @@ function activityLogsMenu() {
 	while true; do
 		clear
 		echo ""
-		echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Activity Logs${NC}"
+		echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Activity Logs${NC}"
 		_ws_ui_divider
 		echo ""
 		_ws_ui_menu_item "1" "Toggle Logging" "Enable or disable traffic capture"
@@ -2306,7 +2301,7 @@ function activityLogsMenu() {
 		echo ""
 
 		local OPT
-		read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" OPT
+		read -rp "$(echo -ne "  \033[0;32m>\033[0m ")" OPT
 
 		case "$OPT" in
 			1) toggleActivityLogging ;;
@@ -2336,7 +2331,7 @@ function consoleAccessMenu() {
 	while true; do
 		clear
 		echo ""
-		echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Console Access${NC}"
+		echo -e "  ${WHITE}WireShield${NC} ${GRAY}/Console Access${NC}"
 		_ws_ui_divider
 		echo ""
 		echo -e "  ${GRAY}Dashboard${NC}  https://${SERVER_PUB_IP}:${WS_2FA_PORT:-443}/console"
@@ -2379,7 +2374,7 @@ function consoleAccessMenu() {
 		echo ""
 
 		local SEL
-		read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" SEL
+		read -rp "$(echo -ne "  \033[0;32m>\033[0m ")" SEL
 
 		if [[ "$SEL" == "q" ]] || [[ "$SEL" == "b" ]] || [[ -z "$SEL" ]]; then
 			return
@@ -2433,7 +2428,7 @@ function manageMenu() {
 		echo ""
 
 		local MENU_OPTION=""
-		read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" MENU_OPTION
+		read -rp "$(echo -ne "  \033[0;32m>\033[0m ")" MENU_OPTION
 
 		case "${MENU_OPTION}" in
 		1) newClient ;;
