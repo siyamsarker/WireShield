@@ -242,13 +242,13 @@ function installQuestions() {
 	while true; do
 		clear
 		echo ""
-		echo -e "  ╭──────────────────────────────────────────────────────╮"
+    echo -e "  ╭──────────────────────────────────────────────────────╮"
 		echo -e "  │                                                      │"
-		echo -e "  │   ${WHITE}✻  WireShield${NC} ${GRAY}v2.5.0${NC}                               │"
+		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v2.5.0${NC}                  │"
 		echo -e "  │                                                      │"
-		echo -e "  │   ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}                  │"
+		echo -e "  │           ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}          │"
 		echo -e "  │                                                      │"
-		echo -e "  │   ${DIM}Enter to accept defaults · Ctrl+C to cancel${NC}       │"
+		echo -e "  │      ${DIM}Enter to accept defaults · Ctrl+C to cancel${NC}     │"
 		echo -e "  │                                                      │"
 		echo -e "  ╰──────────────────────────────────────────────────────╯"
 		echo ""
@@ -512,7 +512,7 @@ EOFSERVICE
 
 				_ws_ui_success "Let's Encrypt certificate configured"
 				_ws_ui_success "Auto-renewal enabled"
-				# Write both WS_* and 2FA_* for compatibility
+				# Write WS_* names only (systemd EnvironmentFile cannot parse 2FA_*)
 				echo "WS_2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
 				echo "WS_2FA_SSL_TYPE=letsencrypt" >> /etc/wireshield/2fa/config.env
 				echo "WS_2FA_DOMAIN=${WS_2FA_DOMAIN}" >> /etc/wireshield/2fa/config.env
@@ -1110,7 +1110,7 @@ function newClient() {
 	local EXPIRY_DAYS="" EXPIRY_DATE=""
 	# If SERVER_PUB_IP is IPv6, add brackets if missing
 	if [[ ${SERVER_PUB_IP} =~ .*:.* ]]; then
-		if [[ ${SERVER_PUB_IP} != *"["* ]] || [[ ${SERVER_PUB_IP} != *"]"* ]]; then
+		if [[ ${SERVER_PUB_IP} != *"["* ]] && [[ ${SERVER_PUB_IP} != *"]"* ]]; then
 			SERVER_PUB_IP="[${SERVER_PUB_IP}]"
 		fi
 	fi
@@ -1648,10 +1648,6 @@ function uninstallWg() {
 		_ws_ui_info "Removing 2FA configuration, database, and console data..."
 		rm -rf /etc/wireshield 2>/dev/null || true
 
-		# Clean up Console/2FA ipsets
-		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
-		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
-
 		# Remove Let's Encrypt symlinks if they exist
 		rm -f /usr/local/bin/wireshield-renew-cert 2>/dev/null || true
 
@@ -1670,16 +1666,17 @@ function uninstallWg() {
 			done
 		done
 
-		if [[ ${OS} == 'alpine' ]]; then
-			rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status &>/dev/null 2>&1
-		else
-			# Reload sysctl
+		# Reload sysctl and check if WireGuard is still running
+		if [[ ${OS} != 'alpine' ]]; then
 			sysctl --system 2>/dev/null || true
-
-			# Check if WireGuard is running
-			systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" 2>/dev/null || true
 		fi
-		WG_RUNNING=$?
+
+		local WG_RUNNING=1
+		if [[ ${OS} == 'alpine' ]]; then
+			rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status &>/dev/null && WG_RUNNING=0
+		else
+			systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" 2>/dev/null && WG_RUNNING=0
+		fi
 
 		if [[ ${WG_RUNNING} -eq 0 ]]; then
 			echo ""
@@ -2078,17 +2075,7 @@ function toggleActivityLogging() {
 		echo -e "Current status: ${ORANGE}DISABLED${NC}"
 		read -rp "Do you want to ENABLE activity logging? [y/N]: " -e CONFIRM
 		if [[ ${CONFIRM} =~ ^[Yy]$ ]]; then
-			# Add rules to config
-			# We insert them before the end of the Interface block or append to it. 
-			# Since we are using PostUp lines, we can just append them to the [Interface] section.
-			# But wg0.conf has multiple peers. We need to add it to the Interface block.
-			# Safest way is to append PostUp rules.
-			
-			# Detect where [Interface] ends or just add to the file? 
-			# Actually, PostUp commands are part of [Interface].
-			# Let's find the line "PostUp = ..." and append after it, or add if missing.
-			# Simpler: Just append to the [Interface] block effectively.
-			# But sed is tricky. Let's just say we support standard iptables based logging for now.
+			# Append PostUp/PostDown logging rules to the [Interface] section of wg0.conf
 			
 			local log_rule_v4=""
 			local log_rule_v6=""
@@ -2146,34 +2133,35 @@ function configureLogRetention() {
 	echo ""
 	_ws_ui_info "Logs older than the retention period are automatically deleted."
 	
-	# Read current retention from environment or database config
+	# Read current retention from config
 	local current_retention="30"
-	if [[ -f /etc/wireguard/2fa.env ]]; then
-		local env_val=$(grep "^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=" /etc/wireguard/2fa.env | cut -d'=' -f2)
+	local config_file="/etc/wireshield/2fa/config.env"
+	if [[ -f "${config_file}" ]]; then
+		local env_val=$(grep "^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=" "${config_file}" | cut -d'=' -f2)
 		[[ -n "$env_val" ]] && current_retention="$env_val"
 	fi
-	
-	read -rp "Retention period in days [${current_retention}]: " -e DAYS
+
+	read -rp "$(echo -ne "  ${GRAY}Retention days${NC}  > ")" -e -i "${current_retention}" DAYS
 	DAYS=${DAYS:-$current_retention}
-	
+
 	if [[ ! "${DAYS}" =~ ^[0-9]+$ ]] || [[ "${DAYS}" -le 0 ]]; then
 		_ws_ui_warn "Invalid input. Please enter a positive number."
 		return
 	fi
-	
-	# Update or create environment file
-	mkdir -p /etc/wireguard
-	if [[ -f /etc/wireguard/2fa.env ]]; then
-		if grep -q "^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=" /etc/wireguard/2fa.env; then
-			sed -i "s/^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=.*/WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}/" /etc/wireguard/2fa.env
+
+	# Update config.env
+	if [[ -f "${config_file}" ]]; then
+		if grep -q "^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=" "${config_file}"; then
+			sed -i "s/^WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=.*/WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}/" "${config_file}"
 		else
-			echo "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}" >> /etc/wireguard/2fa.env
+			echo "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}" >> "${config_file}"
 		fi
 	else
-		echo "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}" > /etc/wireguard/2fa.env
+		mkdir -p /etc/wireshield/2fa
+		echo "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=${DAYS}" > "${config_file}"
 	fi
-	
-	echo -e "${GREEN}Retention period updated to ${DAYS} days.${NC}"
+
+	_ws_ui_success "Retention period updated to ${DAYS} days."
 	_ws_ui_info "Restart service for changes to take effect: sudo systemctl restart wireshield"
 }
 
@@ -2635,7 +2623,7 @@ function ws_add_client() {
 	home_dir=$(getHomeDirForClient "$name")
 	client_cfg="${home_dir}/${name}.conf"
 	endpoint="${SERVER_PUB_IP}:${SERVER_PORT}"
-	if [[ ${SERVER_PUB_IP} =~ .*:.* ]] && [[ ${SERVER_PUB_IP} != *"["* || ${SERVER_PUB_IP} != *"]"* ]]; then
+	if [[ ${SERVER_PUB_IP} =~ .*:.* ]] && [[ ${SERVER_PUB_IP} != *"["* ]] && [[ ${SERVER_PUB_IP} != *"]"* ]]; then
 		endpoint="[${SERVER_PUB_IP}]:${SERVER_PORT}"
 	fi
 	cat >"$client_cfg" <<CFG
