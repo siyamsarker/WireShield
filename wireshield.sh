@@ -412,46 +412,44 @@ function _ws_upgrade_wireguard_packages() {
 function _ws_configure_2fa_ssl() {
 	# Prompt for SSL configuration (domain, IP, or none)
 	echo ""
-	echo -e "${ORANGE}=== WireShield 2FA SSL/TLS Configuration ===${NC}"
 	echo ""
-	echo "The 2FA web interface requires HTTPS for security."
+	echo -e "  ${CYAN}SSL/TLS Configuration${NC}"
 	echo ""
-	
+	_ws_ui_info "The 2FA web interface requires HTTPS for security."
+	echo ""
+
 	# Ask if user wants SSL/TLS
-	read -rp "Configure SSL/TLS for 2FA service? (y/n): " -e USE_SSL
+	read -rp "$(echo -ne "  Configure SSL/TLS? ${GRAY}(y/n)${NC} › ")" -e USE_SSL
 	if [[ "${USE_SSL}" != "y" && "${USE_SSL}" != "Y" ]]; then
-		echo -e "${ORANGE}⚠ Warning: 2FA will run without SSL (only recommended for localhost)${NC}"
+		_ws_ui_warn "2FA will run without SSL (only recommended for localhost)"
 		echo "2FA_SSL_ENABLED=false" >> /etc/wireshield/2fa/config.env
 		return 0
 	fi
-	
+
 	echo ""
-	echo "Choose SSL certificate type:"
-	echo "  1) Let's Encrypt (Domain name required, auto-renewal)"
-	echo "  2) Self-signed (IP address or any hostname, no auto-renewal)"
+	_ws_ui_menu_item "1" "Let's Encrypt" "Domain required, auto-renewal"
+	_ws_ui_menu_item "2" "Self-signed" "IP address or any hostname"
 	echo ""
-	read -rp "Enter choice (1 or 2): " -e SSL_TYPE
+	read -rp "$(echo -ne "  \033[0;36m›\033[0m ")" -e SSL_TYPE
 	
 	if [[ "${SSL_TYPE}" == "1" ]]; then
 		# Let's Encrypt with domain
-		# Use bash-safe variable name internally, but still write 2FA_* keys to config.env
-		read -rp "Enter domain name for 2FA service (e.g., vpn.example.com): " -e WS_2FA_DOMAIN
-		
+		read -rp "$(echo -ne "  ${GRAY}Domain name${NC}     › ")" -e WS_2FA_DOMAIN
+
 		if [[ -z "${WS_2FA_DOMAIN}" ]]; then
-			echo -e "${RED}Error: Domain name required for Let's Encrypt${NC}"
+			_ws_ui_error "Domain name required for Let's Encrypt"
 			return 1
 		fi
-		# Basic domain sanity: must not be an IP and must look like a hostname
 		if [[ ${WS_2FA_DOMAIN} =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
-			echo -e "${RED}Error: Let's Encrypt requires a DNS name (not an IP)${NC}"
+			_ws_ui_error "Let's Encrypt requires a DNS name (not an IP)"
 			return 1
 		fi
 		if [[ ! ${WS_2FA_DOMAIN} =~ ^([a-zA-Z0-9](-?[a-zA-Z0-9])*)(\.[a-zA-Z0-9](-?[a-zA-Z0-9])*)+$ ]]; then
-			echo -e "${RED}Error: Invalid domain format for Let's Encrypt: ${WS_2FA_DOMAIN}${NC}"
+			_ws_ui_error "Invalid domain format: ${WS_2FA_DOMAIN}"
 			return 1
 		fi
-		
-		echo -e "${ORANGE}Setting up Let's Encrypt certificate for ${WS_2FA_DOMAIN}...${NC}"
+
+		_ws_ui_info "Setting up Let's Encrypt for ${WS_2FA_DOMAIN}..."
 		
 		# Install certbot if not present
 		if ! command -v certbot &>/dev/null; then
@@ -470,7 +468,7 @@ function _ws_configure_2fa_ssl() {
 		if command -v certbot &>/dev/null; then
 			certbot certonly --standalone --non-interactive --agree-tos -m "admin@${WS_2FA_DOMAIN}" \
 				-d "${WS_2FA_DOMAIN}" 2>/dev/null || {
-				echo -e "${ORANGE}⚠ Let's Encrypt setup incomplete. Using self-signed certificate.${NC}"
+				_ws_ui_warn "Let's Encrypt setup incomplete. Falling back to self-signed."
 				SSL_TYPE="2"
 			}
 		fi
@@ -515,10 +513,10 @@ EOFSERVICE
 				systemctl daemon-reload 2>/dev/null || true
 				systemctl enable wireshield-2fa-renew.timer 2>/dev/null || true
 				# Immediate dry-run to surface renewal issues early
-				certbot renew --dry-run --quiet 2>/dev/null || echo -e "${ORANGE}⚠ Certbot dry-run failed; check ports 80/443 and DNS for ${WS_2FA_DOMAIN}${NC}"
-				
-				echo -e "${GREEN}✓ Let's Encrypt certificate configured${NC}"
-				echo -e "${GREEN}✓ Auto-renewal enabled${NC}"
+				certbot renew --dry-run --quiet 2>/dev/null || _ws_ui_warn "Certbot dry-run failed; check ports 80/443 and DNS for ${WS_2FA_DOMAIN}"
+
+				_ws_ui_success "Let's Encrypt certificate configured"
+				_ws_ui_success "Auto-renewal enabled"
 				# Write both WS_* and 2FA_* for compatibility
 				echo "WS_2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
 				echo "WS_2FA_SSL_TYPE=letsencrypt" >> /etc/wireshield/2fa/config.env
@@ -529,13 +527,13 @@ EOFSERVICE
 	fi
 	
 	# Self-signed certificate (for IP or localhost)
-	read -rp "Enter IP address or hostname (e.g., ${SERVER_WG_IPV4} or vpn.local): " -e -i "${SERVER_WG_IPV4}" WS_HOSTNAME_2FA
+	read -rp "$(echo -ne "  ${GRAY}IP or hostname${NC}  › ")" -e -i "${SERVER_WG_IPV4}" WS_HOSTNAME_2FA
 
 	if [[ -z "${WS_HOSTNAME_2FA}" ]]; then
 		WS_HOSTNAME_2FA="${SERVER_WG_IPV4}"
 	fi
-	
-	echo -e "${ORANGE}Generating self-signed certificate for ${WS_HOSTNAME_2FA}...${NC}"
+
+	_ws_ui_info "Generating self-signed certificate for ${WS_HOSTNAME_2FA}..."
 	
 	openssl req -x509 -newkey rsa:4096 \
 		-keyout /etc/wireshield/2fa/key.pem \
@@ -546,7 +544,7 @@ EOFSERVICE
 	chmod 600 /etc/wireshield/2fa/key.pem
 	chmod 644 /etc/wireshield/2fa/cert.pem
 	
-	echo -e "${GREEN}✓ Self-signed certificate configured${NC}"
+	_ws_ui_success "Self-signed certificate configured"
 	# Write WS_* names only (systemd EnvironmentFile cannot parse 2FA_*)
 	echo "WS_2FA_SSL_ENABLED=true" >> /etc/wireshield/2fa/config.env
 	echo "WS_2FA_SSL_TYPE=self-signed" >> /etc/wireshield/2fa/config.env
@@ -555,7 +553,9 @@ EOFSERVICE
 
 function _ws_install_2fa_service() {
 	# Install Python 2FA service and dependencies
-	echo "Setting up WireShield 2FA service..."
+	echo ""
+	echo -e "  ${CYAN}2FA Service Setup${NC}"
+	echo ""
 
 	local VENV_PATH="/etc/wireshield/2fa/.venv"
 	local SCRIPT_DIR
@@ -589,7 +589,7 @@ WS_HOSTNAME_2FA=${SERVER_WG_IPV4}
 EOF
 	
 	# Ensure Python3, pip and venv are available (install even if python3 already exists)
-	echo "Ensuring Python3 pip/venv are installed..."
+	_ws_ui_info "Ensuring Python3 pip/venv are installed..."
 	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
 		apt-get update -y >/dev/null 2>&1 || true
 		apt-get install -y python3 python3-pip python3-venv >/dev/null 2>&1 || true
@@ -611,7 +611,7 @@ EOF
 
 	# Copy 2FA files from the current repository if available
 	if [[ -d "${SCRIPT_DIR}/console-server" ]]; then
-		echo "Copying 2FA service files..."
+		_ws_ui_info "Copying 2FA service files..."
 		cp -fr "${SCRIPT_DIR}/console-server/"* /etc/wireshield/2fa/ || true
 	elif [[ -d /opt/wireshield/console-server ]]; then
 		cp /opt/wireshield/console-server/* /etc/wireshield/2fa/ 2>/dev/null || true
@@ -619,11 +619,11 @@ EOF
 	
 	# Check if 2FA service already exists
 	if [[ -f /etc/systemd/system/wireshield.service ]]; then
-		echo -e "${GREEN}2FA service already installed${NC}"
+		_ws_ui_success "2FA service already installed"
 		return 0
 	fi
 	if [[ -f /etc/systemd/system/wireshield-2fa.service ]]; then
-		echo -e "${ORANGE}Upgrading service name from wireshield-2fa to wireshield...${NC}"
+		_ws_ui_info "Upgrading service name from wireshield-2fa to wireshield..."
 		systemctl stop wireshield-2fa 2>/dev/null || true
 		systemctl disable wireshield-2fa 2>/dev/null || true
 		rm -f /etc/systemd/system/wireshield-2fa.service 2>/dev/null || true
@@ -637,7 +637,7 @@ EOF
 	python3 -m venv "${VENV_PATH}" 2>/dev/null || true
 	# If venv creation failed due to missing ensurepip, try to install venv package and retry
 	if [[ ! -x "${VENV_PATH}/bin/python" ]]; then
-		echo -e "${ORANGE}Attempting to fix missing ensurepip by installing venv package...${NC}"
+		_ws_ui_warn "Fixing missing ensurepip by installing venv package..."
 		if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
 			PYVER=$(python3 -V 2>/dev/null | awk '{print $2}')
 			PYMM=${PYVER%.*}
@@ -655,14 +655,14 @@ EOF
 	if [[ -f /etc/wireshield/2fa/requirements.txt ]]; then
 		"${VENV_PATH}/bin/pip" install -q --upgrade pip setuptools wheel 2>/dev/null || true
 		"${VENV_PATH}/bin/pip" install -q -r /etc/wireshield/2fa/requirements.txt 2>/dev/null || {
-			echo -e "${ORANGE}Warning: Some Python dependencies may not have installed correctly${NC}"
+			_ws_ui_warn "Some Python dependencies may not have installed correctly"
 		}
 	fi
 	
 	# SSL certificates already configured during _ws_configure_2fa_ssl
 	# Skip if they already exist
 	if [[ ! -f /etc/wireshield/2fa/cert.pem ]] || [[ ! -f /etc/wireshield/2fa/key.pem ]]; then
-		echo -e "${ORANGE}⚠ SSL certificates not found, generating self-signed...${NC}"
+		_ws_ui_warn "SSL certificates not found, generating self-signed..."
 		openssl req -x509 -newkey rsa:4096 \
 			-keyout /etc/wireshield/2fa/key.pem \
 			-out /etc/wireshield/2fa/cert.pem \
@@ -674,7 +674,7 @@ EOF
 	
 	# Verify app presence (robustness)
 	if [[ ! -f /etc/wireshield/2fa/run.py ]]; then
-		echo -e "${ORANGE}run.py missing in /etc/wireshield/2fa, attempting copy from repo...${NC}"
+		_ws_ui_warn "run.py missing, attempting copy from repo..."
 		if [[ -f "${SCRIPT_DIR}/console-server/run.py" ]]; then
 			cp -f "${SCRIPT_DIR}/console-server/run.py" /etc/wireshield/2fa/ || true
 		fi
@@ -759,9 +759,9 @@ EOF
 	systemctl start wireshield 2>/dev/null || true
 
 	if systemctl is-active --quiet wireshield; then
-		echo -e "${GREEN}2FA service installed and started${NC}"
+		_ws_ui_success "2FA service installed and started"
 	else
-		echo -e "${ORANGE}2FA service did not start successfully. Check 'journalctl -u wireshield' for details.${NC}"
+		_ws_ui_warn "2FA service did not start. Check: journalctl -u wireshield"
 	fi
 
 	# Open firewall for 2FA TCP ports (HTTP 80 and HTTPS 443) to allow external/NAT access
@@ -802,7 +802,7 @@ EOF
 	_host="127.0.0.1"
 	_health_url="${_scheme}://${_host}:${_port}/health"
 
-	echo -e "${ORANGE}Checking 2FA service health at: ${_health_url}${NC}"
+	_ws_ui_info "Checking 2FA service health at ${_health_url}..."
 	for i in {1..30}; do
 		# -s silent, -k ignore self-signed, -m timeout seconds
 		_resp=$(curl -sk -m 2 "${_health_url}" || true)
@@ -814,10 +814,10 @@ EOF
 	done
 
 	if [[ ${_ok} -eq 1 ]]; then
-		echo -e "${GREEN}✓ 2FA health: OK${NC}"
+		_ws_ui_success "2FA health: OK"
 	else
-		echo -e "${ORANGE}⚠ 2FA health check failed. Service may still be starting or unreachable.${NC}"
-		echo -e "${ORANGE}  Try: journalctl -u wireshield -n 60 | less${NC}"
+		_ws_ui_warn "2FA health check failed. Service may still be starting."
+		_ws_ui_info "Try: journalctl -u wireshield -n 60 | less"
 	fi
 }
 
@@ -1102,7 +1102,9 @@ function newClient() {
 	# update server config, write client configuration, and optionally show QR.
 	# IMPORTANT: Localize and reset variables to avoid cross-call leakage that
 	# can cause the function to skip prompts or behave unexpectedly.
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu at any time)${NC}"
+	echo ""
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Create Client${NC}"
+	_ws_ui_divider
 	echo ""
 	local CLIENT_NAME="" CLIENT_EXISTS=1
 	local DOT_IP="" DOT_EXISTS=0
@@ -1119,19 +1121,15 @@ function newClient() {
 	fi
 	ENDPOINT="${SERVER_PUB_IP}:${SERVER_PORT}"
 
+	_ws_ui_info "Alphanumeric, underscores, dashes. Max 15 characters."
 	echo ""
-	echo "Client configuration"
-	echo ""
-	echo "The client name must consist of alphanumeric character(s). It may also include underscores or dashes and can't exceed 15 chars."
 
 	until [[ ${CLIENT_NAME} =~ ^[a-zA-Z0-9_-]+$ && ${CLIENT_EXISTS} == '0' && ${#CLIENT_NAME} -lt 16 ]]; do
-		read -rp "Client name: " -e CLIENT_NAME
+		read -rp "$(echo -ne "  ${GRAY}Client name${NC}     › ")" -e CLIENT_NAME
 		CLIENT_EXISTS=$(grep -c -E "^### Client ${CLIENT_NAME}\$" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 
 		if [[ ${CLIENT_EXISTS} != 0 ]]; then
-			echo ""
-			echo -e "${ORANGE}A client with the specified name was already created, please choose another name.${NC}"
-			echo ""
+			_ws_ui_warn "Client '${CLIENT_NAME}' already exists. Choose another name."
 		fi
 	done
 
@@ -1150,27 +1148,23 @@ function newClient() {
 
 	BASE_IP=$(echo "$SERVER_WG_IPV4" | awk -F '.' '{ print $1"."$2"."$3 }')
 	until [[ ${IPV4_EXISTS} == '0' ]]; do
-		read -rp "Client WireGuard IPv4: ${BASE_IP}." -e -i "${DOT_IP}" DOT_IP
+		read -rp "$(echo -ne "  ${GRAY}Client IPv4${NC}     › ${BASE_IP}.")" -e -i "${DOT_IP}" DOT_IP
 		CLIENT_WG_IPV4="${BASE_IP}.${DOT_IP}"
 		IPV4_EXISTS=$(grep -c "$CLIENT_WG_IPV4/32" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 
 		if [[ ${IPV4_EXISTS} != 0 ]]; then
-			echo ""
-			echo -e "${ORANGE}A client with the specified IPv4 was already created, please choose another IPv4.${NC}"
-			echo ""
+			_ws_ui_warn "IPv4 ${CLIENT_WG_IPV4} already in use."
 		fi
 	done
 
 	BASE_IP=$(echo "$SERVER_WG_IPV6" | awk -F '::' '{ print $1 }')
 	until [[ ${IPV6_EXISTS} == '0' ]]; do
-		read -rp "Client WireGuard IPv6: ${BASE_IP}::" -e -i "${DOT_IP}" DOT_IP
+		read -rp "$(echo -ne "  ${GRAY}Client IPv6${NC}     › ${BASE_IP}::")" -e -i "${DOT_IP}" DOT_IP
 		CLIENT_WG_IPV6="${BASE_IP}::${DOT_IP}"
 		IPV6_EXISTS=$(grep -c "${CLIENT_WG_IPV6}/128" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 
 		if [[ ${IPV6_EXISTS} != 0 ]]; then
-			echo ""
-			echo -e "${ORANGE}A client with the specified IPv6 was already created, please choose another IPv6.${NC}"
-			echo ""
+			_ws_ui_warn "IPv6 ${CLIENT_WG_IPV6} already in use."
 		fi
 	done
 
@@ -1181,9 +1175,8 @@ function newClient() {
 
 	# Ask for expiration date (optional)
 	echo ""
-	echo "Client expiration (optional)"
-	echo "Leave empty for no expiration, or enter number of days until expiration"
-	read -rp "Expires in (days): " -e EXPIRY_DAYS
+	_ws_ui_info "Leave empty for no expiration."
+	read -rp "$(echo -ne "  ${GRAY}Expires in days${NC}  › ")" -e EXPIRY_DAYS
 	
 	EXPIRY_DATE=""
 	if [[ -n "${EXPIRY_DAYS}" ]] && [[ "${EXPIRY_DAYS}" =~ ^[0-9]+$ ]] && [[ ${EXPIRY_DAYS} -gt 0 ]]; then
@@ -1244,30 +1237,22 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 
 	# Generate QR code if qrencode is installed (handy for mobile clients)
 	if command -v qrencode &>/dev/null; then
-		echo -e "${GREEN}\nHere is your client config file as a QR Code (optimized size):\n${NC}"
-		# Use a smaller module size and low margin to keep QR within a reasonable terminal footprint
-		# -t ansiutf8: colored block output compatible with most modern terminals
-		# -l M: medium error correction (balance size vs redundancy)
-		# -m 0: no extra margin
-		# -s 1: smallest module scale (qrencode will choose minimal that still renders)
-		# If scanning reliability becomes an issue, increase -s to 2 or -m to 1.
+		echo ""
+		echo -e "  ${WHITE}QR Code${NC}"
+		echo ""
 		qrencode -t ansiutf8 -l M -m 0 -s 1 <"${CLIENT_CONFIG}"
 		echo ""
 	fi
 
+	_ws_ui_divider
 	echo ""
-	echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-	echo -e "${GREEN}✓ Client configuration created successfully!${NC}"
-	echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-	echo -e "${GREEN}Client name: ${CLIENT_NAME}${NC}"
-	echo -e "${GREEN}Config file: ${CLIENT_CONFIG}${NC}"
+	_ws_ui_success "Client created: ${WHITE}${CLIENT_NAME}${NC}"
+	_ws_ui_kv "Config file" "${CLIENT_CONFIG}"
 	if [[ -n "${EXPIRY_DATE}" ]]; then
-		echo -e "${ORANGE}Expires on: ${EXPIRY_DATE}${NC}"
+		_ws_ui_kv "Expires" "${EXPIRY_DATE}"
 	fi
-	echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-	echo -e "${ORANGE}Troubleshooting:${NC} If you cannot find the .conf later, try:"
-	echo -e "  sudo ls -l /root/*.conf /home/*/*.conf 2>/dev/null"
-	echo -e "To copy to your machine: scp root@<server>:/root/${CLIENT_NAME}.conf ."
+	echo ""
+	_ws_ui_info "Copy to your machine: scp root@<server>:${CLIENT_CONFIG} ."
 	echo ""
 }
 
@@ -1311,12 +1296,14 @@ function listClients() {
 function revokeClient() {
 	# Remove a client peer from the server config and delete related client
 	# configuration files so the name can be safely reused.
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
 	echo ""
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Revoke Client${NC}"
+	_ws_ui_divider
+
 	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
 	if [[ ${NUMBER_OF_CLIENTS} == '0' ]]; then
 		echo ""
-		echo "You have no existing clients!"
+		_ws_ui_warn "No clients registered."
 		return
 	fi
 
@@ -1355,14 +1342,15 @@ function revokeClient() {
 	# Apply changes to the live interface without bringing it fully down
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
 
-	echo -e "${GREEN}Client '${CLIENT_NAME}' has been fully revoked and related .conf files removed.${NC}"
+	_ws_ui_success "Client '${WHITE}${CLIENT_NAME}${NC}' revoked and .conf files removed."
 }
 
 function checkExpiredClients() {
 	# Check for expired clients and remove them automatically
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
 	echo ""
-	echo -e "${GREEN}Checking for expired clients...${NC}\n"
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Clean Up Expired${NC}"
+	_ws_ui_divider
+	echo ""
 	
 	# Get current date in YYYY-MM-DD format
 	if date --version >/dev/null 2>&1; then
@@ -1395,7 +1383,7 @@ function checkExpiredClients() {
 			fi
 			
 			if [[ ${CURRENT_SECONDS} -gt ${EXPIRY_SECONDS} ]]; then
-				echo -e "${ORANGE}Removing expired client: ${CLIENT_NAME} (expired on ${EXPIRY_DATE})${NC}"
+				_ws_ui_warn "Removing: ${CLIENT_NAME} (expired ${EXPIRY_DATE})"
 				
 				# Remove the [Peer] block matching the client with expiration date
 				# Using a more reliable pattern that escapes the pipe character
@@ -1415,7 +1403,7 @@ function checkExpiredClients() {
 						-print -delete 2>/dev/null || true
 				done
 				
-				echo -e "${GREEN}  ✓ Client '${CLIENT_NAME}' completely removed${NC}"
+				_ws_ui_success "Client '${CLIENT_NAME}' removed"
 				expired_count=$((expired_count + 1))
 			fi
 		fi
@@ -1424,12 +1412,13 @@ function checkExpiredClients() {
 	if [[ ${expired_count} -gt 0 ]]; then
 		# Apply changes to the live interface
 		wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
-		echo -e "\n${GREEN}✓ Removed ${expired_count} expired client(s)${NC}"
+		echo ""
+		_ws_ui_success "Removed ${expired_count} expired client(s)"
 	else
 		if [[ ${checked_count} -gt 0 ]]; then
-			echo -e "${GREEN}✓ No expired clients found (checked ${checked_count} client(s) with expiration dates)${NC}"
+			_ws_ui_success "No expired clients (checked ${checked_count} with expiry dates)"
 		else
-			echo -e "${GREEN}✓ No clients with expiration dates found${NC}"
+			_ws_ui_info "No clients with expiration dates found."
 		fi
 	fi
 }
@@ -2047,10 +2036,11 @@ EOF
 
 function toggleActivityLogging() {
 	# Enable or Disable traffic logging via iptables/firewalld
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
 	echo ""
-	echo "Activity Logging tracks NEW connections made by clients."
-	echo "Logs are stored in the system journal and archived to /var/log/wireshield."
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Toggle Activity Logging${NC}"
+	_ws_ui_divider
+	echo ""
+	_ws_ui_info "Tracks NEW connections made by clients via iptables."
 	echo ""
 
 	# Check current status by looking for specific rule in wg0.conf
@@ -2148,10 +2138,11 @@ function toggleActivityLogging() {
 }
 
 function configureLogRetention() {
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
 	echo ""
-	echo "Set the number of days to keep activity logs in the database."
-	echo "Logs older than this will be automatically deleted."
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› Log Retention${NC}"
+	_ws_ui_divider
+	echo ""
+	_ws_ui_info "Logs older than the retention period are automatically deleted."
 	
 	# Read current retention from environment or database config
 	local current_retention="30"
@@ -2186,12 +2177,14 @@ function configureLogRetention() {
 }
 
 function viewUserActivityLogs() {
-	echo -e "${ORANGE}(Press Ctrl+C to return to menu)${NC}"
 	echo ""
-	
+	echo -e "  ${WHITE}WireShield${NC} ${GRAY}› View Activity Logs${NC}"
+	_ws_ui_divider
+	echo ""
+
 	# Check if database exists
 	if [[ ! -f /etc/wireshield/2fa/auth.db ]]; then
-		echo -e "${RED}Error: Activity log database not found.${NC}"
+		_ws_ui_error "Activity log database not found."
 		return
 	fi
 	
