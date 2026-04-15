@@ -57,12 +57,20 @@ _ws_ui_divider() {
 }
 
 _ws_ui_section() {
-	echo -e "\n  ${DIM}$1${NC}"
+	# Section header with a subtle dotted trailing separator for visual flow.
+	local label="$1"
+	local pad=$((56 - ${#label}))
+	(( pad < 3 )) && pad=3
+	local dots
+	dots=$(printf '%.0s·' $(seq 1 $pad))
+	echo ""
+	echo -e "  ${CYAN}${label}${NC}  ${GRAY}${dots}${NC}"
 }
 
 _ws_ui_menu_item() {
 	# Usage: _ws_ui_menu_item "num" "Label" "Description"
-	printf "  \033[0;90m%3s\033[0m  %-24s \033[0;90m%s\033[0m\n" "$1" "$2" "$3"
+	# Key is right-aligned inside [ ] in accent color, label in normal, description dim.
+	printf "   ${CYAN}%4s${NC}  %-22s  ${DIM}%s${NC}\n" "[$1]" "$2" "$3"
 }
 
 _ws_ui_kv() {
@@ -1703,15 +1711,64 @@ function uninstallWg() {
 }
 
 function _ws_header() {
-	# Compact branded header for management screens.
+	# Dashboard-style header: brand line + live status pane.
+	local peers active_sessions svc_status svc_dot svc_label
+	local portal_status portal_dot portal_label
+	local db="/etc/wireshield/2fa/auth.db"
+
+	# Peer count from server config
+	peers=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || echo 0)
+
+	# WireGuard service state
+	if [[ ${OS} == 'alpine' ]]; then
+		rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status 2>/dev/null && svc_status="active" || svc_status="inactive"
+	else
+		systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" 2>/dev/null && svc_status="active" || svc_status="inactive"
+	fi
+	if [[ "${svc_status}" == "active" ]]; then
+		svc_dot="${GREEN}●${NC}"
+		svc_label="${GREEN}active${NC}"
+	else
+		svc_dot="${RED}●${NC}"
+		svc_label="${RED}inactive${NC}"
+	fi
+
+	# 2FA portal service state (best-effort across init systems)
+	portal_status="stopped"
+	if systemctl is-active --quiet wireshield.service 2>/dev/null; then
+		portal_status="running"
+	elif [[ ${OS} == 'alpine' ]] && rc-service --quiet wireshield status 2>/dev/null; then
+		portal_status="running"
+	fi
+	if [[ "${portal_status}" == "running" ]]; then
+		portal_dot="${GREEN}●${NC}"
+		portal_label="${GREEN}running${NC}"
+	else
+		portal_dot="${GRAY}○${NC}"
+		portal_label="${GRAY}stopped${NC}"
+	fi
+
+	# Active 2FA sessions (non-expired) — best-effort, silent on failure
+	active_sessions=0
+	if [[ -r "${db}" ]] && command -v sqlite3 &>/dev/null; then
+		active_sessions=$(sqlite3 "${db}" "SELECT COUNT(*) FROM sessions WHERE expires_at > datetime('now');" 2>/dev/null || echo 0)
+	fi
+
+	# Brand line
 	echo ""
-	echo -e "  ${WHITE}✻  WireShield${NC} ${GRAY}v2.5.0${NC}"
-	_ws_summary
+	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v2.5.0${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
+	_ws_ui_divider
+	echo ""
+
+	# Status dashboard
+	printf "   ${GRAY}%-16s${NC} %b  ${DIM}%s · %s:%s${NC}\n" "WireGuard" "${svc_dot} ${svc_label}" "${SERVER_WG_NIC}" "${SERVER_PUB_IP}" "${SERVER_PORT}"
+	printf "   ${GRAY}%-16s${NC} %b\n" "2FA Portal" "${portal_dot} ${portal_label}"
+	printf "   ${GRAY}%-16s${NC} ${WHITE}%s${NC} ${DIM}configured${NC}  ${GRAY}·${NC}  ${WHITE}%s${NC} ${DIM}active session(s)${NC}\n" "Peers" "${peers}" "${active_sessions}"
 	echo ""
 }
 
 function _ws_summary() {
-	# One-line status: interface · endpoint · peers · service state.
+	# Legacy compact one-liner retained for any external callers.
 	local peers svc_status dot
 	peers=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" 2>/dev/null || echo 0)
 	if [[ ${OS} == 'alpine' ]]; then
@@ -2414,9 +2471,11 @@ function manageMenu() {
 		_ws_ui_menu_item "13" "Uninstall" "Remove WireShield completely"
 		_ws_ui_menu_item "q" "Exit" ""
 		echo ""
+		_ws_ui_divider
+		echo -e "  ${DIM}Select an option (1-13, q to exit)${NC}"
 
 		local MENU_OPTION=""
-		read -rp "$(echo -ne "  \033[0;32m>\033[0m ")" MENU_OPTION
+		read -rp "$(echo -ne "  ${GREEN}›${NC} ")" MENU_OPTION
 
 		case "${MENU_OPTION}" in
 		1) newClient ;;
