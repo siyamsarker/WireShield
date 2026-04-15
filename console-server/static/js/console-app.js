@@ -19,7 +19,7 @@ let activityPages = 1;
 
 function getSectionFromHash() {
     const raw = (window.location.hash || '').replace('#', '').trim();
-    const allowed = ['dashboard', 'users', 'logs', 'activity', 'bandwidth'];
+    const allowed = ['dashboard', 'users', 'logs', 'activity', 'bandwidth', 'policies'];
     return allowed.includes(raw) ? raw : 'dashboard';
 }
 
@@ -28,7 +28,7 @@ function showSection(section, event, fromHash = false) {
         event.preventDefault();
     }
 
-    const allowed = ['dashboard', 'users', 'logs', 'activity', 'bandwidth'];
+    const allowed = ['dashboard', 'users', 'logs', 'activity', 'bandwidth', 'policies'];
     if (!allowed.includes(section)) {
         section = 'dashboard';
     }
@@ -67,7 +67,8 @@ function showSection(section, event, fromHash = false) {
         'users': 'Users & Access',
         'logs': 'Audit Trail',
         'activity': 'Traffic Activity',
-        'bandwidth': 'Bandwidth Insights'
+        'bandwidth': 'Bandwidth Insights',
+        'policies': 'Access Policies'
     };
     document.getElementById('page-title').textContent = titles[section] || 'Dashboard';
 
@@ -102,6 +103,9 @@ function showSection(section, event, fromHash = false) {
         loadActivityLogs();
     } else if (section === 'bandwidth') {
         loadBandwidthData();
+    } else if (section === 'policies') {
+        loadUserFilter('policies-user-filter');
+        loadPolicies();
     } else {
         loadDashboardData();
     }
@@ -319,6 +323,8 @@ function refreshData() {
         loadActivityLogs(activityPage);
     } else if (section === 'bandwidth') {
         loadBandwidthData();
+    } else if (section === 'policies') {
+        loadPolicies();
     }
 
     updateLastRefreshTimestamp();

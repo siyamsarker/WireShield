@@ -6,6 +6,16 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Depends, HTTPException
 from datetime import datetime, timedelta, timezone
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+
+
+class PolicyCreateRequest(BaseModel):
+    policy_client_id: str
+    target_type: str
+    target: str
+    port: Optional[str] = None
+    protocol: str = "any"
+    description: Optional[str] = None
 
 from app.core.database import get_db
 from app.core.security import audit_log
@@ -573,3 +583,157 @@ async def get_dashboard_charts(client_id: str = Depends(_check_console_access)):
             "action_distribution": [],
             "recent_events": []
         }
+
+# ============================================================================
+# Network Policies — CRUD endpoints
+# ============================================================================
+
+@router.get("/api/console/policies")
+async def get_policies(
+    client_filter: Optional[str] = None,
+    client_id: str = Depends(_check_console_access)
+):
+    """List all network policies, optionally filtered by client."""
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        if client_filter and client_filter != "all":
+            c.execute(
+                "SELECT * FROM network_policies WHERE client_id = ? ORDER BY created_at DESC",
+                (client_filter,)
+            )
+        else:
+            c.execute("SELECT * FROM network_policies ORDER BY client_id, created_at DESC")
+        rows = [dict(r) for r in c.fetchall()]
+        conn.close()
+        return {"policies": rows}
+    except Exception as e:
+        logger.error(f"Policies list error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load policies")
+
+
+@router.post("/api/console/policies")
+async def create_policy(
+    body: PolicyCreateRequest,
+    client_id: str = Depends(_check_console_access)
+):
+    """Create a new per-client network access policy."""
+    import sqlite3 as _sqlite3
+    from app.core.policies import resolve_domain, _apply_rule, get_client_active_ip
+
+    if body.target_type not in ("ip", "cidr", "domain"):
+        raise HTTPException(status_code=400, detail="target_type must be ip, cidr, or domain")
+    if body.protocol not in ("tcp", "udp", "any"):
+        raise HTTPException(status_code=400, detail="protocol must be tcp, udp, or any")
+
+    target = body.target.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="target is required")
+
+    resolved_ip = None
+    if body.target_type == "domain":
+        resolved_ip = resolve_domain(target)
+
+    port_val = body.port.strip() if body.port and body.port.strip() else None
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            """
+            INSERT INTO network_policies (client_id, target_type, target, resolved_ip, port, protocol, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (body.policy_client_id, body.target_type, target, resolved_ip, port_val, body.protocol, body.description or None)
+        )
+        policy_id = c.lastrowid
+        conn.commit()
+    except _sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=409, detail="A duplicate policy already exists")
+    conn.close()
+
+    # If client has an active session, apply the rule immediately
+    try:
+        active_ip = get_client_active_ip(body.policy_client_id)
+        if active_ip:
+            _apply_rule(active_ip, {
+                "target_type": body.target_type,
+                "target": target,
+                "resolved_ip": resolved_ip,
+                "port": port_val,
+                "protocol": body.protocol,
+            })
+    except Exception as e:
+        logger.debug(f"Immediate policy apply failed for {body.policy_client_id}: {e}")
+
+    return {"success": True, "id": policy_id}
+
+
+@router.delete("/api/console/policies/{policy_id}")
+async def delete_policy(
+    policy_id: int,
+    client_id: str = Depends(_check_console_access)
+):
+    """Delete a network policy and remove its iptables rule if client is active."""
+    from app.core.policies import _remove_rule, get_client_active_ip
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM network_policies WHERE id = ?", (policy_id,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    policy = dict(row)
+    c.execute("DELETE FROM network_policies WHERE id = ?", (policy_id,))
+    conn.commit()
+    conn.close()
+
+    # If the policy was enabled and client is active, remove the iptables rule
+    if policy.get("enabled"):
+        try:
+            active_ip = get_client_active_ip(policy["client_id"])
+            if active_ip:
+                _remove_rule(active_ip, policy)
+        except Exception as e:
+            logger.debug(f"Immediate policy removal failed: {e}")
+
+    return {"success": True}
+
+
+@router.patch("/api/console/policies/{policy_id}/toggle")
+async def toggle_policy(
+    policy_id: int,
+    client_id: str = Depends(_check_console_access)
+):
+    """Enable or disable a policy and sync the iptables rule accordingly."""
+    from app.core.policies import _apply_rule, _remove_rule, get_client_active_ip
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM network_policies WHERE id = ?", (policy_id,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    policy = dict(row)
+    new_enabled = 0 if policy["enabled"] else 1
+    c.execute("UPDATE network_policies SET enabled = ? WHERE id = ?", (new_enabled, policy_id))
+    conn.commit()
+    conn.close()
+
+    # Sync iptables rule if the client is currently active
+    try:
+        active_ip = get_client_active_ip(policy["client_id"])
+        if active_ip:
+            if new_enabled:
+                _apply_rule(active_ip, policy)
+            else:
+                _remove_rule(active_ip, policy)
+    except Exception as e:
+        logger.debug(f"Policy toggle iptables sync failed: {e}")
+
+    return {"success": True, "enabled": bool(new_enabled)}

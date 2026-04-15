@@ -2202,3 +2202,122 @@ tbody tr:last-child td {
         align-items: flex-start;
     }
 }
+
+/* ── Access Policy Modal ───────────────────────────────────────────────────── */
+.ws-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+}
+
+.ws-modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-xl);
+    width: 100%;
+    max-width: 480px;
+    margin: 16px;
+    animation: ws-modal-in 0.15s ease;
+}
+
+@keyframes ws-modal-in {
+    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ws-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+.ws-modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-main);
+    margin: 0;
+}
+
+.ws-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s, background 0.15s;
+}
+
+.ws-modal-close:hover {
+    color: var(--text-main);
+    background: var(--bg-card-hover);
+}
+
+.ws-modal-body {
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.ws-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+}
+
+/* Policy type badge in table */
+.policy-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.policy-type-ip    { background: #dbeafe; color: #1d4ed8; }
+.policy-type-cidr  { background: #ede9fe; color: #6d28d9; }
+.policy-type-domain{ background: #d1fae5; color: #065f46; }
+
+.toggle-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.toggle-btn.enabled  { color: var(--success); border-color: var(--success); }
+.toggle-btn.disabled { color: var(--text-muted); }
+.toggle-btn:hover    { background: var(--bg-card-hover); }
