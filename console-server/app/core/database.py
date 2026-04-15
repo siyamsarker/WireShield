@@ -98,7 +98,24 @@ def init_db():
             remaining_rows INTEGER DEFAULT 0
         )
     ''')
-    
+
+    # Network Policies table: per-client local IP/CIDR/domain access rules
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS network_policies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id TEXT NOT NULL,
+            target_type TEXT NOT NULL DEFAULT 'ip',
+            target TEXT NOT NULL,
+            resolved_ip TEXT,
+            port TEXT,
+            protocol TEXT NOT NULL DEFAULT 'any',
+            description TEXT,
+            enabled BOOLEAN NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (client_id) REFERENCES users(client_id)
+        )
+    ''')
+
     conn.commit()
     # Migrations: add wg_ipv4/wg_ipv6 columns if missing
     try:
@@ -136,6 +153,11 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_dst ON activity_log(dst_ip)")
     except Exception:
         pass
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_network_policies_client ON network_policies(client_id)")
+    except Exception:
+        pass
+    conn.commit()
     conn.close()
     logger.info(f"Database initialized at {AUTH_DB_PATH}")
 

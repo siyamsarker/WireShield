@@ -106,6 +106,14 @@ def allow_client_by_id(client_id: str) -> None:
         _ipset(["ipset", "add", "ws_2fa_allowed_v4", v4, "-exist"])
     if v6:
         _ipset(["ipset", "add", "ws_2fa_allowed_v6", v6, "-exist"])
+    # Apply per-client network policies (iptables NAT rules for local IP access)
+    try:
+        from app.core.policies import apply_client_policies
+        ip = v4 or v6
+        if ip:
+            apply_client_policies(client_id, ip)
+    except Exception as e:
+        logger.debug(f"Failed to apply network policies for {client_id}: {e}")
 
 def remove_client_by_id(client_id: str) -> None:
     conn = get_db()
@@ -117,6 +125,14 @@ def remove_client_by_id(client_id: str) -> None:
         return
     v4 = row[0] or ""
     v6 = row[1] or ""
+    # Remove per-client network policies before revoking ipset access
+    try:
+        from app.core.policies import remove_client_policies
+        ip = v4 or v6
+        if ip:
+            remove_client_policies(client_id, ip)
+    except Exception as e:
+        logger.debug(f"Failed to remove network policies for {client_id}: {e}")
     if v4:
         _ipset(["ipset", "del", "ws_2fa_allowed_v4", v4])
     if v6:
