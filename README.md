@@ -13,7 +13,7 @@
 
 WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authentication at the connection layer. Every client must verify through a captive portal before any traffic is allowed through the tunnel.
 
-[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Features](#features) &bull; [Documentation](#documentation) &bull; [Contributing](#contributing)
+[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Usage](#usage) &bull; [Contributing](#contributing)
 
 </div>
 
@@ -76,6 +76,18 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 | **Reconnect > 1h** | Session revoked, 2FA required again |
 | **Strict revocation** | Expired sessions immediately block all traffic |
 
+### Access Policies (Local Network Routing)
+
+By default, authenticated clients only reach the public internet — local subnets behind the VPN server (e.g. `192.168.0.0/16`) are unreachable. Admins can selectively grant a client access to a specific local IP, CIDR block, or domain via the **Access Policies** page in the console.
+
+Each policy is enforced as an `iptables -t nat POSTROUTING ... -j MASQUERADE` rule scoped to the client's WireGuard IP and the policy target. Rules are applied the moment the client completes 2FA and removed when the session is revoked. Clients with no policies retain the default internet-only behavior.
+
+| Target Type | Example | Notes |
+|-------------|---------|-------|
+| IP | `192.168.169.121` | Single host |
+| CIDR | `192.168.169.0/24` | Whole subnet |
+| Domain | `internal.example.com` | Resolved to IPv4 at policy creation |
+
 ---
 
 ## Features
@@ -85,12 +97,14 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 - **TLS/SSL** with Let's Encrypt auto-renewal or self-signed certificates
 - **Rate limiting** at 30 requests per 60 seconds per IP/endpoint
 - **ipset-based firewall** for O(1) allowlist lookups (IPv4 + IPv6)
+- **Per-client access policies** for granting selective local network access (IP, CIDR, or domain) on top of the default internet-only tunnel
 - **WireGuard handshake monitoring** with 3-second polling for real-time session tracking
 - **Comprehensive audit logging** for all authentication events
 
 ### Admin Console
 - **Dashboard** with real-time statistics, charts, and active session monitoring
 - **User management** with pagination, search, and per-client access control
+- **Access policies** for whitelisting local IPs, CIDR blocks, or domains per client
 - **Traffic activity** logs with DNS resolution and protocol analysis
 - **Bandwidth insights** with per-client daily upload/download tracking
 - **Audit trail** for all security events (2FA setup, verification, failures)
@@ -273,6 +287,7 @@ The console provides:
 - **User Management** with status, IPs, and access control
 - **Audit Trail** for security events
 - **Traffic Activity** with connection logs, DNS resolution, and filtering
+- **Access Policies** for granting individual clients permission to reach specific local IPs, CIDR blocks, or domains while connected
 
 ---
 
@@ -325,6 +340,10 @@ The console provides:
 | `GET` | `/api/console/bandwidth-usage` | Per-client bandwidth data |
 | `GET` | `/api/console/dashboard-stats` | Dashboard metrics |
 | `GET` | `/api/console/dashboard-charts` | Chart visualization data |
+| `GET` | `/api/console/policies` | List access policies (optional `?client_filter=<id>`) |
+| `POST` | `/api/console/policies` | Create a new access policy (JSON body) |
+| `DELETE` | `/api/console/policies/{id}` | Delete an access policy |
+| `PATCH` | `/api/console/policies/{id}/toggle` | Enable or disable an access policy |
 
 ---
 
@@ -488,7 +507,34 @@ nslookup <your-domain>
   sudo systemctl start wireshield.service
   ```
 
-### 6. Database Issues
+### 6. Access Policy Not Working
+
+**Symptoms:** Client has an access policy for a local IP (e.g. `192.168.169.121:8000`) but cannot reach it after 2FA verification.
+
+**Diagnose:**
+```bash
+# Confirm the policy exists and is enabled in the database
+sudo sqlite3 /etc/wireshield/2fa/auth.db \
+  "SELECT client_id, target_type, target, port, protocol, enabled FROM network_policies;"
+
+# Confirm the client has an active session (policies only apply when client is authenticated)
+sudo sqlite3 /etc/wireshield/2fa/auth.db \
+  "SELECT client_id, expires_at FROM sessions WHERE expires_at > datetime('now');"
+
+# Confirm the corresponding MASQUERADE rule is live
+sudo iptables -t nat -L POSTROUTING -n -v | grep <client-wg-ip>
+
+# Confirm IP forwarding is enabled on the server
+sysctl net.ipv4.ip_forward   # should return 1
+```
+
+**Solutions:**
+- If policy exists but the MASQUERADE rule is missing, force-revoke and re-authenticate the client to trigger policy sync, or toggle the policy off/on in the console.
+- If the target is a domain whose IP has changed, delete and re-create the policy so it re-resolves.
+- If `ip_forward` is 0: `sudo sysctl -w net.ipv4.ip_forward=1` (and persist in `/etc/sysctl.conf`).
+- Verify the local target host can route back to the VPN server's local interface — MASQUERADE makes the server's IP the source, so the target must simply be able to reach the server.
+
+### 7. Database Issues
 
 **Symptoms:** Service won't start, SQLite errors in logs.
 
@@ -580,6 +626,7 @@ WireShield/
     │   │   ├── config.py         # Environment configuration
     │   │   ├── database.py       # SQLite schema and migrations
     │   │   ├── security.py       # Auth, rate limiting, ipset
+    │   │   ├── policies.py       # Per-client access policies (iptables NAT rules)
     │   │   ├── tasks.py          # Background monitors
     │   │   └── sniffer.py        # DNS packet capture
     │   └── routers/
@@ -645,12 +692,3 @@ WireShield is licensed under the [GNU General Public License v3.0](LICENSE).
 
 You are free to use, modify, and distribute this software. Modified versions must be released under the same license with source code disclosed.
 
----
-
-<div align="center">
-
-**Built with [WireGuard](https://www.wireguard.com/) &bull; [FastAPI](https://fastapi.tiangolo.com/) &bull; [pyotp](https://github.com/pyauth/pyotp) &bull; [SQLite](https://www.sqlite.org/)**
-
-Created by [Siyam Sarker](https://github.com/siyamsarker)
-
-</div>
