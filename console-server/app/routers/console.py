@@ -16,6 +16,7 @@ class PolicyCreateRequest(BaseModel):
     port: Optional[str] = None
     protocol: str = "any"
     description: Optional[str] = None
+    gateway_client_id: Optional[str] = None
 
 from app.core.database import get_db
 from app.core.security import audit_log
@@ -630,6 +631,11 @@ async def create_policy(
     if not target:
         raise HTTPException(status_code=400, detail="target is required")
 
+    gateway = body.gateway_client_id or None
+    if gateway:
+        if gateway == body.policy_client_id:
+            raise HTTPException(status_code=400, detail="Gateway cannot be the same as the policy client")
+
     resolved_ip = None
     if body.target_type == "domain":
         resolved_ip = resolve_domain(target)
@@ -638,13 +644,21 @@ async def create_policy(
 
     conn = get_db()
     c = conn.cursor()
+
+    if gateway:
+        c.execute("SELECT client_id FROM users WHERE client_id = ?", (gateway,))
+        if not c.fetchone():
+            conn.close()
+            raise HTTPException(status_code=400, detail="Gateway client not found")
+
     try:
         c.execute(
             """
-            INSERT INTO network_policies (client_id, target_type, target, resolved_ip, port, protocol, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO network_policies
+                (client_id, target_type, target, resolved_ip, port, protocol, description, gateway_client_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (body.policy_client_id, body.target_type, target, resolved_ip, port_val, body.protocol, body.description or None)
+            (body.policy_client_id, body.target_type, target, resolved_ip, port_val, body.protocol, body.description or None, gateway)
         )
         policy_id = c.lastrowid
         conn.commit()
@@ -663,6 +677,7 @@ async def create_policy(
                 "resolved_ip": resolved_ip,
                 "port": port_val,
                 "protocol": body.protocol,
+                "gateway_client_id": gateway,
             })
     except Exception as e:
         logger.debug(f"Immediate policy apply failed for {body.policy_client_id}: {e}")
@@ -737,3 +752,33 @@ async def toggle_policy(
         logger.debug(f"Policy toggle iptables sync failed: {e}")
 
     return {"success": True, "enabled": bool(new_enabled)}
+
+
+# ============================================================================
+# Split-Tunnel Config — AllowedIPs calculator + downloadable config
+# ============================================================================
+
+@router.get("/api/console/policies/split-config/{policy_client_id}")
+async def get_split_config(
+    policy_client_id: str,
+    client_id: str = Depends(_check_console_access)
+):
+    """Calculate split-tunnel AllowedIPs for a client based on their active policies.
+
+    Returns the AllowedIPs string that excludes policy targets,
+    plus the full client config if available on disk.
+    """
+    from app.core.policies import calculate_split_allowed_ips, generate_split_client_config
+
+    split = calculate_split_allowed_ips(policy_client_id)
+
+    config_text = generate_split_client_config(policy_client_id)
+
+    return {
+        "client_id": policy_client_id,
+        "allowed_ips": split["allowed_ips_str"],
+        "allowed_ips_v4": split["allowed_ips_v4"],
+        "allowed_ips_v6": split["allowed_ips_v6"],
+        "excluded": split["excluded"],
+        "config": config_text,
+    }

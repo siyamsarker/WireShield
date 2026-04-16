@@ -157,6 +157,11 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_network_policies_client ON network_policies(client_id)")
     except Exception:
         pass
+    # Migration: add gateway_client_id to network_policies if missing
+    try:
+        c.execute('ALTER TABLE network_policies ADD COLUMN gateway_client_id TEXT')
+    except Exception:
+        pass
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {AUTH_DB_PATH}")

@@ -16,7 +16,9 @@ function loadPolicies() {
 
     fetch(url, { cache: 'no-store' })
         .then(r => r.json())
-        .then(data => renderPolicies(data.policies || []))
+        .then(data => {
+            renderPolicies(data.policies || []);
+        })
         .catch(err => {
             console.error('Error loading policies:', err);
             if (tbody) {
@@ -44,7 +46,7 @@ function renderPolicies(policies) {
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
-                        <span style="font-size:14px;">No policies yet. Click <strong>Add Policy</strong> to grant local access to a client.</span>
+                        <span style="font-size:14px;">No policies yet. Click <strong>Add Policy</strong> to define which local IPs bypass the VPN tunnel.</span>
                     </div>
                 </td>
             </tr>`;
@@ -154,6 +156,7 @@ function openAddPolicyModal() {
             // Pre-select current filter if set
             const filterVal = document.getElementById('policies-user-filter')?.value;
             if (filterVal && filterVal !== 'all') sel.value = filterVal;
+
         })
         .catch(() => {});
 
@@ -272,10 +275,107 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-// Close modal on Escape key
+// ── Split-Tunnel Config Modal ────────────────────────────────────────────────
+
+function openSplitConfigModal() {
+    const sel = document.getElementById('split-config-client');
+    const filterVal = document.getElementById('policies-user-filter')?.value;
+
+    // Populate client list
+    fetch('/api/console/users?page=1&limit=100', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+            sel.innerHTML = '';
+            (data.users || []).forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u.client_id;
+                opt.textContent = u.client_id;
+                sel.appendChild(opt);
+            });
+            if (filterVal && filterVal !== 'all') sel.value = filterVal;
+            loadSplitConfig();
+        });
+
+    document.getElementById('split-config-modal').style.display = 'flex';
+}
+
+function closeSplitConfigModal() {
+    document.getElementById('split-config-modal').style.display = 'none';
+}
+
+function loadSplitConfig() {
+    const clientId = document.getElementById('split-config-client').value;
+    if (!clientId) return;
+
+    document.getElementById('split-config-content').style.display = 'none';
+    document.getElementById('split-config-empty').style.display = 'none';
+    document.getElementById('split-config-loading').style.display = 'block';
+
+    fetch(`/api/console/policies/split-config/${encodeURIComponent(clientId)}`, { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('split-config-loading').style.display = 'none';
+
+            if (!data.excluded || data.excluded.length === 0) {
+                document.getElementById('split-config-empty').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('split-config-content').style.display = 'block';
+
+            // Show excluded targets
+            const infoEl = document.getElementById('split-excluded-info');
+            infoEl.innerHTML = `
+                <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px;">
+                    Traffic to these targets will bypass the VPN and go directly to your local network:
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                    ${data.excluded.map(e => `<span class="policy-type-badge policy-type-cidr">${escapeHtml(e)}</span>`).join('')}
+                </div>`;
+
+            // AllowedIPs
+            document.getElementById('split-allowed-ips').value = `AllowedIPs = ${data.allowed_ips}`;
+
+            // Full config if available
+            const fullSection = document.getElementById('split-full-config-section');
+            if (data.config) {
+                document.getElementById('split-full-config').value = data.config;
+                fullSection.style.display = 'block';
+            } else {
+                fullSection.style.display = 'none';
+            }
+        })
+        .catch(() => {
+            document.getElementById('split-config-loading').style.display = 'none';
+            document.getElementById('split-config-empty').style.display = 'block';
+            document.getElementById('split-config-empty').textContent = 'Failed to load config.';
+        });
+}
+
+function copyAllowedIps() {
+    const text = document.getElementById('split-allowed-ips').value;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-ips-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+}
+
+function copyFullConfig() {
+    const text = document.getElementById('split-full-config').value;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-config-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+}
+
+// Close modals on Escape key
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-        const modal = document.getElementById('add-policy-modal');
-        if (modal && modal.style.display !== 'none') closeAddPolicyModal();
+        const addModal = document.getElementById('add-policy-modal');
+        if (addModal && addModal.style.display !== 'none') { closeAddPolicyModal(); return; }
+        const splitModal = document.getElementById('split-config-modal');
+        if (splitModal && splitModal.style.display !== 'none') closeSplitConfigModal();
     }
 });
