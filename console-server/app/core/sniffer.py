@@ -13,6 +13,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 class DNSSniffer:
+    """Captures DNS responses (UDP 53) and TLS ClientHello SNI (TCP 443)
+    on the WireGuard interface to build an IP → domain cache.
+
+    TLS SNI extraction is critical because modern browsers use DNS-over-HTTPS,
+    which completely bypasses traditional DNS sniffing. The SNI field in the
+    TLS ClientHello is still plaintext in TLS 1.2 and most TLS 1.3 connections,
+    giving us the real domain name for every HTTPS connection.
+    """
     def __init__(self):
         self.interface = WG_INTERFACE or "wg0"
         self.stop_sniffer = threading.Event()
@@ -22,12 +30,17 @@ class DNSSniffer:
         self._sniff = None
         self._DNS = None
         self._DNSRR = None
-        
+        self._TCP = None
+        self._Raw = None
+
         try:
             scapy_all = import_module("scapy.all")
             self._sniff = getattr(scapy_all, "sniff", None)
             self._DNS = getattr(scapy_all, "DNS", None)
             self._DNSRR = getattr(scapy_all, "DNSRR", None)
+            self._TCP = getattr(scapy_all, "TCP", None)
+            self._Raw = getattr(scapy_all, "Raw", None)
+            self._IP = getattr(scapy_all, "IP", None)
             self.scapy_available = all([self._sniff, self._DNS, self._DNSRR])
         except ImportError:
             logger.warning("Scapy not found. DNS sniffing disabled.")
@@ -35,68 +48,92 @@ class DNSSniffer:
     def start(self):
         if not self.scapy_available:
             return
-            
+
         if self.thread and self.thread.is_alive():
             return
 
         self.stop_sniffer.clear()
         self.thread = threading.Thread(target=self._run_sniffer, daemon=True)
         self.thread.start()
-        logger.info(f"DNS Sniffer started on {self.interface}")
+        logger.info(f"DNS + TLS SNI sniffer started on {self.interface}")
 
     def stop(self):
         if self.thread:
             self.stop_sniffer.set()
-            # Sniff is blocking, so we can't easily stop it without timeout or stop_filter
-            # Since it's a daemon thread, it will die with the app.
-            logger.info("DNS Sniffer stopping...")
+            logger.info("DNS + TLS SNI sniffer stopping...")
 
     def _run_sniffer(self):
         try:
             if not self._sniff:
                 return
-            # Filter: UDP source port 53 (DNS responses)
+            # Capture DNS responses (UDP src 53) AND TLS ClientHello (TCP dst 443)
             self._sniff(
                 iface=self.interface,
-                filter="udp src port 53",
+                filter="udp src port 53 or tcp dst port 443",
                 prn=self._process_packet,
                 store=0,
                 stop_filter=lambda x: self.stop_sniffer.is_set()
             )
         except Exception as e:
-            logger.error(f"DNS Sniffer failed: {e}")
+            logger.error(f"Sniffer failed: {e}")
 
     def _process_packet(self, pkt):
-        if not self._DNS:
-            return
-        if not pkt.haslayer(self._DNS):
-            return
-
         try:
-            dns = pkt[self._DNS]
-            # Only process responses (qr=1) with answers (ancount > 0)
-            if dns.qr == 1 and dns.ancount > 0:
-                # Use the original queried domain (what the user actually typed)
-                # instead of answer rrname (which may be a CNAME target)
-                queried_domain = None
-                if dns.qdcount > 0 and dns.qd:
-                    qname = dns.qd.qname
-                    if isinstance(qname, bytes):
-                        qname = qname.decode('utf-8', errors='ignore')
-                    queried_domain = qname.rstrip('.')
+            # DNS response handling
+            if self._DNS and pkt.haslayer(self._DNS):
+                self._handle_dns(pkt)
+                return
 
-                if not queried_domain:
-                    return
-
-                for x in range(dns.ancount):
-                    answer = dns.an[x]
-                    # Capture A records (type 1) and AAAA records (type 28)
-                    if answer.type in (1, 28):
-                        ip = answer.rdata
-                        if ip:
-                            self._cache_mapping(ip, queried_domain)
+            # TLS ClientHello SNI extraction (TCP dst port 443 with payload)
+            if self._TCP and self._Raw and pkt.haslayer(self._TCP) and pkt.haslayer(self._Raw):
+                tcp_layer = pkt[self._TCP]
+                if tcp_layer.dport == 443:
+                    self._handle_tls(pkt)
         except Exception as e:
-            logger.debug(f"DNS packet processing failed: {e}")
+            logger.debug(f"Packet processing error: {e}")
+
+    # ── DNS Response Handler ────────────────────────────────────────────────
+
+    def _handle_dns(self, pkt):
+        dns = pkt[self._DNS]
+        if dns.qr != 1 or dns.ancount <= 0:
+            return
+
+        queried_domain = None
+        if dns.qdcount > 0 and dns.qd:
+            qname = dns.qd.qname
+            if isinstance(qname, bytes):
+                qname = qname.decode('utf-8', errors='ignore')
+            queried_domain = qname.rstrip('.')
+
+        if not queried_domain:
+            return
+
+        for x in range(dns.ancount):
+            answer = dns.an[x]
+            if answer.type in (1, 28):  # A or AAAA
+                ip = answer.rdata
+                if ip:
+                    self._cache_mapping(ip, queried_domain)
+
+    # ── TLS ClientHello SNI Handler ─────────────────────────────────────────
+
+    def _handle_tls(self, pkt):
+        raw = bytes(pkt[self._Raw])
+        sni = _extract_sni(raw)
+        if not sni:
+            return
+
+        # Get destination IP from IP layer
+        dst_ip = None
+        if self._IP and pkt.haslayer(self._IP):
+            dst_ip = pkt[self._IP].dst
+
+        if dst_ip and sni:
+            self._cache_mapping(dst_ip, sni)
+            logger.debug(f"TLS SNI: {dst_ip} → {sni}")
+
+    # ── DNS Cache ───────────────────────────────────────────────────────────
 
     def _cache_mapping(self, ip, domain):
         try:
@@ -110,3 +147,82 @@ class DNSSniffer:
             conn.close()
         except Exception as e:
             logger.debug(f"DNS cache update failed for {ip} -> {domain}: {e}")
+
+
+# ── TLS SNI Parser ──────────────────────────────────────────────────────────
+
+def _extract_sni(payload: bytes) -> Optional[str]:
+    """Extract the Server Name Indication from a TLS ClientHello packet.
+
+    Parses the raw TCP payload to find the SNI extension (type 0x0000) in
+    the TLS handshake. Works for TLS 1.2 and TLS 1.3 ClientHello messages.
+    Returns the domain string or None if not found / not a ClientHello.
+    """
+    try:
+        # Need at least TLS record header (5 bytes) + handshake type (1)
+        if len(payload) < 6:
+            return None
+
+        # TLS Record: content_type=0x16 (Handshake), version=0x0301-0x0303
+        if payload[0] != 0x16:
+            return None
+        if payload[1] != 0x03 or payload[2] not in (0x00, 0x01, 0x02, 0x03):
+            return None
+
+        # Handshake record starts at offset 5: type(1) + length(3)
+        hs_type = payload[5]
+        if hs_type != 0x01:  # ClientHello
+            return None
+
+        # ClientHello body starts at offset 9:
+        # version(2) + random(32) = 34 bytes
+        pos = 9 + 34  # = 43
+
+        if pos >= len(payload):
+            return None
+
+        # Session ID: length(1) + data
+        sid_len = payload[pos]
+        pos += 1 + sid_len
+
+        if pos + 2 > len(payload):
+            return None
+
+        # Cipher Suites: length(2) + data
+        cs_len = int.from_bytes(payload[pos:pos+2], 'big')
+        pos += 2 + cs_len
+
+        if pos >= len(payload):
+            return None
+
+        # Compression Methods: length(1) + data
+        cm_len = payload[pos]
+        pos += 1 + cm_len
+
+        if pos + 2 > len(payload):
+            return None
+
+        # Extensions: total_length(2) then extension entries
+        ext_total = int.from_bytes(payload[pos:pos+2], 'big')
+        pos += 2
+        ext_end = pos + ext_total
+
+        while pos + 4 <= ext_end and pos + 4 <= len(payload):
+            ext_type = int.from_bytes(payload[pos:pos+2], 'big')
+            ext_len = int.from_bytes(payload[pos+2:pos+4], 'big')
+            pos += 4
+
+            if ext_type == 0x0000:  # SNI extension
+                # SNI list: total_length(2) + entry: type(1) + name_length(2) + name
+                if pos + 5 <= len(payload):
+                    sn_type = payload[pos + 2]
+                    sn_len = int.from_bytes(payload[pos+3:pos+5], 'big')
+                    if sn_type == 0 and pos + 5 + sn_len <= len(payload):
+                        return payload[pos+5:pos+5+sn_len].decode('ascii')
+                return None
+
+            pos += ext_len
+
+    except (IndexError, ValueError, UnicodeDecodeError):
+        pass
+    return None
