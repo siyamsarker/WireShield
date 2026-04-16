@@ -310,7 +310,7 @@ def _resolve_ips_to_dns_cache(ips: List[str]) -> int:
                 conn = get_db()
                 c = conn.cursor()
                 c.execute("""
-                    INSERT OR IGNORE INTO dns_cache (ip_address, domain, timestamp)
+                    INSERT OR REPLACE INTO dns_cache (ip_address, domain, timestamp)
                     VALUES (?, ?, CURRENT_TIMESTAMP)
                 """, (ip, domain))
                 conn.commit()
