@@ -76,29 +76,34 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 | **Reconnect > 1h** | Session revoked, 2FA required again |
 | **Strict revocation** | Expired sessions immediately block all traffic |
 
-### Access Policies (Local Network Routing)
+### Access Policies (Split Tunneling)
 
-By default, authenticated clients only reach the public internet — local subnets behind the VPN server (e.g. `192.168.0.0/16`) are unreachable. Admins can selectively grant a client access to a specific local IP, CIDR block, or domain via the **Access Policies** page in the console.
+By default, when a client connects with `AllowedIPs = 0.0.0.0/0`, **all traffic** goes through the VPN tunnel — including traffic to local resources like `192.168.169.121:8000`. If the VPN server is cloud-hosted (e.g. AWS), it cannot reach those private IPs, so the connection fails.
 
-Each policy is enforced by inserting per-client `iptables` FORWARD and NAT MASQUERADE rules. Clients with no policies retain the default internet-only behavior.
+**Access Policies** solve this with split tunneling. Admins define which IPs or subnets should **bypass the VPN** and go directly to the client's local network. The system calculates updated WireGuard `AllowedIPs` that exclude the policy targets and provides a ready-to-use config for the client.
 
-| Target Type | Example | Notes |
-|-------------|---------|-------|
-| IP | `192.168.169.121` | Single host |
-| CIDR | `192.168.169.0/24` | Whole subnet |
-| Domain | `internal.example.com` | Resolved to IPv4 at policy creation |
+| Target Type | Example | Effect |
+|-------------|---------|--------|
+| IP | `192.168.169.121` | Traffic to this host bypasses VPN |
+| CIDR | `192.168.169.0/24` | Traffic to entire subnet bypasses VPN |
+| Domain | `internal.example.com` | Resolved to IP at creation time, then excluded |
 
-#### When do policies take effect?
+#### How it works
 
-| Scenario | What happens |
-|----------|-------------|
-| **Policy created while client is connected** | Rules are applied immediately — no action needed |
-| **Policy created while client is offline** | Rules are stored in the database and applied automatically when the client next connects and completes 2FA |
-| **Policy toggled (enabled/disabled) or deleted** | If the client is connected, the corresponding firewall rules are added or removed in real time |
-| **Client disconnects** | All policy rules for that client are removed when their session is revoked |
-| **Client reconnects and completes 2FA** | All enabled policies are re-applied automatically |
+1. Admin creates a policy in the console: client `uloop`, target `192.168.169.0/24`
+2. The system computes `AllowedIPs` = `0.0.0.0/0` minus `192.168.169.0/24` (result: 24 complementary CIDRs)
+3. Admin clicks **Apply Config**, copies the updated `AllowedIPs` line
+4. Client updates their WireGuard config and reconnects
+5. Traffic to `192.168.169.x` now goes directly to the local network; everything else still goes through VPN
 
-> **Note:** If a policy was created or modified while the WireShield service itself was restarting or updating, the client may need to **disconnect and reconnect** (which triggers a fresh 2FA and re-applies all policies), or the admin can **toggle the policy off then on** in the console to force an immediate rule sync.
+#### Applying the config
+
+After creating or modifying policies, click **Apply Config** in the console. A modal shows:
+- **Excluded targets** — which IPs/subnets bypass the VPN
+- **Updated AllowedIPs** — the calculated line to paste into the WireGuard client config
+- **Full config** — if the client's `.conf` file is still on the server, a complete config with the updated AllowedIPs
+
+The client must update their WireGuard app with the new `AllowedIPs` and reconnect for changes to take effect.
 
 ---
 
@@ -109,14 +114,14 @@ Each policy is enforced by inserting per-client `iptables` FORWARD and NAT MASQU
 - **TLS/SSL** with Let's Encrypt auto-renewal or self-signed certificates
 - **Rate limiting** at 30 requests per 60 seconds per IP/endpoint
 - **ipset-based firewall** for O(1) allowlist lookups (IPv4 + IPv6)
-- **Per-client access policies** for granting selective local network access (IP, CIDR, or domain) on top of the default internet-only tunnel
+- **Per-client split-tunnel policies** for excluding local IPs, CIDRs, or domains from the VPN tunnel
 - **WireGuard handshake monitoring** with 3-second polling for real-time session tracking
 - **Comprehensive audit logging** for all authentication events
 
 ### Admin Console
 - **Dashboard** with real-time statistics, charts, and active session monitoring
 - **User management** with pagination, search, and per-client access control
-- **Access policies** for whitelisting local IPs, CIDR blocks, or domains per client
+- **Access policies** with split-tunnel config generator for per-client local network bypass
 - **Traffic activity** logs with DNS resolution and protocol analysis
 - **Bandwidth insights** with per-client daily upload/download tracking
 - **Audit trail** for all security events (2FA setup, verification, failures)
@@ -299,7 +304,7 @@ The console provides:
 - **User Management** with status, IPs, and access control
 - **Audit Trail** for security events
 - **Traffic Activity** with connection logs, DNS resolution, and filtering
-- **Access Policies** for granting individual clients permission to reach specific local IPs, CIDR blocks, or domains while connected
+- **Access Policies** with split-tunnel configuration — define which local IPs or subnets bypass the VPN for each client, then generate an updated WireGuard config
 
 ---
 
@@ -356,6 +361,7 @@ The console provides:
 | `POST` | `/api/console/policies` | Create a new access policy (JSON body) |
 | `DELETE` | `/api/console/policies/{id}` | Delete an access policy |
 | `PATCH` | `/api/console/policies/{id}/toggle` | Enable or disable an access policy |
+| `GET` | `/api/console/policies/split-config/{client}` | Get split-tunnel AllowedIPs and config for a client |
 
 ---
 
@@ -519,38 +525,40 @@ nslookup <your-domain>
   sudo systemctl start wireshield.service
   ```
 
-### 6. Access Policy Not Working
+### 6. Local Network Unreachable While on VPN
 
-**Symptoms:** Client has an access policy for a local IP (e.g. `192.168.169.121:8000`) but cannot reach it after 2FA verification.
+**Symptoms:** Client is connected to the VPN but cannot reach local resources like `192.168.169.121:8000`.
 
-**Diagnose:**
+**Cause:** With `AllowedIPs = 0.0.0.0/0`, all traffic goes through the VPN tunnel — including traffic to local IPs. If the VPN server is cloud-hosted (e.g. AWS), it has no route to your private office network, so the traffic is silently dropped.
+
+**Solution — Split tunneling via Access Policies:**
+1. Open the WireShield console → **Access Policies**
+2. Click **Add Policy** → set Client to the affected user, Target to the local subnet (e.g. `192.168.169.0/24`)
+3. Click **Apply Config** → copy the updated `AllowedIPs` line
+4. In the WireGuard client app, edit the tunnel config and replace the `AllowedIPs` line with the copied value
+5. Reconnect the VPN
+
+**Verify the config is correct:**
 ```bash
-# Confirm the policy exists and is enabled in the database
-sudo sqlite3 /etc/wireshield/2fa/auth.db \
-  "SELECT client_id, target_type, target, port, protocol, enabled FROM network_policies;"
-
-# Confirm the client has an active session (policies only apply when client is authenticated)
-sudo sqlite3 /etc/wireshield/2fa/auth.db \
-  "SELECT client_id, expires_at FROM sessions WHERE expires_at > datetime('now');"
-
-# Confirm the FORWARD rule exists for this client
-sudo iptables -L FORWARD -n -v | grep <client-wg-ip>
-
-# Confirm the MASQUERADE NAT rule exists
-sudo iptables -t nat -L POSTROUTING -n -v | grep <client-wg-ip>
-
-# Confirm the ESTABLISHED,RELATED rule is present for return traffic
-sudo iptables -L FORWARD -n | grep ESTABLISHED
-
-# Confirm IP forwarding is enabled on the server
-sysctl net.ipv4.ip_forward   # should return 1
+# The client's WireGuard config should NOT contain 0.0.0.0/0
+# Instead it should have multiple CIDRs that exclude the local subnet:
+grep AllowedIPs /path/to/your/wireguard.conf
+# Expected: AllowedIPs = 0.0.0.0/1,128.0.0.0/2,...  (NOT 0.0.0.0/0)
 ```
 
-**Solutions:**
-- **Rules missing after a service restart or code update:** Have the client disconnect the VPN, wait a few seconds, then reconnect. The fresh 2FA verification triggers re-application of all enabled policies. Alternatively, toggle the policy off then on in the console — this inserts the rules immediately without requiring the client to reconnect.
-- **Domain policy IP changed:** Delete the old policy and create a new one so the domain is re-resolved.
-- **`ip_forward` is 0:** Run `sudo sysctl -w net.ipv4.ip_forward=1` and persist it in `/etc/sysctl.conf`.
-- **Target host unreachable despite rules existing:** MASQUERADE rewrites the source IP to the server's LAN address. Verify the target host can reach the server on the same interface (e.g. both on the same `192.168.x.x` subnet).
+**Diagnose if it's still not working:**
+```bash
+# On the client machine, verify the WireGuard route table excludes the target
+# The local IP should NOT appear in the WireGuard routing table
+wg show
+ip route get 192.168.169.121
+# Expected: "192.168.169.121 via <local-gateway>" (NOT "dev wg0")
+```
+
+**Common mistakes:**
+- **Forgot to reconnect** after updating AllowedIPs — WireGuard applies AllowedIPs at connection time
+- **Wrong target** — if you excluded `192.168.169.121/32` but the service is on `192.168.169.122`, that IP still goes through VPN
+- **Using a CIDR is safer** — `192.168.169.0/24` covers the whole subnet instead of individual hosts
 
 ### 7. Database Issues
 
