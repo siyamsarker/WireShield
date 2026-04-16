@@ -1,13 +1,17 @@
 """
-Network policy enforcement via iptables NAT POSTROUTING rules.
+Network policy enforcement via iptables FORWARD + NAT POSTROUTING rules.
 
-When a client authenticates, their per-client policies are applied as
-MASQUERADE rules so local hosts on the server's network can route
-responses back without needing VPN-aware routing themselves.
+When a client authenticates, their per-client policies are applied as:
 
-Rule format:
-  iptables -t nat -A POSTROUTING -s <client_wg_ip> -d <target> \
-      [-p tcp|udp [--dport <port>]] -j MASQUERADE
+1. FORWARD rule   – explicitly allows the traffic from the client's WG IP
+                    to the policy target (local IP / CIDR).
+2. MASQUERADE rule – NATs the client's WG source IP to the server's LAN
+                     IP so the target host can route its response back.
+3. ESTABLISHED,RELATED rule (one-time, global) – ensures return traffic
+                     from local targets is accepted by the FORWARD chain.
+
+On session revoke, rules #1 and #2 are removed per-policy.
+Rule #3 is left in place (shared and harmless).
 """
 import socket
 import subprocess
@@ -15,6 +19,8 @@ import logging
 from app.core.database import get_db
 
 logger = logging.getLogger(__name__)
+
+_conntrack_ensured = False
 
 
 def _iptables(args: list) -> None:
@@ -24,8 +30,31 @@ def _iptables(args: list) -> None:
         logger.debug(f"iptables command failed: {args} — {e}")
 
 
-def _rule_base(client_ip: str, target: str, port, protocol: str) -> list:
-    """Return the iptables args that identify a NAT POSTROUTING policy rule."""
+def _rule_exists(args: list) -> bool:
+    """Check whether an iptables rule already exists (-C check)."""
+    try:
+        r = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _ensure_conntrack_forward() -> None:
+    """Insert a global ESTABLISHED,RELATED FORWARD rule once per process."""
+    global _conntrack_ensured
+    if _conntrack_ensured:
+        return
+    ct_rule = ["iptables", "-C", "FORWARD", "-m", "conntrack",
+               "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"]
+    if not _rule_exists(ct_rule):
+        _iptables(["iptables", "-I", "FORWARD", "-m", "conntrack",
+                    "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"])
+        logger.info("Global ESTABLISHED,RELATED FORWARD rule inserted")
+    _conntrack_ensured = True
+
+
+def _match_args(client_ip: str, target: str, port, protocol: str) -> list:
+    """Build the match part of a FORWARD / POSTROUTING rule."""
     args = ["-s", client_ip, "-d", target]
     if protocol in ("tcp", "udp"):
         args += ["-p", protocol]
@@ -45,23 +74,33 @@ def _effective_target(policy: dict) -> str:
 
 
 def _apply_rule(client_ip: str, policy: dict) -> None:
+    """Add FORWARD + MASQUERADE rules for a single policy."""
+    _ensure_conntrack_forward()
+
     target = _effective_target(policy)
-    base = _rule_base(client_ip, target, policy.get("port"), policy.get("protocol", "any"))
-    # Idempotent: only insert if rule doesn't already exist
-    check = subprocess.run(
-        ["iptables", "-t", "nat", "-C", "POSTROUTING"] + base + ["-j", "MASQUERADE"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-    if check.returncode != 0:
+    base = _match_args(client_ip, target, policy.get("port"), policy.get("protocol", "any"))
+
+    # 1) FORWARD: allow traffic from client to target
+    fwd_check = ["iptables", "-C", "FORWARD"] + base + ["-j", "ACCEPT"]
+    if not _rule_exists(fwd_check):
+        _iptables(["iptables", "-I", "FORWARD"] + base + ["-j", "ACCEPT"])
+        logger.info(f"FORWARD rule added: {client_ip} → {target}")
+
+    # 2) NAT MASQUERADE: source-NAT so target can reply
+    nat_check = ["iptables", "-t", "nat", "-C", "POSTROUTING"] + base + ["-j", "MASQUERADE"]
+    if not _rule_exists(nat_check):
         _iptables(["iptables", "-t", "nat", "-A", "POSTROUTING"] + base + ["-j", "MASQUERADE"])
-        logger.info(f"Policy rule added: {client_ip} → {target} port={policy.get('port')} proto={policy.get('protocol')}")
+        logger.info(f"MASQUERADE rule added: {client_ip} → {target}")
 
 
 def _remove_rule(client_ip: str, policy: dict) -> None:
+    """Remove FORWARD + MASQUERADE rules for a single policy."""
     target = _effective_target(policy)
-    base = _rule_base(client_ip, target, policy.get("port"), policy.get("protocol", "any"))
+    base = _match_args(client_ip, target, policy.get("port"), policy.get("protocol", "any"))
+
+    _iptables(["iptables", "-D", "FORWARD"] + base + ["-j", "ACCEPT"])
     _iptables(["iptables", "-t", "nat", "-D", "POSTROUTING"] + base + ["-j", "MASQUERADE"])
-    logger.info(f"Policy rule removed: {client_ip} → {target} port={policy.get('port')} proto={policy.get('protocol')}")
+    logger.info(f"Policy rules removed: {client_ip} → {target}")
 
 
 def apply_client_policies(client_id: str, client_ip: str) -> None:
