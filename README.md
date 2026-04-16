@@ -80,13 +80,25 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 
 By default, authenticated clients only reach the public internet — local subnets behind the VPN server (e.g. `192.168.0.0/16`) are unreachable. Admins can selectively grant a client access to a specific local IP, CIDR block, or domain via the **Access Policies** page in the console.
 
-Each policy is enforced as an `iptables -t nat POSTROUTING ... -j MASQUERADE` rule scoped to the client's WireGuard IP and the policy target. Rules are applied the moment the client completes 2FA and removed when the session is revoked. Clients with no policies retain the default internet-only behavior.
+Each policy is enforced by inserting per-client `iptables` FORWARD and NAT MASQUERADE rules. Clients with no policies retain the default internet-only behavior.
 
 | Target Type | Example | Notes |
 |-------------|---------|-------|
 | IP | `192.168.169.121` | Single host |
 | CIDR | `192.168.169.0/24` | Whole subnet |
 | Domain | `internal.example.com` | Resolved to IPv4 at policy creation |
+
+#### When do policies take effect?
+
+| Scenario | What happens |
+|----------|-------------|
+| **Policy created while client is connected** | Rules are applied immediately — no action needed |
+| **Policy created while client is offline** | Rules are stored in the database and applied automatically when the client next connects and completes 2FA |
+| **Policy toggled (enabled/disabled) or deleted** | If the client is connected, the corresponding firewall rules are added or removed in real time |
+| **Client disconnects** | All policy rules for that client are removed when their session is revoked |
+| **Client reconnects and completes 2FA** | All enabled policies are re-applied automatically |
+
+> **Note:** If a policy was created or modified while the WireShield service itself was restarting or updating, the client may need to **disconnect and reconnect** (which triggers a fresh 2FA and re-applies all policies), or the admin can **toggle the policy off then on** in the console to force an immediate rule sync.
 
 ---
 
@@ -521,18 +533,24 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
 sudo sqlite3 /etc/wireshield/2fa/auth.db \
   "SELECT client_id, expires_at FROM sessions WHERE expires_at > datetime('now');"
 
-# Confirm the corresponding MASQUERADE rule is live
+# Confirm the FORWARD rule exists for this client
+sudo iptables -L FORWARD -n -v | grep <client-wg-ip>
+
+# Confirm the MASQUERADE NAT rule exists
 sudo iptables -t nat -L POSTROUTING -n -v | grep <client-wg-ip>
+
+# Confirm the ESTABLISHED,RELATED rule is present for return traffic
+sudo iptables -L FORWARD -n | grep ESTABLISHED
 
 # Confirm IP forwarding is enabled on the server
 sysctl net.ipv4.ip_forward   # should return 1
 ```
 
 **Solutions:**
-- If policy exists but the MASQUERADE rule is missing, force-revoke and re-authenticate the client to trigger policy sync, or toggle the policy off/on in the console.
-- If the target is a domain whose IP has changed, delete and re-create the policy so it re-resolves.
-- If `ip_forward` is 0: `sudo sysctl -w net.ipv4.ip_forward=1` (and persist in `/etc/sysctl.conf`).
-- Verify the local target host can route back to the VPN server's local interface — MASQUERADE makes the server's IP the source, so the target must simply be able to reach the server.
+- **Rules missing after a service restart or code update:** Have the client disconnect the VPN, wait a few seconds, then reconnect. The fresh 2FA verification triggers re-application of all enabled policies. Alternatively, toggle the policy off then on in the console — this inserts the rules immediately without requiring the client to reconnect.
+- **Domain policy IP changed:** Delete the old policy and create a new one so the domain is re-resolved.
+- **`ip_forward` is 0:** Run `sudo sysctl -w net.ipv4.ip_forward=1` and persist it in `/etc/sysctl.conf`.
+- **Target host unreachable despite rules existing:** MASQUERADE rewrites the source IP to the server's LAN address. Verify the target host can reach the server on the same interface (e.g. both on the same `192.168.x.x` subnet).
 
 ### 7. Database Issues
 
