@@ -620,6 +620,105 @@ def _resolve_unresolved_activity_ips():
         time.sleep(poll_interval)
 
 
+def _interface_operstate(iface: str) -> str:
+    """Return 'up', 'down', or 'missing' for an interface."""
+    try:
+        with open(f"/sys/class/net/{iface}/operstate", "r") as f:
+            state = f.read().strip()
+        return "up" if state in ("up", "unknown") else "down"
+    except (FileNotFoundError, PermissionError, OSError):
+        return "missing"
+
+
+# Module-level state shared by /health endpoint
+_WATCHDOG_STATE: Dict[str, object] = {
+    "iface": None,
+    "iface_state": "unknown",
+    "last_transition": None,
+    "portal_rule_fixes": 0,
+    "last_check": None,
+}
+
+
+def _ensure_portal_iptables_rules():
+    """Make sure the portal's listener ports (80, 443) are ACCEPTed in INPUT.
+
+    The WireGuard PostUp adds these rules, but if wg-quick@wg0 restarts or
+    crashes, its PostDown hook removes them — which can leave the portal
+    unreachable even while the FastAPI service is still running. This
+    watchdog re-adds them whenever they are missing.
+    """
+    fixes = 0
+    for port in (80, 443):
+        try:
+            check = subprocess.run(
+                ["iptables", "-C", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            if check.returncode != 0:
+                subprocess.run(
+                    ["iptables", "-I", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                fixes += 1
+                logger.warning(f"Watchdog re-inserted missing INPUT ACCEPT rule for port {port}")
+        except FileNotFoundError:
+            # iptables binary not present (dev/test env) — nothing we can do
+            return 0
+        except Exception as e:
+            logger.debug(f"Watchdog iptables check failed for port {port}: {e}")
+    return fixes
+
+
+def _watchdog_loop():
+    """Monitors WireGuard interface state and re-asserts critical firewall rules.
+
+    Runs every 30 seconds:
+      1. Checks if wg0 operstate has changed (up <-> down). Logs transitions so
+         the admin can correlate portal outages with interface flaps.
+      2. Re-inserts INPUT ACCEPT rules for ports 80/443 if they were removed
+         (e.g., by wg-quick PostDown), so the portal stays reachable even
+         during WireGuard flaps.
+      3. Updates shared watchdog state consumed by the /health endpoint.
+    """
+    iface = _ensure_wg_interface() or "wg0"
+    _WATCHDOG_STATE["iface"] = iface
+    poll_interval = 30
+    last_state = None
+
+    logger.info(f"Watchdog started (iface={iface}, poll={poll_interval}s)")
+
+    while True:
+        try:
+            state = _interface_operstate(iface)
+            _WATCHDOG_STATE["iface_state"] = state
+            _WATCHDOG_STATE["last_check"] = datetime.utcnow().isoformat()
+
+            if last_state is not None and state != last_state:
+                logger.warning(f"Watchdog: {iface} transitioned {last_state} → {state}")
+                _WATCHDOG_STATE["last_transition"] = {
+                    "from": last_state, "to": state,
+                    "at": _WATCHDOG_STATE["last_check"],
+                }
+            last_state = state
+
+            # Always try to ensure portal firewall rules are in place
+            fixes = _ensure_portal_iptables_rules()
+            if fixes:
+                _WATCHDOG_STATE["portal_rule_fixes"] = (
+                    int(_WATCHDOG_STATE.get("portal_rule_fixes") or 0) + fixes
+                )
+        except Exception as exc:
+            logger.error(f"Watchdog iteration error: {exc}")
+
+        time.sleep(poll_interval)
+
+
+def get_watchdog_state() -> dict:
+    """Snapshot of watchdog state for /health endpoint consumption."""
+    return dict(_WATCHDOG_STATE)
+
+
 def start_background_tasks():
     threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
     threading.Thread(target=_monitor_wireguard_sessions, daemon=True).start()
@@ -628,3 +727,4 @@ def start_background_tasks():
     threading.Thread(target=_resolve_unresolved_activity_ips, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv4, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv6, daemon=True).start()
+    threading.Thread(target=_watchdog_loop, daemon=True).start()
