@@ -5,7 +5,7 @@ import time
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Depends, HTTPException
 from datetime import datetime, timedelta, timezone
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 
@@ -782,3 +782,67 @@ async def get_split_config(
         "excluded": split["excluded"],
         "config": config_text,
     }
+
+
+@router.get("/api/console/policies/split-config/{policy_client_id}/download")
+async def download_split_config(
+    policy_client_id: str,
+    client_id: str = Depends(_check_console_access)
+):
+    """Serve the split-tunnel client config as a downloadable .conf file."""
+    from app.core.policies import generate_split_client_config, calculate_split_allowed_ips
+
+    config_text = generate_split_client_config(policy_client_id)
+    if not config_text:
+        raise HTTPException(
+            status_code=404,
+            detail="Client .conf file not found on server. The config may have been deleted after initial distribution — recreate the client to regenerate it."
+        )
+
+    split = calculate_split_allowed_ips(policy_client_id)
+    suffix = "split" if split["excluded"] else "default"
+    filename = f"{policy_client_id}-{suffix}.conf"
+
+    return Response(
+        content=config_text,
+        media_type="application/x-wireguard-config",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/api/console/policies/split-config/{policy_client_id}/qrcode")
+async def qrcode_split_config(
+    policy_client_id: str,
+    client_id: str = Depends(_check_console_access)
+):
+    """Generate a QR code PNG (base64) of the split-tunnel client config for mobile import."""
+    import base64
+    from io import BytesIO
+    import qrcode
+    from app.core.policies import generate_split_client_config
+
+    config_text = generate_split_client_config(policy_client_id)
+    if not config_text:
+        raise HTTPException(
+            status_code=404,
+            detail="Client .conf file not found on server."
+        )
+
+    qr = qrcode.QRCode(
+        version=None,
+        box_size=5,
+        border=2,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+    )
+    qr.add_data(config_text)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    buf = BytesIO()
+    img.save(buf)
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    return {"qr_code": f"data:image/png;base64,{qr_b64}"}

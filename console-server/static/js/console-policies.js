@@ -277,9 +277,20 @@ function escapeHtml(str) {
 
 // ── Split-Tunnel Config Modal ────────────────────────────────────────────────
 
+let _currentSplitClient = null;
+let _splitConfigAvailable = false;
+
 function openSplitConfigModal() {
     const sel = document.getElementById('split-config-client');
     const filterVal = document.getElementById('policies-user-filter')?.value;
+
+    // Reset modal state
+    document.getElementById('split-step-targets').style.display = 'none';
+    document.getElementById('split-step-apply').style.display = 'none';
+    document.getElementById('split-config-empty').style.display = 'none';
+    document.getElementById('split-config-loading').style.display = 'flex';
+    _resetQR();
+    switchConfigTab('download');
 
     // Populate client list
     fetch('/api/console/users?page=1&limit=100', { cache: 'no-store' })
@@ -307,9 +318,14 @@ function loadSplitConfig() {
     const clientId = document.getElementById('split-config-client').value;
     if (!clientId) return;
 
-    document.getElementById('split-config-content').style.display = 'none';
+    _currentSplitClient = clientId;
+    _splitConfigAvailable = false;
+    _resetQR();
+
+    document.getElementById('split-step-targets').style.display = 'none';
+    document.getElementById('split-step-apply').style.display = 'none';
     document.getElementById('split-config-empty').style.display = 'none';
-    document.getElementById('split-config-loading').style.display = 'block';
+    document.getElementById('split-config-loading').style.display = 'flex';
 
     fetch(`/api/console/policies/split-config/${encodeURIComponent(clientId)}`, { cache: 'no-store' })
         .then(r => r.json())
@@ -317,38 +333,137 @@ function loadSplitConfig() {
             document.getElementById('split-config-loading').style.display = 'none';
 
             if (!data.excluded || data.excluded.length === 0) {
-                document.getElementById('split-config-empty').style.display = 'block';
+                document.getElementById('split-config-empty').style.display = 'flex';
                 return;
             }
 
-            document.getElementById('split-config-content').style.display = 'block';
+            // Step 2: excluded targets
+            const chips = document.getElementById('split-excluded-chips');
+            chips.innerHTML = data.excluded.map(e =>
+                `<span class="policy-type-badge policy-type-cidr">${escapeHtml(e)}</span>`
+            ).join('');
+            document.getElementById('split-step-targets').style.display = 'flex';
 
-            // Show excluded targets
-            const infoEl = document.getElementById('split-excluded-info');
-            infoEl.innerHTML = `
-                <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px;">
-                    Traffic to these targets will bypass the VPN and go directly to your local network:
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                    ${data.excluded.map(e => `<span class="policy-type-badge policy-type-cidr">${escapeHtml(e)}</span>`).join('')}
-                </div>`;
-
-            // AllowedIPs
+            // Step 3: apply
+            document.getElementById('split-step-apply').style.display = 'flex';
             document.getElementById('split-allowed-ips').value = `AllowedIPs = ${data.allowed_ips}`;
 
-            // Full config if available
-            const fullSection = document.getElementById('split-full-config-section');
-            if (data.config) {
+            // Full config availability
+            _splitConfigAvailable = !!data.config;
+            const downloadBtn = document.getElementById('split-download-btn');
+            const qrBtn = document.getElementById('split-qr-btn');
+
+            if (_splitConfigAvailable) {
                 document.getElementById('split-full-config').value = data.config;
-                fullSection.style.display = 'block';
+                downloadBtn.disabled = false;
+                qrBtn.disabled = false;
+                downloadBtn.title = '';
+                qrBtn.title = '';
             } else {
-                fullSection.style.display = 'none';
+                downloadBtn.disabled = true;
+                qrBtn.disabled = true;
+                const msg = 'Client .conf file not found on server — use Manual tab instead';
+                downloadBtn.title = msg;
+                qrBtn.title = msg;
+                document.getElementById('split-qr-placeholder').textContent = msg;
+                document.getElementById('split-full-config').value = '';
             }
         })
         .catch(() => {
             document.getElementById('split-config-loading').style.display = 'none';
-            document.getElementById('split-config-empty').style.display = 'block';
-            document.getElementById('split-config-empty').textContent = 'Failed to load config.';
+            document.getElementById('split-config-empty').style.display = 'flex';
+        });
+}
+
+function switchConfigTab(tab) {
+    document.querySelectorAll('.config-tab').forEach(el => {
+        el.classList.toggle('active', el.getAttribute('data-tab') === tab);
+    });
+    document.querySelectorAll('.config-tab-pane').forEach(el => {
+        el.classList.toggle('active', el.id === `split-tab-${tab}`);
+    });
+}
+
+function downloadSplitConfig() {
+    if (!_currentSplitClient || !_splitConfigAvailable) return;
+    const btn = document.getElementById('split-download-btn');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.textContent = 'Preparing…';
+
+    const url = `/api/console/policies/split-config/${encodeURIComponent(_currentSplitClient)}/download`;
+
+    fetch(url, { cache: 'no-store' })
+        .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const disp = r.headers.get('Content-Disposition') || '';
+            const match = disp.match(/filename="?([^"]+)"?/);
+            const filename = match ? match[1] : `${_currentSplitClient}-split.conf`;
+            return r.blob().then(blob => ({ blob, filename }));
+        })
+        .then(({ blob, filename }) => {
+            const a = document.createElement('a');
+            const blobUrl = URL.createObjectURL(blob);
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+            btn.innerHTML = original;
+            btn.disabled = false;
+        })
+        .catch(err => {
+            console.error('Download failed:', err);
+            btn.innerHTML = original;
+            btn.disabled = false;
+            alert('Download failed — see console.');
+        });
+}
+
+function _resetQR() {
+    const img = document.getElementById('split-qr-image');
+    const ph = document.getElementById('split-qr-placeholder');
+    if (img) {
+        img.style.display = 'none';
+        img.src = '';
+    }
+    if (ph) {
+        ph.style.display = 'block';
+        ph.textContent = 'Click to generate QR code';
+    }
+}
+
+function generateSplitQRCode() {
+    if (!_currentSplitClient || !_splitConfigAvailable) return;
+    const btn = document.getElementById('split-qr-btn');
+    const placeholder = document.getElementById('split-qr-placeholder');
+    const img = document.getElementById('split-qr-image');
+
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+    placeholder.textContent = 'Generating QR code…';
+
+    const url = `/api/console/policies/split-config/${encodeURIComponent(_currentSplitClient)}/qrcode`;
+    fetch(url, { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.qr_code) {
+                img.src = data.qr_code;
+                img.style.display = 'block';
+                placeholder.style.display = 'none';
+                btn.textContent = 'Regenerate QR Code';
+            } else {
+                placeholder.textContent = 'Failed to generate QR code';
+                btn.textContent = 'Generate QR Code';
+            }
+            btn.disabled = false;
+        })
+        .catch(() => {
+            placeholder.textContent = 'Failed to generate QR code';
+            btn.textContent = 'Generate QR Code';
+            btn.disabled = false;
         });
 }
 
