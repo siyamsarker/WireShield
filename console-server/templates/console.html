@@ -68,10 +68,14 @@
 
         <a href="#policies" class="nav-item" data-section="policies" onclick="showSection('policies', event)">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                <path d="M8 3v18"/>
+                <path d="M16 3v18"/>
+                <path d="M3 12h8"/>
+                <path d="M13 12h8"/>
+                <path d="M3 7h5"/>
+                <path d="M16 17h5"/>
             </svg>
-            Access Policies
+            Split Tunnel
         </a>
     </div>
 
@@ -626,7 +630,7 @@
                             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path d="M12 5v14M5 12h14"/>
                             </svg>
-                            Add Policy
+                            Add Rule
                         </button>
                     </div>
                 </div>
@@ -635,7 +639,7 @@
             <div class="table-container">
                 <div class="table-toolbar">
                     <div class="table-title">
-                        Access Policies
+                        Tunnel Bypass Rules
                         <span class="table-count" id="policies-count">0 rules</span>
                     </div>
                 </div>
@@ -661,11 +665,11 @@
             </div>
         </div>
 
-        <!-- Add Policy Modal -->
+        <!-- Add Tunnel Bypass Rule Modal -->
         <div id="add-policy-modal" class="ws-modal-overlay" style="display:none;" onclick="closePolicyModalOnBackdrop(event)">
             <div class="ws-modal">
                 <div class="ws-modal-header">
-                    <h3 class="ws-modal-title">Add Access Policy</h3>
+                    <h3 class="ws-modal-title">Add Tunnel Bypass Rule</h3>
                     <button class="ws-modal-close" onclick="closeAddPolicyModal()">
                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path d="M18 6L6 18M6 6l12 12"/>
@@ -711,7 +715,7 @@
                 </div>
                 <div class="ws-modal-footer">
                     <button class="btn btn-ghost" onclick="closeAddPolicyModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="submitAddPolicy()" id="policy-submit-btn">Add Policy</button>
+                    <button class="btn btn-primary" onclick="submitAddPolicy()" id="policy-submit-btn">Add Rule</button>
                 </div>
             </div>
         </div>

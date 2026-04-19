@@ -76,11 +76,11 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 | **Reconnect > 1h** | Session revoked, 2FA required again |
 | **Strict revocation** | Expired sessions immediately block all traffic |
 
-### Access Policies (Split Tunneling)
+### Split Tunnel
 
 By default, when a client connects with `AllowedIPs = 0.0.0.0/0`, **all traffic** goes through the VPN tunnel — including traffic to local resources like `192.168.169.121:8000`. If the VPN server is cloud-hosted (e.g. AWS), it cannot reach those private IPs, so the connection fails.
 
-**Access Policies** solve this with split tunneling. Admins define which IPs or subnets should **bypass the VPN** and go directly to the client's local network. The system calculates updated WireGuard `AllowedIPs` that exclude the policy targets and provides a ready-to-use config for the client.
+The **Split Tunnel** page (under *Network* in the console) solves this by letting admins define **Tunnel Bypass Rules**: IPs or subnets that should **bypass the VPN** and go directly to the client's local network. The system calculates updated WireGuard `AllowedIPs` that exclude the rule targets and provides a ready-to-use config for the client.
 
 | Target Type | Example | Effect |
 |-------------|---------|--------|
@@ -90,7 +90,7 @@ By default, when a client connects with `AllowedIPs = 0.0.0.0/0`, **all traffic*
 
 #### How it works
 
-1. Admin creates a policy in the console: client `uloop`, target `192.168.169.0/24`
+1. Admin clicks **Add Rule** in the console: client `uloop`, target `192.168.169.0/24`
 2. The system computes `AllowedIPs` = `0.0.0.0/0` minus `192.168.169.0/24` (result: 24 complementary CIDRs)
 3. Admin opens **Configure Split Tunnel** and shares the updated config with the client
 4. Client imports the new config (or scans the QR code) and reconnects
@@ -98,7 +98,7 @@ By default, when a client connects with `AllowedIPs = 0.0.0.0/0`, **all traffic*
 
 #### Applying the config
 
-After creating or modifying policies, click **Configure Split Tunnel** in the console. A step-by-step modal opens with three ways to apply the updated config — pick the one that best matches the client device:
+After creating or modifying rules, click **Configure Split Tunnel** in the console. A step-by-step modal opens with three ways to apply the updated config — pick the one that best matches the client device:
 
 | Tab | Best for | How it works |
 |-----|----------|-------------|
@@ -126,7 +126,7 @@ After applying the config, the client must **reconnect** the tunnel (WireGuard r
 ### Admin Console
 - **Dashboard** with real-time statistics, charts, and active session monitoring
 - **User management** with pagination, search, and per-client access control
-- **Access policies** with split-tunnel config generator for per-client local network bypass
+- **Split Tunnel** page with per-client Tunnel Bypass Rules and a config generator (download `.conf`, QR code, or copyable AllowedIPs)
 - **Traffic activity** logs with DNS resolution and protocol analysis
 - **Bandwidth insights** with per-client daily upload/download tracking
 - **Audit trail** for all security events (2FA setup, verification, failures)
@@ -311,7 +311,7 @@ The console provides:
 - **User Management** with status, IPs, and access control
 - **Audit Trail** for security events
 - **Traffic Activity** with connection logs, DNS resolution, and filtering
-- **Access Policies** with split-tunnel configuration — define which local IPs or subnets bypass the VPN for each client, then generate an updated WireGuard config
+- **Split Tunnel** with Tunnel Bypass Rules — define which local IPs or subnets bypass the VPN for each client, then generate an updated WireGuard config (download `.conf`, QR code, or copyable AllowedIPs)
 
 ---
 
@@ -366,10 +366,10 @@ The console provides:
 | `GET` | `/api/console/bandwidth-usage` | Per-client bandwidth data |
 | `GET` | `/api/console/dashboard-stats` | Dashboard metrics |
 | `GET` | `/api/console/dashboard-charts` | Chart visualization data |
-| `GET` | `/api/console/policies` | List access policies (optional `?client_filter=<id>`) |
-| `POST` | `/api/console/policies` | Create a new access policy (JSON body) |
-| `DELETE` | `/api/console/policies/{id}` | Delete an access policy |
-| `PATCH` | `/api/console/policies/{id}/toggle` | Enable or disable an access policy |
+| `GET` | `/api/console/policies` | List tunnel bypass rules (optional `?client_filter=<id>`) |
+| `POST` | `/api/console/policies` | Create a new tunnel bypass rule (JSON body) |
+| `DELETE` | `/api/console/policies/{id}` | Delete a tunnel bypass rule |
+| `PATCH` | `/api/console/policies/{id}/toggle` | Enable or disable a tunnel bypass rule |
 | `GET` | `/api/console/policies/split-config/{client}` | Get split-tunnel AllowedIPs and config (JSON) for a client |
 | `GET` | `/api/console/policies/split-config/{client}/download` | Download the split-tunnel `.conf` file (attachment) |
 | `GET` | `/api/console/policies/split-config/{client}/qrcode` | Return a base64 PNG QR code of the split-tunnel config |
@@ -577,9 +577,9 @@ nslookup <your-domain>
 
 **Cause:** With `AllowedIPs = 0.0.0.0/0`, all traffic goes through the VPN tunnel — including traffic to local IPs. If the VPN server is cloud-hosted (e.g. AWS), it has no route to your private office network, so the traffic is silently dropped.
 
-**Solution — Split tunneling via Access Policies:**
-1. Open the WireShield console → **Access Policies**
-2. Click **Add Policy** → set Client to the affected user, Target to the local subnet (e.g. `192.168.169.0/24`)
+**Solution — Split tunneling via Tunnel Bypass Rules:**
+1. Open the WireShield console → **Split Tunnel** (under *Network* in the sidebar)
+2. Click **Add Rule** → set Client to the affected user, Target to the local subnet (e.g. `192.168.169.0/24`)
 3. Click **Configure Split Tunnel** → pick the most reliable apply method for the client device:
    - **Download** — click *Download .conf file*, then in the WireGuard app delete the old tunnel and import the downloaded file as a new one.
    - **QR Code** — click *Generate QR Code*, then on mobile tap **+ → Create from QR code** and scan it.
@@ -700,7 +700,7 @@ WireShield/
     │   │   ├── config.py         # Environment configuration
     │   │   ├── database.py       # SQLite schema and migrations
     │   │   ├── security.py       # Auth, rate limiting, ipset
-    │   │   ├── policies.py       # Per-client access policies (iptables NAT rules)
+    │   │   ├── policies.py       # Split-tunnel rules: AllowedIPs calculator + config generator
     │   │   ├── tasks.py          # Background monitors
     │   │   └── sniffer.py        # DNS packet capture
     │   └── routers/
