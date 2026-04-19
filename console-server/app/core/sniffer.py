@@ -1,14 +1,9 @@
 import threading
 import logging
 import sqlite3
-import time
 from importlib import import_module
-from typing import Optional, TYPE_CHECKING, Any
+from typing import Optional
 from app.core.config import AUTH_DB_PATH, WG_INTERFACE
-
-if TYPE_CHECKING:
-    from scapy.all import sniff as scapy_sniff
-    from scapy.layers.dns import DNS as ScapyDNS, DNSRR as ScapyDNSRR
 
 logger = logging.getLogger(__name__)
 
@@ -62,20 +57,82 @@ class DNSSniffer:
             self.stop_sniffer.set()
             logger.info("DNS + TLS SNI sniffer stopping...")
 
-    def _run_sniffer(self):
+    def is_alive(self) -> bool:
+        """Report whether the sniffer thread is currently running."""
+        return bool(self.thread and self.thread.is_alive())
+
+    def _is_interface_up(self) -> bool:
+        """Check /sys/class/net/<iface>/operstate. Returns False if iface missing."""
         try:
-            if not self._sniff:
-                return
-            # Capture DNS responses (UDP src 53) AND TLS ClientHello (TCP dst 443)
-            self._sniff(
-                iface=self.interface,
-                filter="udp src port 53 or tcp dst port 443",
-                prn=self._process_packet,
-                store=0,
-                stop_filter=lambda x: self.stop_sniffer.is_set()
-            )
-        except Exception as e:
-            logger.error(f"Sniffer failed: {e}")
+            with open(f"/sys/class/net/{self.interface}/operstate", "r") as f:
+                state = f.read().strip()
+            return state in ("up", "unknown")
+        except (FileNotFoundError, PermissionError, OSError):
+            return False
+
+    def _run_sniffer(self):
+        """Robust sniffer loop: auto-recovers from interface flaps and transient errors.
+
+        The previous implementation would exit the thread on the first exception,
+        leaving the sniffer permanently dead after any wg0 down event. This loop
+        continuously restarts the sniff() call with exponential backoff, waits
+        for the interface to come back up before retrying, and survives any
+        kind of transient error.
+        """
+        if not self._sniff:
+            return
+
+        backoff = 2.0
+        max_backoff = 60.0
+        last_log_state = None  # avoid log spam
+
+        while not self.stop_sniffer.is_set():
+            # Wait for interface to be up before attempting sniff
+            if not self._is_interface_up():
+                if last_log_state != "down":
+                    logger.warning(f"Interface {self.interface} is down — waiting for it to come back up")
+                    last_log_state = "down"
+                # Poll every 5s; exit loop promptly on stop signal
+                if self.stop_sniffer.wait(5.0):
+                    break
+                continue
+
+            if last_log_state == "down":
+                logger.info(f"Interface {self.interface} is back up — resuming sniff")
+                backoff = 2.0  # reset backoff after successful recovery
+            last_log_state = "up"
+
+            try:
+                # store=0 prevents memory growth; timeout=300 so we periodically
+                # re-check the interface state and catch silent socket death.
+                self._sniff(
+                    iface=self.interface,
+                    filter="udp src port 53 or tcp dst port 443",
+                    prn=self._process_packet,
+                    store=0,
+                    stop_filter=lambda x: self.stop_sniffer.is_set(),
+                    timeout=300,
+                )
+                # sniff() returned normally (timeout or stop_filter). Loop and re-check.
+                backoff = 2.0
+            except OSError as e:
+                # errno 100 = ENETDOWN (interface went down mid-sniff)
+                # errno 19 = ENODEV (device removed)
+                if e.errno in (100, 19):
+                    logger.warning(f"{self.interface} dropped during sniff (errno={e.errno}), will retry")
+                    last_log_state = "down"
+                else:
+                    logger.error(f"Sniffer OSError (errno={e.errno}): {e}")
+                if self.stop_sniffer.wait(backoff):
+                    break
+                backoff = min(backoff * 2, max_backoff)
+            except Exception as e:
+                logger.error(f"Sniffer error (will retry in {backoff}s): {e}")
+                if self.stop_sniffer.wait(backoff):
+                    break
+                backoff = min(backoff * 2, max_backoff)
+
+        logger.info("DNS + TLS SNI sniffer loop exited cleanly")
 
     def _process_packet(self, pkt):
         try:
