@@ -18,6 +18,11 @@ class PolicyCreateRequest(BaseModel):
     description: Optional[str] = None
     gateway_client_id: Optional[str] = None
 
+
+class UserCreateRequest(BaseModel):
+    client_id: str
+    expiry_days: Optional[int] = None
+
 from app.core.database import get_db
 from app.core.security import audit_log
 from app.core.config import LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS
@@ -846,3 +851,155 @@ async def qrcode_split_config(
     qr_b64 = base64.b64encode(buf.getvalue()).decode()
 
     return {"qr_code": f"data:image/png;base64,{qr_b64}"}
+
+
+# ============================================================================
+# User Management — create / download config / QR code / delete
+# ============================================================================
+
+@router.post("/api/console/users")
+async def create_user(
+    body: UserCreateRequest,
+    client_id: str = Depends(_check_console_access),
+):
+    """Create a new WireGuard client (equivalent of CLI 'Create Client').
+
+    Allocates IPs, generates keys, writes the [Peer] block to wg0.conf,
+    live-syncs the interface, and registers the client in the 2FA users
+    table (disabled — the client enables 2FA at first captive-portal visit).
+    """
+    from app.core.wireguard import create_client, validate_client_name
+
+    try:
+        validate_client_name(body.client_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if body.expiry_days is not None and (
+        not isinstance(body.expiry_days, int) or body.expiry_days <= 0
+    ):
+        raise HTTPException(status_code=400, detail="expiry_days must be a positive integer")
+
+    try:
+        result = create_client(body.client_id, body.expiry_days)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except RuntimeError as e:
+        logger.error(f"create_client runtime error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception("create_client unexpected error")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
+    # Audit log
+    try:
+        client_host = "console"
+        audit_log(body.client_id, "CLIENT_CREATE", "success", client_host)
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "name": result["name"],
+        "ipv4": result["ipv4"],
+        "ipv6": result["ipv6"],
+        "expires": result["expires"],
+    }
+
+
+@router.get("/api/console/users/{user_client_id}/config")
+async def download_user_config(
+    user_client_id: str,
+    client_id: str = Depends(_check_console_access),
+):
+    """Download the client's WireGuard .conf file as an attachment."""
+    from app.core.wireguard import get_client_config, validate_client_name
+
+    try:
+        validate_client_name(user_client_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    config_text = get_client_config(user_client_id)
+    if not config_text:
+        raise HTTPException(
+            status_code=404,
+            detail="Client .conf file not found on server",
+        )
+
+    filename = f"{user_client_id}.conf"
+    return Response(
+        content=config_text,
+        media_type="application/x-wireguard-config",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/api/console/users/{user_client_id}/qrcode")
+async def user_config_qrcode(
+    user_client_id: str,
+    client_id: str = Depends(_check_console_access),
+):
+    """Return a base64 PNG QR code of the client's WireGuard config."""
+    import base64
+    from io import BytesIO
+    import qrcode
+    from app.core.wireguard import get_client_config, validate_client_name
+
+    try:
+        validate_client_name(user_client_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    config_text = get_client_config(user_client_id)
+    if not config_text:
+        raise HTTPException(status_code=404, detail="Client .conf file not found on server")
+
+    qr = qrcode.QRCode(
+        version=None,
+        box_size=5,
+        border=2,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+    )
+    qr.add_data(config_text)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img.save(buf)
+    return {"qr_code": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()}
+
+
+@router.delete("/api/console/users/{user_client_id}")
+async def delete_user(
+    user_client_id: str,
+    client_id: str = Depends(_check_console_access),
+):
+    """Revoke a WireGuard client (mirrors CLI 'Revoke Client')."""
+    from app.core.wireguard import delete_client, validate_client_name
+
+    try:
+        validate_client_name(user_client_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if user_client_id == client_id:
+        raise HTTPException(status_code=400, detail="Refusing to delete the currently authenticated admin")
+
+    try:
+        removed = delete_client(user_client_id)
+    except Exception as e:
+        logger.exception("delete_client error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not removed:
+        raise HTTPException(status_code=404, detail="Client not found in WireGuard config")
+
+    try:
+        audit_log(user_client_id, "CLIENT_REVOKE", "success", "console")
+    except Exception:
+        pass
+
+    return {"success": True}
