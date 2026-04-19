@@ -68,7 +68,7 @@ function showSection(section, event, fromHash = false) {
         'logs': 'Audit Trail',
         'activity': 'Traffic Activity',
         'bandwidth': 'Bandwidth Insights',
-        'policies': 'Access Policies'
+        'policies': 'Split Tunnel'
     };
     document.getElementById('page-title').textContent = titles[section] || 'Dashboard';
 

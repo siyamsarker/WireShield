@@ -1,4 +1,4 @@
-// console-policies.js — Access Policies section logic
+// console-policies.js — Split Tunnel (Tunnel Bypass Rules) section logic
 
 // ── Load & render ────────────────────────────────────────────────────────────
 
@@ -20,10 +20,10 @@ function loadPolicies() {
             renderPolicies(data.policies || []);
         })
         .catch(err => {
-            console.error('Error loading policies:', err);
+            console.error('Error loading tunnel bypass rules:', err);
             if (tbody) {
                 tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:32px;">
-                    Failed to load policies.</td></tr>`;
+                    Failed to load rules.</td></tr>`;
             }
         });
 }
@@ -46,7 +46,7 @@ function renderPolicies(policies) {
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
-                        <span style="font-size:14px;">No policies yet. Click <strong>Add Policy</strong> to define which local IPs bypass the VPN tunnel.</span>
+                        <span style="font-size:14px;">No rules yet. Click <strong>Add Rule</strong> to define which local IPs bypass the VPN tunnel.</span>
                     </div>
                 </td>
             </tr>`;
@@ -126,7 +126,7 @@ function togglePolicy(policyId, btn) {
 // ── Delete ───────────────────────────────────────────────────────────────────
 
 function deletePolicy(policyId, clientId, target) {
-    if (!confirm(`Delete policy for ${clientId} → ${target}?\n\nThis will immediately revoke local network access if the client is connected.`)) {
+    if (!confirm(`Delete bypass rule for ${clientId} → ${target}?\n\nThe updated config must be re-applied on the client for the change to take effect.`)) {
         return;
     }
     fetch(`/api/console/policies/${policyId}`, { method: 'DELETE', cache: 'no-store' })
@@ -137,7 +137,7 @@ function deletePolicy(policyId, clientId, target) {
         .catch(err => console.error('Delete error:', err));
 }
 
-// ── Add Policy Modal ─────────────────────────────────────────────────────────
+// ── Add Tunnel Bypass Rule Modal ─────────────────────────────────────────────
 
 function openAddPolicyModal() {
     // Populate client dropdown
@@ -246,15 +246,15 @@ function submitAddPolicy() {
                 closeAddPolicyModal();
                 loadPolicies();
             } else {
-                showPolicyError(data.detail || 'Failed to add policy.');
+                showPolicyError(data.detail || 'Failed to add rule.');
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Add Policy';
+                submitBtn.textContent = 'Add Rule';
             }
         })
         .catch(() => {
             showPolicyError('Network error — please try again.');
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Add Policy';
+            submitBtn.textContent = 'Add Rule';
         });
 }
 
