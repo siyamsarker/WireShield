@@ -92,18 +92,23 @@ By default, when a client connects with `AllowedIPs = 0.0.0.0/0`, **all traffic*
 
 1. Admin creates a policy in the console: client `uloop`, target `192.168.169.0/24`
 2. The system computes `AllowedIPs` = `0.0.0.0/0` minus `192.168.169.0/24` (result: 24 complementary CIDRs)
-3. Admin clicks **Apply Config**, copies the updated `AllowedIPs` line
-4. Client updates their WireGuard config and reconnects
+3. Admin opens **Configure Split Tunnel** and shares the updated config with the client
+4. Client imports the new config (or scans the QR code) and reconnects
 5. Traffic to `192.168.169.x` now goes directly to the local network; everything else still goes through VPN
 
 #### Applying the config
 
-After creating or modifying policies, click **Apply Config** in the console. A modal shows:
-- **Excluded targets** — which IPs/subnets bypass the VPN
-- **Updated AllowedIPs** — the calculated line to paste into the WireGuard client config
-- **Full config** — if the client's `.conf` file is still on the server, a complete config with the updated AllowedIPs
+After creating or modifying policies, click **Configure Split Tunnel** in the console. A step-by-step modal opens with three ways to apply the updated config — pick the one that best matches the client device:
 
-The client must update their WireGuard app with the new `AllowedIPs` and reconnect for changes to take effect.
+| Tab | Best for | How it works |
+|-----|----------|-------------|
+| **Download** | Desktop clients (Windows, macOS, Linux) | One-click download of a ready-to-import `.conf` file. Delete the old tunnel in the WireGuard app and import this file as a new tunnel. |
+| **QR Code** | Mobile clients (iOS, Android) | Generate a QR code and scan it with the WireGuard app (`+` → **Create from QR code**) to import the tunnel in one tap. |
+| **Manual** | Advanced users / troubleshooting | Copy the calculated `AllowedIPs` line (and optionally the full config) to paste into an existing config manually. |
+
+> **Why prefer Download / QR over Manual:** the split-tunnel `AllowedIPs` is a long comma-separated list (often 20–40 CIDRs). Manual editing is error-prone — a single missing comma or a browser line break will silently break routing. The Download and QR paths give the client a clean, valid config that cannot be mis-pasted.
+
+After applying the config, the client must **reconnect** the tunnel (WireGuard reads `AllowedIPs` only at connection time) for the split tunneling to take effect.
 
 ---
 
@@ -365,7 +370,9 @@ The console provides:
 | `POST` | `/api/console/policies` | Create a new access policy (JSON body) |
 | `DELETE` | `/api/console/policies/{id}` | Delete an access policy |
 | `PATCH` | `/api/console/policies/{id}/toggle` | Enable or disable an access policy |
-| `GET` | `/api/console/policies/split-config/{client}` | Get split-tunnel AllowedIPs and config for a client |
+| `GET` | `/api/console/policies/split-config/{client}` | Get split-tunnel AllowedIPs and config (JSON) for a client |
+| `GET` | `/api/console/policies/split-config/{client}/download` | Download the split-tunnel `.conf` file (attachment) |
+| `GET` | `/api/console/policies/split-config/{client}/qrcode` | Return a base64 PNG QR code of the split-tunnel config |
 
 ---
 
@@ -573,9 +580,11 @@ nslookup <your-domain>
 **Solution — Split tunneling via Access Policies:**
 1. Open the WireShield console → **Access Policies**
 2. Click **Add Policy** → set Client to the affected user, Target to the local subnet (e.g. `192.168.169.0/24`)
-3. Click **Apply Config** → copy the updated `AllowedIPs` line
-4. In the WireGuard client app, edit the tunnel config and replace the `AllowedIPs` line with the copied value
-5. Reconnect the VPN
+3. Click **Configure Split Tunnel** → pick the most reliable apply method for the client device:
+   - **Download** — click *Download .conf file*, then in the WireGuard app delete the old tunnel and import the downloaded file as a new one.
+   - **QR Code** — click *Generate QR Code*, then on mobile tap **+ → Create from QR code** and scan it.
+   - **Manual** (not recommended for long exclusions — use only if Download/QR aren't possible): copy the `AllowedIPs` line and replace it in the existing config.
+4. Reconnect the VPN so WireGuard picks up the new `AllowedIPs`
 
 **Verify the config is correct:**
 ```bash
