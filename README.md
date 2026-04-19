@@ -133,6 +133,8 @@ The client must update their WireGuard app with the new `AllowedIPs` and reconne
 - **Client management** via CLI (add, list, revoke, reset 2FA)
 - **Configurable log retention** with automatic cleanup
 - **Activity logging** with iptables-based traffic capture and DNS enrichment
+- **Self-healing watchdog** that detects WireGuard interface flaps, re-asserts portal firewall rules, and auto-restarts the DNS/TLS sniffer
+- **Diagnostic `/health` endpoint** exposing WireGuard state, iptables rules, database stats, and watchdog history for monitoring
 
 ---
 
@@ -331,6 +333,8 @@ The console provides:
 | HTTP redirector | Continuous | Redirects port 80 to HTTPS captive portal |
 | Activity log ingestion | 5s | Parses kernel logs into queryable database records |
 | Log retention cleanup | Daily | Purges activity logs older than retention period |
+| Interface watchdog | 30s | Tracks WireGuard interface state; logs flaps; re-inserts missing `INPUT ACCEPT` rules for ports 80/443 |
+| DNS + TLS SNI sniffer | Continuous | Auto-recovering sniffer; waits for `wg0` to come back up before resuming after interface drops |
 
 ### API Endpoints
 
@@ -344,7 +348,7 @@ The console provides:
 | `POST` | `/api/setup-verify` | Verify initial TOTP code during setup |
 | `POST` | `/api/verify` | Verify TOTP code for existing users |
 | `POST` | `/api/validate-session` | Check session token validity |
-| `GET` | `/health` | Service and database health check |
+| `GET` | `/health` | Diagnostic snapshot: database, WireGuard interface, iptables rules, watchdog state |
 
 **Admin Console:**
 
@@ -394,6 +398,41 @@ sudo systemctl restart wireshield.service
 ---
 
 ## Troubleshooting
+
+### Start here: the `/health` endpoint
+
+Before digging into logs, hit the diagnostic endpoint — it reports the state of every subsystem the portal depends on:
+
+```bash
+curl -sk https://<your-server>/health | jq
+```
+
+Example response:
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-04-19T10:12:34.567Z",
+  "database": { "status": "ok", "users": 5, "active_sessions": 2 },
+  "wireguard": { "status": "up", "interface": "wg0", "operstate": "up" },
+  "iptables_portal": { "80": "present", "443": "present" },
+  "watchdog": {
+    "iface_state": "up",
+    "last_transition": { "from": "down", "to": "up", "at": "..." },
+    "portal_rule_fixes": 0
+  }
+}
+```
+
+What each field tells you:
+
+| Field | `"ok"` / `"present"` means | Problem if not |
+|-------|----------------------------|----------------|
+| `status` | All subsystems healthy | `"degraded"` = at least one check below failed |
+| `database` | SQLite reachable, schema intact | Service won't be able to verify codes or track sessions |
+| `wireguard.status` | Kernel reports `wg0` as up | VPN clients cannot connect or reach captive portal |
+| `iptables_portal.80/443` | INPUT ACCEPT rule exists | Portal is firewall-blocked even though uvicorn is listening |
+| `watchdog.portal_rule_fixes` | `0` means stable | Non-zero = the watchdog had to re-add stripped firewall rules (wg-quick flaps) |
+| `watchdog.last_transition` | `null` means no flaps | Shows the most recent wg0 up/down transition for outage correlation |
 
 ### 1. No Internet After 2FA Verification
 
