@@ -4,54 +4,280 @@
 let allAuditLogs = [];
 let allActivityLogs = [];
 
+function _usersEscape(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 async function loadUsers(page = 1) {
     try {
         usersPage = page;
         const tbody = document.getElementById('users-table');
-        renderLoadingSkeleton(tbody, 8);
+        renderLoadingSkeleton(tbody, 9);
 
-        const response = await fetch(`/api/console/users?page=${page}&limit=20`, { cache: 'no-store' });
+        const searchEl = document.getElementById('users-search');
+        const searchTerm = searchEl ? searchEl.value.trim() : '';
+        const params = new URLSearchParams({ page: String(page), limit: '20' });
+        if (searchTerm) params.append('search', searchTerm);
+
+        const response = await fetch(`/api/console/users?${params.toString()}`, { cache: 'no-store' });
         const data = await response.json();
         usersPages = data.pages || 1;
 
         if (!data.users || data.users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">No users found</td></tr>';
+            tbody.textContent = '';
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 9;
+            td.style.cssText = 'text-align:center;color:var(--text-muted);padding:40px;';
+            td.textContent = 'No users found';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
             renderPagination('users-pagination', usersPage, usersPages, `loadUsers(${usersPage - 1})`, `loadUsers(${usersPage + 1})`);
             return;
         }
 
-        tbody.innerHTML = data.users.map(user => `
+        const rowsHtml = data.users.map(user => {
+            const cidEsc = _usersEscape(user.client_id || user.id || 'Unknown');
+            const v4 = _usersEscape(user.wg_ipv4 || user.ipv4 || 'N/A');
+            const v6 = _usersEscape(user.wg_ipv6 || user.ipv6 || 'N/A');
+            const sessColor = user.session_status === 'Active' ? 'var(--success)' : 'var(--text-muted)';
+            const sessText = _usersEscape(user.session_status || 'Offline');
+            const durText = _usersEscape(user.active_duration || '-');
+            const totpColor = user.totp_secret ? 'var(--success)' : 'var(--error)';
+            const totpText = user.totp_secret ? 'Enabled' : 'Not set';
+            const consColor = user.console_access ? 'var(--success)' : 'var(--text-muted)';
+            const consText = user.console_access ? 'Granted' : 'Restricted';
+            const createdText = user.created_at ? new Date(user.created_at).toLocaleString() : '-';
+            return `
             <tr>
-                <td>${user.client_id || user.id || 'Unknown'}</td>
-                <td>${user.wg_ipv4 || user.ipv4 || 'N/A'}</td>
-                <td>${user.wg_ipv6 || user.ipv6 || 'N/A'}</td>
-                <td>
-                    <span style="color: ${user.session_status === 'Active' ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
-                        ${user.session_status || 'Offline'}
-                    </span>
+                <td>${cidEsc}</td>
+                <td>${v4}</td>
+                <td>${v6}</td>
+                <td><span style="color:${sessColor};font-weight:600;">${sessText}</span></td>
+                <td>${durText}</td>
+                <td><span style="color:${totpColor};font-weight:600;">${totpText}</span></td>
+                <td><span style="color:${consColor};font-weight:600;">${consText}</span></td>
+                <td>${_usersEscape(createdText)}</td>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-ghost" style="padding:4px 8px;font-size:12px;" title="Download WireGuard config"
+                        onclick="downloadUserConfig('${cidEsc}')">
+                        Config
+                    </button>
+                    <button class="btn btn-ghost" style="padding:4px 8px;font-size:12px;color:var(--error);margin-left:4px;" title="Revoke client"
+                        onclick="revokeUser('${cidEsc}')">
+                        Revoke
+                    </button>
                 </td>
-                <td>${user.active_duration || '-'}</td>
-                <td>
-                    <span style="color: ${user.totp_secret ? 'var(--success)' : 'var(--error)'}; font-weight: 600;">
-                        ${user.totp_secret ? 'Enabled' : 'Not set'}
-                    </span>
-                </td>
-                <td>
-                    <span style="color: ${user.console_access ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
-                        ${user.console_access ? 'Granted' : 'Restricted'}
-                    </span>
-                </td>
-                <td>${new Date(user.created_at).toLocaleString()}</td>
-            </tr>
-        `).join('');
+            </tr>`;
+        }).join('');
+
+        // All interpolated values are escaped via _usersEscape above. innerHTML is
+        // safe here — values sourced from API are run through _usersEscape before
+        // being inlined into the template literal.
+        tbody.innerHTML = rowsHtml; // eslint-disable-line no-unsanitized/property
 
         renderPagination('users-pagination', usersPage, usersPages, `loadUsers(${usersPage - 1})`, `loadUsers(${usersPage + 1})`);
     } catch (error) {
         console.error('Error loading users:', error);
-        document.getElementById('users-table').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--error);padding:40px;">Error loading users</td></tr>';
+        const tbody = document.getElementById('users-table');
+        tbody.textContent = '';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 9;
+        td.style.cssText = 'text-align:center;color:var(--error);padding:40px;';
+        td.textContent = 'Error loading users';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         renderPagination('users-pagination', 1, 1, '', '');
     }
 }
+
+function reloadUsers() {
+    loadUsers(1);
+}
+
+// ── User management actions ──────────────────────────────────────────────────
+
+function downloadUserConfig(clientId) {
+    const url = `/api/console/users/${encodeURIComponent(clientId)}/config`;
+    fetch(url, { cache: 'no-store' })
+        .then(r => {
+            if (!r.ok) {
+                if (r.status === 404) {
+                    return r.json().then(d => { throw new Error(d.detail || 'Config not found'); });
+                }
+                throw new Error(`HTTP ${r.status}`);
+            }
+            const disp = r.headers.get('Content-Disposition') || '';
+            const m = disp.match(/filename="?([^"]+)"?/);
+            const filename = m ? m[1] : `${clientId}.conf`;
+            return r.blob().then(blob => ({ blob, filename }));
+        })
+        .then(({ blob, filename }) => {
+            const a = document.createElement('a');
+            const blobUrl = URL.createObjectURL(blob);
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        })
+        .catch(err => {
+            alert(`Download failed: ${err.message}`);
+        });
+}
+
+function revokeUser(clientId) {
+    if (!confirm(`Revoke WireGuard client "${clientId}"?\n\nThis removes the peer from WireGuard, deletes their .conf file, and clears all 2FA sessions. This cannot be undone.`)) {
+        return;
+    }
+    fetch(`/api/console/users/${encodeURIComponent(clientId)}`, {
+        method: 'DELETE', cache: 'no-store',
+    })
+        .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                loadUsers(usersPage);
+            } else {
+                alert(`Revoke failed: ${(data && data.detail) || 'Unknown error'}`);
+            }
+        })
+        .catch(err => alert(`Revoke failed: ${err.message}`));
+}
+
+// ── Create User Modal ────────────────────────────────────────────────────────
+
+function openCreateUserModal() {
+    document.getElementById('new-user-name').value = '';
+    document.getElementById('new-user-expiry').value = '';
+    document.getElementById('create-user-error').style.display = 'none';
+    const successEl = document.getElementById('create-user-success');
+    successEl.style.display = 'none';
+    while (successEl.firstChild) successEl.removeChild(successEl.firstChild);
+    const submitBtn = document.getElementById('create-user-submit-btn');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Create Client';
+    submitBtn.onclick = submitCreateUser;
+    document.getElementById('create-user-modal').style.display = 'flex';
+    setTimeout(() => document.getElementById('new-user-name').focus(), 50);
+}
+
+function closeCreateUserModal() {
+    document.getElementById('create-user-modal').style.display = 'none';
+}
+
+function _showCreateUserError(msg) {
+    const el = document.getElementById('create-user-error');
+    el.textContent = msg;
+    el.style.display = 'block';
+    document.getElementById('create-user-success').style.display = 'none';
+}
+
+function _renderCreateUserSuccess(data) {
+    const successEl = document.getElementById('create-user-success');
+    while (successEl.firstChild) successEl.removeChild(successEl.firstChild);
+
+    const box = document.createElement('div');
+    box.style.cssText = 'padding:12px;background:var(--success-light);border:1px solid var(--success);border-radius:8px;margin-top:8px;font-size:13px;color:var(--text-main);';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:6px;font-weight:600;color:var(--success);margin-bottom:6px;';
+    header.textContent = '✓ Client created';
+    box.appendChild(header);
+
+    function row(label, value, mono) {
+        const d = document.createElement('div');
+        const l = document.createTextNode(label + ': ');
+        d.appendChild(l);
+        const v = document.createElement(mono ? 'code' : 'strong');
+        v.textContent = value;
+        d.appendChild(v);
+        return d;
+    }
+    box.appendChild(row('Name', data.name));
+    box.appendChild(row('IPv4', data.ipv4, true));
+    box.appendChild(row('IPv6', data.ipv6, true));
+    if (data.expires) box.appendChild(row('Expires', data.expires));
+
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary btn-block';
+    btn.style.marginTop = '12px';
+    btn.textContent = 'Download .conf file';
+    btn.onclick = () => downloadUserConfig(data.name);
+    box.appendChild(btn);
+
+    successEl.appendChild(box);
+    successEl.style.display = 'block';
+}
+
+function submitCreateUser() {
+    const name = document.getElementById('new-user-name').value.trim();
+    const expiryRaw = document.getElementById('new-user-expiry').value.trim();
+    const submitBtn = document.getElementById('create-user-submit-btn');
+
+    if (!name) {
+        _showCreateUserError('Client name is required.');
+        return;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+        _showCreateUserError('Client name may only contain letters, digits, underscore, and dash.');
+        return;
+    }
+    if (name.length > 15) {
+        _showCreateUserError('Client name must be at most 15 characters.');
+        return;
+    }
+
+    const payload = { client_id: name };
+    if (expiryRaw) {
+        const days = parseInt(expiryRaw, 10);
+        if (isNaN(days) || days <= 0) {
+            _showCreateUserError('Expiry must be a positive number of days.');
+            return;
+        }
+        payload.expiry_days = days;
+    }
+
+    document.getElementById('create-user-error').style.display = 'none';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating…';
+
+    fetch('/api/console/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        cache: 'no-store',
+    })
+        .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+        .then(({ ok, data }) => {
+            if (!ok || !data.success) {
+                _showCreateUserError((data && data.detail) || 'Failed to create client.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Client';
+                return;
+            }
+            _renderCreateUserSuccess(data);
+            submitBtn.textContent = 'Done';
+            submitBtn.onclick = closeCreateUserModal;
+            loadUsers(usersPage);
+        })
+        .catch(err => {
+            _showCreateUserError(`Network error: ${err.message}`);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create Client';
+        });
+}
+
+// Escape-key close for the Create User modal
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('create-user-modal');
+        if (modal && modal.style.display !== 'none') closeCreateUserModal();
+    }
+});
 
 async function loadAuditLogs(page = 1) {
     try {

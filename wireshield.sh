@@ -1515,9 +1515,18 @@ function uninstallWg() {
 	read -rp "$(echo -ne "  Proceed with removal? ${GRAY}[y/N]${NC} > ")" -e REMOVE
 	REMOVE=${REMOVE:-N}
 	if [[ $REMOVE == 'y' ]]; then
+		# Ask about Let's Encrypt certs (only if installed that way)
+		local REMOVE_LE_CERTS=N
+		if [[ -f /etc/wireshield/2fa/config.env ]] && \
+		   grep -q "^WS_2FA_SSL_TYPE=letsencrypt" /etc/wireshield/2fa/config.env 2>/dev/null; then
+			echo ""
+			read -rp "$(echo -ne "  Also delete Let's Encrypt certificates? ${GRAY}[y/N]${NC} > ")" -e REMOVE_LE_CERTS
+			REMOVE_LE_CERTS=${REMOVE_LE_CERTS:-N}
+		fi
+
 		# Collect client names before removing /etc/wireguard
 		CLIENT_NAMES=()
-		if [[ -f "/etc/wireguard/${SERVER_WG_NIC}.conf" ]]; then
+		if [[ -n "${SERVER_WG_NIC}" ]] && [[ -f "/etc/wireguard/${SERVER_WG_NIC}.conf" ]]; then
 			while IFS= read -r name; do
 				CLIENT_NAMES+=("${name}")
 			done < <(grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | awk '{print $3}')
@@ -1528,8 +1537,32 @@ function uninstallWg() {
 
 		checkOS
 
+		# ── Step 1: Stop 2FA service FIRST so its watchdog can't re-insert
+		#            iptables rules while we're tearing them down.
+		_ws_ui_info "Stopping 2FA service..."
+		if [[ ${OS} == 'alpine' ]]; then
+			rc-service wireshield stop 2>/dev/null || true
+			rc-update del wireshield 2>/dev/null || true
+			rm -f /etc/init.d/wireshield 2>/dev/null || true
+		else
+			systemctl stop wireshield.service 2>/dev/null || true
+			systemctl disable wireshield.service 2>/dev/null || true
+			systemctl stop wireshield-2fa 2>/dev/null || true
+			systemctl disable wireshield-2fa 2>/dev/null || true
+			systemctl stop wireshield-2fa-renew.timer 2>/dev/null || true
+			systemctl disable wireshield-2fa-renew.timer 2>/dev/null || true
+			systemctl stop wireshield-2fa-renew.service 2>/dev/null || true
+			systemctl disable wireshield-2fa-renew.service 2>/dev/null || true
+		fi
+
+		# ── Step 2: wg-quick down — cleanly triggers PostDown hooks, which
+		#            remove most iptables/ipset rules installed by WireShield.
+		if [[ -n "${SERVER_WG_NIC}" ]] && [[ -f "/etc/wireguard/${SERVER_WG_NIC}.conf" ]]; then
+			_ws_ui_info "Shutting down WireGuard interface ${SERVER_WG_NIC}..."
+			wg-quick down "${SERVER_WG_NIC}" 2>/dev/null || true
+		fi
+
 		_ws_ui_info "Removing WireGuard services..."
-		
 		if [[ ${OS} == 'alpine' ]]; then
 			rc-service "wg-quick.${SERVER_WG_NIC}" stop 2>/dev/null || true
 			rc-update del "wg-quick.${SERVER_WG_NIC}" 2>/dev/null || true
@@ -1569,7 +1602,9 @@ function uninstallWg() {
 		rm -rf /etc/wireguard 2>/dev/null || true
 		rm -f /etc/sysctl.d/wg.conf 2>/dev/null || true
 
-		# Remove 2FA gating firewall structures
+		# Remove 2FA gating firewall structures (defensive — wg-quick down
+		# should have handled most of this, but re-run in case the interface
+		# was already absent or PostDown failed).
 		_ws_ui_info "Removing 2FA firewall rules..."
 		iptables -D FORWARD -j WS_2FA_PORTAL 2>/dev/null || true
 		iptables -F WS_2FA_PORTAL 2>/dev/null || true
@@ -1585,6 +1620,27 @@ function uninstallWg() {
 		ip6tables -t nat -X WS_2FA_REDIRECT6 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
+
+		# Remove watchdog-inserted rules and split-tunnel policy NAT rules that
+		# are NOT tied to wg-quick PostDown. These are added by the Python
+		# watchdog/policies modules at runtime.
+		_ws_ui_info "Removing runtime-inserted iptables rules..."
+		# Global ESTABLISHED,RELATED rule inserted by policies.py
+		while iptables -C FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; do
+			iptables -D FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || break
+		done
+		# Any remaining MASQUERADE entries in POSTROUTING that reference the WG
+		# subnet as source (policy rules). Iterate until no matches remain.
+		if [[ -n "${SERVER_WG_IPV4}" ]]; then
+			local wg_subnet="${SERVER_WG_IPV4%.*}.0/24"
+			while iptables -t nat -S POSTROUTING 2>/dev/null | grep -q "${wg_subnet%/*}"; do
+				local rule
+				rule=$(iptables -t nat -S POSTROUTING 2>/dev/null | grep "${wg_subnet%/*}" | head -1 | sed 's/^-A /-D /')
+				[[ -z "$rule" ]] && break
+				# shellcheck disable=SC2086
+				eval iptables -t nat $rule 2>/dev/null || break
+			done
+		fi
 
 		# Remove activity logging rules (best effort)
 		if pgrep firewalld >/dev/null 2>&1; then
@@ -1634,23 +1690,15 @@ function uninstallWg() {
 			crontab -l 2>/dev/null | sed '/wireshield-archive-logs/d' | crontab - 2>/dev/null || true
 		fi
 
-		# Remove 2FA service and related services
-		_ws_ui_info "Removing 2FA services..."
-		systemctl stop wireshield 2>/dev/null || true
-		systemctl disable wireshield 2>/dev/null || true
-		systemctl stop wireshield-2fa 2>/dev/null || true
-		systemctl disable wireshield-2fa 2>/dev/null || true
-		systemctl stop wireshield-2fa-renew.timer 2>/dev/null || true
-		systemctl disable wireshield-2fa-renew.timer 2>/dev/null || true
-		systemctl stop wireshield-2fa-renew.service 2>/dev/null || true
-		systemctl disable wireshield-2fa-renew.service 2>/dev/null || true
-
-		# Remove systemd service files
-		rm -f /etc/systemd/system/wireshield.service 2>/dev/null || true
-		rm -f /etc/systemd/system/wireshield-2fa.service 2>/dev/null || true
-		rm -f /etc/systemd/system/wireshield-2fa-renew.timer 2>/dev/null || true
-		rm -f /etc/systemd/system/wireshield-2fa-renew.service 2>/dev/null || true
-		systemctl daemon-reload 2>/dev/null || true
+		# Remove systemd service/timer unit files (services were already
+		# stopped in Step 1). Glob pattern catches any wireshield-* variant.
+		_ws_ui_info "Removing systemd unit files..."
+		if [[ ${OS} != 'alpine' ]]; then
+			rm -f /etc/systemd/system/wireshield*.service 2>/dev/null || true
+			rm -f /etc/systemd/system/wireshield*.timer 2>/dev/null || true
+			systemctl reset-failed 2>/dev/null || true
+			systemctl daemon-reload 2>/dev/null || true
+		fi
 
 		# Remove 2FA directory (database, certificates, configs, console assets)
 		_ws_ui_info "Removing 2FA configuration, database, and console data..."
@@ -1658,6 +1706,23 @@ function uninstallWg() {
 
 		# Remove Let's Encrypt symlinks if they exist
 		rm -f /usr/local/bin/wireshield-renew-cert 2>/dev/null || true
+
+		# Optionally remove Let's Encrypt certificates
+		if [[ "${REMOVE_LE_CERTS}" == "y" || "${REMOVE_LE_CERTS}" == "Y" ]]; then
+			_ws_ui_info "Removing Let's Encrypt certificates..."
+			if command -v certbot &>/dev/null; then
+				# Collect WireShield-issued certificate names (best-effort)
+				local _ws_cert_names
+				_ws_cert_names=$(certbot certificates 2>/dev/null \
+					| awk -F ': ' '/Certificate Name/ {print $2}')
+				if [[ -n "${_ws_cert_names}" ]]; then
+					while IFS= read -r _cn; do
+						[[ -z "$_cn" ]] && continue
+						certbot delete --cert-name "$_cn" --non-interactive 2>/dev/null || true
+					done <<< "${_ws_cert_names}"
+				fi
+			fi
+		fi
 
 		# Remove Python packages installed for 2FA (optional, only if user confirms)
 		# Keep commented as removing python3 might break other services
@@ -1674,33 +1739,38 @@ function uninstallWg() {
 			done
 		done
 
-		# Reload sysctl and check if WireGuard is still running
+		# Reload sysctl defaults
 		if [[ ${OS} != 'alpine' ]]; then
 			sysctl --system 2>/dev/null || true
 		fi
 
-		local WG_RUNNING=1
-		if [[ ${OS} == 'alpine' ]]; then
-			rc-service --quiet "wg-quick.${SERVER_WG_NIC}" status &>/dev/null && WG_RUNNING=0
-		else
-			systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}" 2>/dev/null && WG_RUNNING=0
+		# Final verification — check the interface itself is gone
+		local WG_STILL_UP=0
+		if [[ -n "${SERVER_WG_NIC}" ]] && ip link show "${SERVER_WG_NIC}" &>/dev/null; then
+			WG_STILL_UP=1
+			# Last-resort: delete the interface directly
+			ip link delete "${SERVER_WG_NIC}" 2>/dev/null || true
+			ip link show "${SERVER_WG_NIC}" &>/dev/null || WG_STILL_UP=0
 		fi
 
-		if [[ ${WG_RUNNING} -eq 0 ]]; then
+		if [[ ${WG_STILL_UP} -eq 1 ]]; then
 			echo ""
-			_ws_ui_error "WireGuard service still running. Manual cleanup may be needed."
+			_ws_ui_error "WireGuard interface ${SERVER_WG_NIC} still present. Manual cleanup may be needed:"
+			_ws_ui_info "  sudo ip link delete ${SERVER_WG_NIC}"
 			exit 1
 		else
 			echo ""
 			_ws_ui_divider
 			echo ""
-			_ws_ui_success "WireGuard uninstalled"
-			_ws_ui_success "2FA service removed"
-			_ws_ui_success "SSL certificates cleaned up"
-			_ws_ui_success "Client configurations removed"
-			_ws_ui_success "Systemd services and timers removed"
+			_ws_ui_success "WireGuard interface removed"
+			_ws_ui_success "2FA service stopped and removed"
+			_ws_ui_success "Firewall rules, ipsets, and NAT entries cleaned"
+			_ws_ui_success "SSL certificates and renewal timers removed"
+			_ws_ui_success "Client configurations deleted"
+			_ws_ui_success "Systemd units cleared and daemon reloaded"
 			echo ""
-			_ws_ui_info "Python packages remain installed (safe, may be used by other services)."
+			_ws_ui_info "Python packages remain installed (safe — may be used by other services)."
+			_ws_ui_info "Distribution packages (wireguard-tools, qrencode) were removed where possible."
 			echo ""
 			exit 0
 		fi
