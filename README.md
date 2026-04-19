@@ -125,7 +125,8 @@ After applying the config, the client must **reconnect** the tunnel (WireGuard r
 
 ### Admin Console
 - **Dashboard** with real-time statistics, charts, and active session monitoring
-- **User management** with pagination, search, and per-client access control
+- **User management** with pagination, search, in-browser **Create / Revoke** actions and per-user **Download `.conf`** — no SSH required
+- **Per-client access control** (admin console permission, expiry dates)
 - **Split Tunnel** page with per-client Tunnel Bypass Rules and a config generator (download `.conf`, QR code, or copyable AllowedIPs)
 - **Traffic activity** logs with DNS resolution and protocol analysis
 - **Bandwidth insights** with per-client daily upload/download tracking
@@ -308,7 +309,7 @@ Access the web console at `https://<server-ip>/console` (requires `console_acces
 The console provides:
 - **Overview** with active users, sessions, bandwidth, and event charts
 - **Bandwidth Insights** with per-client upload/download data
-- **User Management** with status, IPs, and access control
+- **User Management** with status, IPs, access control — plus in-browser **Create User**, per-row **Download Config** (`.conf` file) and **Revoke** buttons
 - **Audit Trail** for security events
 - **Traffic Activity** with connection logs, DNS resolution, and filtering
 - **Split Tunnel** with Tunnel Bypass Rules — define which local IPs or subnets bypass the VPN for each client, then generate an updated WireGuard config (download `.conf`, QR code, or copyable AllowedIPs)
@@ -361,6 +362,10 @@ The console provides:
 |--------|------|-------------|
 | `GET` | `/console` | Admin dashboard |
 | `GET` | `/api/console/users` | User list with pagination and search |
+| `POST` | `/api/console/users` | Create a new WireGuard client (JSON body: `client_id`, `expiry_days?`) |
+| `GET` | `/api/console/users/{client}/config` | Download the client's `.conf` file |
+| `GET` | `/api/console/users/{client}/qrcode` | Return a base64 PNG QR code of the client config |
+| `DELETE` | `/api/console/users/{client}` | Revoke a client (remove peer, delete config, clear sessions) |
 | `GET` | `/api/console/audit-logs` | Audit events with filtering |
 | `GET` | `/api/console/activity-logs` | Traffic logs with DNS resolution |
 | `GET` | `/api/console/bandwidth-usage` | Per-client bandwidth data |
@@ -701,8 +706,9 @@ WireShield/
     │   │   ├── database.py       # SQLite schema and migrations
     │   │   ├── security.py       # Auth, rate limiting, ipset
     │   │   ├── policies.py       # Split-tunnel rules: AllowedIPs calculator + config generator
-    │   │   ├── tasks.py          # Background monitors
-    │   │   └── sniffer.py        # DNS packet capture
+    │   │   ├── wireguard.py      # Client lifecycle: create/revoke/download .conf (Python mirror of ws_add_client)
+    │   │   ├── tasks.py          # Background monitors + interface watchdog
+    │   │   └── sniffer.py        # DNS + TLS SNI packet capture (auto-recovering)
     │   └── routers/
     │       ├── auth.py           # 2FA endpoints
     │       ├── console.py        # Admin console endpoints
