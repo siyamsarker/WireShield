@@ -2607,3 +2607,161 @@ tbody tr:last-child td {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* ── Info banner (modal explainers) ────────────────────────────────────────── */
+.info-banner {
+    padding: 12px 14px;
+    background: var(--accent-light);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-main);
+}
+
+.info-banner-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+.info-banner-body {
+    color: var(--text-main);
+    font-size: 12.5px;
+    line-height: 1.6;
+}
+
+.info-banner-body code {
+    background: var(--bg-card);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--text-main);
+}
+
+.info-banner-body em {
+    color: var(--text-main);
+    font-style: italic;
+    font-weight: 500;
+}
+
+.info-banner-body strong {
+    color: var(--text-main);
+}
+
+/* ── Critical multi-step apply flow ────────────────────────────────────────── */
+.critical-steps {
+    background: var(--warning-light);
+    border: 1px solid var(--warning);
+    border-radius: 10px;
+    padding: 12px 14px 12px 14px;
+}
+
+.critical-steps-title {
+    font-weight: 600;
+    color: var(--text-main);
+    font-size: 13px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.critical-steps-title::before {
+    content: "⚠";
+    color: var(--warning);
+    font-size: 15px;
+}
+
+.critical-steps-list {
+    margin: 0;
+    padding-left: 22px;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--text-main);
+}
+
+.critical-steps-list li {
+    margin-bottom: 3px;
+}
+
+.critical-steps-list code {
+    background: var(--bg-card);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.critical-steps-list em {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ── Verify routing details panel ──────────────────────────────────────────── */
+.verify-details summary {
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px 0;
+    user-select: none;
+}
+
+.verify-details summary:hover {
+    color: var(--accent);
+}
+
+.verify-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 6px;
+}
+
+.verify-os {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12px;
+}
+
+.verify-os-label {
+    font-weight: 600;
+    color: var(--text-main);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.verify-cmd {
+    display: inline-block;
+    background: var(--bg-card);
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    color: var(--text-main);
+    width: fit-content;
+}
+
+.verify-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.verify-hint code {
+    background: var(--bg-card);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 10.5px;
+}

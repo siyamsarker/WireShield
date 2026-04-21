@@ -1196,10 +1196,12 @@ function newClient() {
 		echo -e "${GREEN}Client will not expire${NC}"
 	fi
 
-	HOME_DIR=$(getHomeDirForClient "${CLIENT_NAME}")
-
-	# Create client file with simple name
-	CLIENT_CONFIG="${HOME_DIR}/${CLIENT_NAME}.conf"
+	# Canonical storage for client configs — same path used by the console
+	# so both the CLI and the web UI find configs in a single place.
+	local WS_CLIENTS_DIR="/etc/wireshield/clients"
+	mkdir -p "${WS_CLIENTS_DIR}" 2>/dev/null || true
+	chmod 700 "${WS_CLIENTS_DIR}" 2>/dev/null || true
+	CLIENT_CONFIG="${WS_CLIENTS_DIR}/${CLIENT_NAME}.conf"
 
 	echo "[Interface]
 PrivateKey = ${CLIENT_PRIV_KEY}
@@ -1217,6 +1219,7 @@ Endpoint = ${ENDPOINT}
 AllowedIPs = ${ALLOWED_IPS}
 # Keep WireGuard handshakes active so 2FA session monitor stays accurate
 PersistentKeepalive = 25" >"${CLIENT_CONFIG}"
+	chmod 600 "${CLIENT_CONFIG}" 2>/dev/null || true
 
 	# Add the client as a peer to the server configuration
 	if [[ -n "${EXPIRY_DATE}" ]]; then
@@ -1902,11 +1905,15 @@ function showClientQR() {
 		return 1
 	fi
 
-	home_dir=$(getHomeDirForClient "${name}")
-	cfg="${home_dir}/${name}.conf"
+	# Look in canonical location first, fall back to legacy per-user home
+	cfg="/etc/wireshield/clients/${name}.conf"
+	if [[ ! -f "${cfg}" ]]; then
+		home_dir=$(getHomeDirForClient "${name}")
+		cfg="${home_dir}/${name}.conf"
+	fi
 
 	if [[ ! -f "${cfg}" ]]; then
-		_ws_ui_error "Config file not found: ${cfg}"
+		_ws_ui_error "Config file not found for client '${name}'"
 		return 1
 	fi
 
@@ -2639,11 +2646,15 @@ function ws_get_client_config() {
 		echo "Error: missing client name" 1>&2
 		return 2
 	fi
-	local home_dir cfg
-	home_dir=$(getHomeDirForClient "$name")
-	cfg="${home_dir}/${name}.conf"
+	# Canonical location first, then legacy per-user home for backwards compat
+	local cfg home_dir
+	cfg="/etc/wireshield/clients/${name}.conf"
 	if [[ ! -f "$cfg" ]]; then
-		echo "Error: config not found for client '$name' at $cfg" 1>&2
+		home_dir=$(getHomeDirForClient "$name")
+		cfg="${home_dir}/${name}.conf"
+	fi
+	if [[ ! -f "$cfg" ]]; then
+		echo "Error: config not found for client '$name'" 1>&2
 		return 1
 	fi
 	cat "$cfg"
@@ -2666,9 +2677,11 @@ function ws_revoke_client() {
 	sed -i "/^### Client ${name} | Expires: .*$/,/^$/d" "$cfg" 2>/dev/null || true
 	sed -i "/^### Client ${name}\$/,/^$/d" "$cfg"
 
-	# Remove client config files
+	# Remove client config files from all known locations (canonical +
+	# legacy per-user homes from older installs).
 	local home_dir
 	home_dir=$(getHomeDirForClient "$name")
+	rm -f "/etc/wireshield/clients/${name}.conf"
 	rm -f "${home_dir}/${name}.conf"
 	find /root /home /etc/wireguard -maxdepth 2 -type f -name "${name}.conf" -delete 2>/dev/null || true
 
@@ -2747,10 +2760,12 @@ function ws_add_client() {
 		fi
 	fi
 
-	# Client file
-	local home_dir client_cfg endpoint
-	home_dir=$(getHomeDirForClient "$name")
-	client_cfg="${home_dir}/${name}.conf"
+	# Client file — same canonical path used by newClient() and the console
+	local client_cfg endpoint
+	local WS_CLIENTS_DIR="/etc/wireshield/clients"
+	mkdir -p "${WS_CLIENTS_DIR}" 2>/dev/null || true
+	chmod 700 "${WS_CLIENTS_DIR}" 2>/dev/null || true
+	client_cfg="${WS_CLIENTS_DIR}/${name}.conf"
 	endpoint="${SERVER_PUB_IP}:${SERVER_PORT}"
 	if [[ ${SERVER_PUB_IP} =~ .*:.* ]] && [[ ${SERVER_PUB_IP} != *"["* ]] && [[ ${SERVER_PUB_IP} != *"]"* ]]; then
 		endpoint="[${SERVER_PUB_IP}]:${SERVER_PORT}"

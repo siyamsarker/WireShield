@@ -91,24 +91,39 @@ The **Split Tunnel** page (under *Network* in the console) solves this by lettin
 #### How it works
 
 1. Admin clicks **Add Rule** in the console: client `uloop`, target `192.168.169.0/24`
-2. The system computes `AllowedIPs` = `0.0.0.0/0` minus `192.168.169.0/24` (result: 24 complementary CIDRs)
-3. Admin opens **Configure Split Tunnel** and shares the updated config with the client
-4. Client imports the new config (or scans the QR code) and reconnects
+2. The system computes `AllowedIPs` = `0.0.0.0/0` minus `192.168.169.0/24` (result: ~24 complementary CIDRs)
+3. Admin opens **Generate Client Config** and shares the updated config with the client
+4. Client deletes the old tunnel, imports the new config (or scans the QR code) and activates it
 5. Traffic to `192.168.169.x` now goes directly to the local network; everything else still goes through VPN
+
+> **Prerequisite:** the client device must already have a direct route to the target (e.g. on the same LAN as `192.168.169.121`). If the client is remote and has no independent path to the target, split tunneling alone cannot reach it — a gateway peer on the target LAN would be required.
 
 #### Applying the config
 
-After creating or modifying rules, click **Configure Split Tunnel** in the console. A step-by-step modal opens with three ways to apply the updated config — pick the one that best matches the client device:
+After creating or modifying rules, click **Generate Client Config** in the console. A step-by-step modal opens with three ways to apply the updated config — pick the one that best matches the client device:
 
 | Tab | Best for | How it works |
 |-----|----------|-------------|
-| **Download** | Desktop clients (Windows, macOS, Linux) | One-click download of a ready-to-import `.conf` file. Delete the old tunnel in the WireGuard app and import this file as a new tunnel. |
-| **QR Code** | Mobile clients (iOS, Android) | Generate a QR code and scan it with the WireGuard app (`+` → **Create from QR code**) to import the tunnel in one tap. |
-| **Manual** | Advanced users / troubleshooting | Copy the calculated `AllowedIPs` line (and optionally the full config) to paste into an existing config manually. |
+| **Download** | Desktop clients (Windows, macOS, Linux) | One-click download of a ready-to-import `.conf` file. The file has a comment header listing every excluded target so it's self-documenting. |
+| **QR Code** | Mobile clients (iOS, Android) | Generate a QR code and scan it with the VPN client app (`+` → **Create from QR code**) to import the tunnel in one tap. |
+| **Manual** | Advanced users / troubleshooting | Copy the calculated `AllowedIPs` line into an existing config. Not recommended for long exclusions — a single typo silently breaks routing. |
 
-> **Why prefer Download / QR over Manual:** the split-tunnel `AllowedIPs` is a long comma-separated list (often 20–40 CIDRs). Manual editing is error-prone — a single missing comma or a browser line break will silently break routing. The Download and QR paths give the client a clean, valid config that cannot be mis-pasted.
+**Critical apply steps (all tabs):**
+1. Download the config (or generate the QR).
+2. **Deactivate** the current tunnel in the client app.
+3. **Delete** the old tunnel entry — don't just re-import on top, or stale routes may remain.
+4. Import the new tunnel.
+5. Activate it.
 
-After applying the config, the client must **reconnect** the tunnel (WireGuard reads `AllowedIPs` only at connection time) for the split tunneling to take effect.
+After applying, you can verify routing on the client machine:
+
+| OS | Command | Expected |
+|----|---------|---------|
+| Linux / macOS | `ip route get <target-ip>` | Must NOT show `dev wg0` |
+| Windows | `route print <target-ip>` | Interface should be the LAN adapter, not the tunnel |
+| macOS (alt) | `route -n get <target-ip>` | `interface:` line should be `en0`/`en1`, not `utun` |
+
+If any of these show the tunnel interface, the new config didn't take effect — delete the tunnel and re-import.
 
 ---
 
@@ -119,6 +134,7 @@ After applying the config, the client must **reconnect** the tunnel (WireGuard r
 - **TLS/SSL** with Let's Encrypt auto-renewal or self-signed certificates
 - **Rate limiting** at 30 requests per 60 seconds per IP/endpoint
 - **ipset-based firewall** for O(1) allowlist lookups (IPv4 + IPv6)
+- **Session-gated portal pages** — `/success`, `/console` and user APIs reject callers without a non-expired 2FA session
 - **Per-client split-tunnel policies** for excluding local IPs, CIDRs, or domains from the VPN tunnel
 - **WireGuard handshake monitoring** with 3-second polling for real-time session tracking
 - **Comprehensive audit logging** for all authentication events
@@ -219,6 +235,10 @@ sudo journalctl -u wireshield.service -f   # Live logs
 ├── static/                   # CSS, JS, fonts
 └── .venv/                    # Python virtual environment
 
+/etc/wireshield/clients/       # Canonical location for generated client .conf files
+└── <client>.conf             # Both the CLI (ws_add_client, newClient) and the
+                              # console's "Create User" write here. Mode 0700/0600.
+
 /etc/systemd/system/
 ├── wireshield.service        # 2FA service unit
 └── wireshield-2fa-renew.timer  # Let's Encrypt renewal (if applicable)
@@ -304,7 +324,10 @@ The menu is organized into categories: **Client Management**, **Server Operation
 
 ### Admin Console
 
-Access the web console at `https://<server-ip>/console` (requires `console_access` permission).
+Access the web console at `https://<server-ip>/console`. Two conditions must both hold:
+
+1. The client must have `console_access = 1` in the users table.
+2. The client must have an **active (non-expired) 2FA session**. Expired sessions are denied access even if `console_access = 1`, so an idle admin has to re-verify TOTP at the captive portal before they can reach the console again.
 
 The console provides:
 - **Overview** with active users, sessions, bandwidth, and event charts
@@ -585,7 +608,7 @@ nslookup <your-domain>
 **Solution — Split tunneling via Tunnel Bypass Rules:**
 1. Open the WireShield console → **Split Tunnel** (under *Network* in the sidebar)
 2. Click **Add Rule** → set Client to the affected user, Target to the local subnet (e.g. `192.168.169.0/24`)
-3. Click **Configure Split Tunnel** → pick the most reliable apply method for the client device:
+3. Click **Generate Client Config** → pick the most reliable apply method for the client device:
    - **Download** — click *Download .conf file*, then in the WireGuard app delete the old tunnel and import the downloaded file as a new one.
    - **QR Code** — click *Generate QR Code*, then on mobile tap **+ → Create from QR code** and scan it.
    - **Manual** (not recommended for long exclusions — use only if Download/QR aren't possible): copy the `AllowedIPs` line and replace it in the existing config.

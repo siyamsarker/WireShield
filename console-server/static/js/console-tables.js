@@ -61,7 +61,7 @@ async function loadUsers(page = 1) {
                 <td><span style="color:${consColor};font-weight:600;">${consText}</span></td>
                 <td>${_usersEscape(createdText)}</td>
                 <td style="white-space:nowrap;">
-                    <button class="btn btn-ghost" style="padding:4px 8px;font-size:12px;" title="Download WireGuard config"
+                    <button class="btn btn-ghost" style="padding:4px 8px;font-size:12px;" title="Download client config"
                         onclick="downloadUserConfig('${cidEsc}')">
                         Config
                     </button>
@@ -131,7 +131,15 @@ function downloadUserConfig(clientId) {
 }
 
 function revokeUser(clientId) {
-    if (!confirm(`Revoke WireGuard client "${clientId}"?\n\nThis removes the peer from WireGuard, deletes their .conf file, and clears all 2FA sessions. This cannot be undone.`)) {
+    const message =
+        `Revoke client "${clientId}"?\n\n` +
+        `This will:\n` +
+        `  • Remove the peer from the VPN server\n` +
+        `  • Delete the client's configuration file\n` +
+        `  • Clear all active 2FA sessions\n` +
+        `  • Drop all tunnel bypass rules for this client\n\n` +
+        `This action cannot be undone.`;
+    if (!confirm(message)) {
         return;
     }
     fetch(`/api/console/users/${encodeURIComponent(clientId)}`, {
@@ -154,6 +162,10 @@ function openCreateUserModal() {
     document.getElementById('new-user-name').value = '';
     document.getElementById('new-user-expiry').value = '';
     document.getElementById('create-user-error').style.display = 'none';
+    document.getElementById('create-user-form-fields').style.display = 'block';
+    const cancelBtn = document.getElementById('create-user-cancel-btn');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.display = 'inline-flex';
     const successEl = document.getElementById('create-user-success');
     successEl.style.display = 'none';
     while (successEl.firstChild) successEl.removeChild(successEl.firstChild);
@@ -181,33 +193,56 @@ function _renderCreateUserSuccess(data) {
     while (successEl.firstChild) successEl.removeChild(successEl.firstChild);
 
     const box = document.createElement('div');
-    box.style.cssText = 'padding:12px;background:var(--success-light);border:1px solid var(--success);border-radius:8px;margin-top:8px;font-size:13px;color:var(--text-main);';
+    box.style.cssText = 'padding:16px;background:var(--success-light);border:1px solid var(--success);border-radius:10px;font-size:13px;color:var(--text-main);line-height:1.6;';
 
     const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:6px;font-weight:600;color:var(--success);margin-bottom:6px;';
-    header.textContent = '✓ Client created';
+    header.style.cssText = 'display:flex;align-items:center;gap:8px;font-weight:600;color:var(--success);margin-bottom:12px;font-size:14px;';
+    const icon = document.createElement('span');
+    icon.textContent = '✓';
+    icon.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--success);color:#fff;font-size:13px;';
+    header.appendChild(icon);
+    const headerText = document.createElement('span');
+    headerText.textContent = 'Client provisioned successfully';
+    header.appendChild(headerText);
     box.appendChild(header);
 
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:100px 1fr;gap:6px 12px;margin-bottom:14px;';
+
     function row(label, value, mono) {
-        const d = document.createElement('div');
-        const l = document.createTextNode(label + ': ');
-        d.appendChild(l);
-        const v = document.createElement(mono ? 'code' : 'strong');
-        v.textContent = value;
-        d.appendChild(v);
-        return d;
+        const l = document.createElement('div');
+        l.style.cssText = 'color:var(--text-muted);font-size:12px;';
+        l.textContent = label;
+        const v = document.createElement('div');
+        if (mono) {
+            const code = document.createElement('code');
+            code.style.cssText = 'background:var(--bg-body);padding:2px 6px;border-radius:4px;font-size:12px;';
+            code.textContent = value;
+            v.appendChild(code);
+        } else {
+            const strong = document.createElement('strong');
+            strong.textContent = value;
+            v.appendChild(strong);
+        }
+        grid.appendChild(l);
+        grid.appendChild(v);
     }
-    box.appendChild(row('Name', data.name));
-    box.appendChild(row('IPv4', data.ipv4, true));
-    box.appendChild(row('IPv6', data.ipv6, true));
-    if (data.expires) box.appendChild(row('Expires', data.expires));
+    row('Name', data.name);
+    row('IPv4', data.ipv4, true);
+    row('IPv6', data.ipv6, true);
+    if (data.expires) row('Expires', data.expires);
+    box.appendChild(grid);
 
     const btn = document.createElement('button');
     btn.className = 'btn btn-primary btn-block';
-    btn.style.marginTop = '12px';
-    btn.textContent = 'Download .conf file';
+    btn.textContent = 'Download client config';
     btn.onclick = () => downloadUserConfig(data.name);
     box.appendChild(btn);
+
+    const hint = document.createElement('div');
+    hint.style.cssText = 'margin-top:10px;font-size:11px;color:var(--text-muted);text-align:center;';
+    hint.textContent = 'The client will complete 2FA enrollment at the captive portal on first connection.';
+    box.appendChild(hint);
 
     successEl.appendChild(box);
     successEl.style.display = 'block';
@@ -259,7 +294,14 @@ function submitCreateUser() {
                 submitBtn.textContent = 'Create Client';
                 return;
             }
+            // Switch modal into "post-success" mode: hide the form fields,
+            // show the summary + download button, re-enable submit button
+            // with "Done" label (the bug was leaving disabled=true here),
+            // and hide Cancel since there's nothing left to cancel.
+            document.getElementById('create-user-form-fields').style.display = 'none';
+            document.getElementById('create-user-cancel-btn').style.display = 'none';
             _renderCreateUserSuccess(data);
+            submitBtn.disabled = false;
             submitBtn.textContent = 'Done';
             submitBtn.onclick = closeCreateUserModal;
             loadUsers(usersPage);

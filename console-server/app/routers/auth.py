@@ -68,8 +68,39 @@ async def root(request: Request, client_id: Optional[str] = None):
     return get_2fa_ui_html(client_id)
 
 @router.get("/success", response_class=HTMLResponse, tags=["ui"])
-async def success_page(client_id: Optional[str] = None):
-    """Success page after 2FA verification - indicates client can now access internet."""
+async def success_page(request: Request, client_id: Optional[str] = None):
+    """Success page — only visible to clients with an active 2FA session.
+
+    Previously this page was unauthenticated, which meant anyone who could
+    reach the portal (public internet or VPN) could load it. Now we require
+    the caller to (a) come from a known VPN client IP AND (b) have a
+    non-expired session in the database.
+    """
+    ip_address = request.client.host if request and request.client else "unknown"
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT u.client_id
+            FROM users u
+            JOIN sessions s ON u.client_id = s.client_id
+            WHERE (u.wg_ipv4 = ? OR u.wg_ipv6 = ?)
+              AND s.expires_at > datetime('now')
+            LIMIT 1
+            """,
+            (ip_address, ip_address),
+        )
+        row = c.fetchone()
+        conn.close()
+        if not row:
+            audit_log(client_id, "SUCCESS_PAGE", "denied_no_session", ip_address)
+            return get_access_denied_html()
+    except Exception as e:
+        logger.debug(f"Success page auth check failed: {e}")
+        return get_access_denied_html()
+
+    audit_log(row[0], "SUCCESS_PAGE", "viewed", ip_address)
     return get_success_html()
 
 @router.post("/api/setup-start", tags=["2fa-setup"])

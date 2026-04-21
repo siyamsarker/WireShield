@@ -201,9 +201,22 @@ def validate_client_name(name: str) -> None:
 
 
 def _client_config_dir() -> str:
-    """Where to save generated client .conf files (overridable via env)."""
-    path = os.environ.get("WS_CLIENT_CONFIG_DIR", "/root")
-    os.makedirs(path, exist_ok=True)
+    """Canonical directory for saved client .conf files.
+
+    Defaults to /etc/wireshield/clients so both the CLI (ws_add_client /
+    newClient) and the console's create_client end up writing to the same
+    place. Override with WS_CLIENT_CONFIG_DIR for tests or alternate
+    deployments. Directory is created with 0700 perms (configs contain
+    private keys).
+    """
+    path = os.environ.get("WS_CLIENT_CONFIG_DIR", "/etc/wireshield/clients")
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        # In case the directory was pre-existing with looser perms, tighten.
+        os.chmod(path, 0o700)
+    except PermissionError:
+        # Non-root dev/test — tolerate and keep going.
+        pass
     return path
 
 

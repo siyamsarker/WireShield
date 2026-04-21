@@ -467,9 +467,17 @@ def calculate_split_allowed_ips(client_id: str) -> dict:
 
 
 def get_client_config_path(client_id: str) -> Optional[str]:
-    """Try to find the client's .conf file on the server."""
+    """Locate the client's .conf file on the server.
+
+    Checks the canonical location first (where both the CLI and the console's
+    create_client write), then falls back to legacy per-user home directories
+    for installs that pre-date the canonical path. An env-var override lets
+    tests point at a sandbox location.
+    """
     import glob
+    canonical = os.environ.get("WS_CLIENT_CONFIG_DIR", "/etc/wireshield/clients")
     patterns = [
+        f"{canonical}/{client_id}.conf",
         f"/root/{client_id}.conf",
         f"/home/*/{client_id}.conf",
     ]
@@ -481,7 +489,16 @@ def get_client_config_path(client_id: str) -> Optional[str]:
 
 
 def generate_split_client_config(client_id: str) -> Optional[str]:
-    """Read the client's existing config and replace AllowedIPs with split-tunnel version."""
+    """Return the client's existing config with an updated split-tunnel AllowedIPs.
+
+    Also prepends a comment header listing the excluded targets so the config
+    is self-documenting — the user (or a future admin) can see at a glance
+    which IPs/subnets bypass the VPN for this client.
+
+    The replacement is a targeted regex on the AllowedIPs line inside the
+    [Peer] block; everything else in the client's config (keys, endpoint,
+    DNS, PersistentKeepalive, MTU) is preserved verbatim.
+    """
     config_path = get_client_config_path(client_id)
     if not config_path:
         return None
@@ -503,4 +520,21 @@ def generate_split_client_config(client_id: str) -> Optional[str]:
         f'AllowedIPs = {split["allowed_ips_str"]}',
         original
     )
-    return new_config
+
+    # Prepend a comment header so the config self-documents its bypass rules.
+    # Using "# " prefix per WireGuard's line-comment convention.
+    header_lines = [
+        "# ┌─────────────────────────────────────────────────────────────────┐",
+        f"# │ Split-tunnel config for client: {client_id}",
+        "# │",
+        "# │ The following destinations bypass the VPN tunnel and go directly",
+        "# │ via the client device's own network:",
+    ]
+    for target in split["excluded"]:
+        header_lines.append(f"# │   • {target}")
+    header_lines.append("# │")
+    header_lines.append("# │ All other traffic continues through the VPN.")
+    header_lines.append("# └─────────────────────────────────────────────────────────────────┘")
+    header = "\n".join(header_lines) + "\n\n"
+
+    return header + new_config

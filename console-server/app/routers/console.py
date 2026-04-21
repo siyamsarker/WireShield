@@ -36,18 +36,34 @@ router = APIRouter()
 # Console Access (restricted to admins)
 # ----------------------------------------------------------------------------
 async def _check_console_access(request: Request) -> str:
-    """Dependency: verify client has console_access=1."""
+    """Dependency: require console_access=1 AND a non-expired 2FA session.
+
+    Previously only the `console_access` flag was checked, which meant a
+    user whose 2FA session had expired (but whose IP was still cached in
+    the users table) could still reach /console. Now the join with sessions
+    enforces that the user has a live authenticated session.
+    """
     ip_address = request.client.host if request and request.client else "unknown"
     client_id = None
-    
-    # Try discovery by IP
+
     try:
         conn = get_db()
         c = conn.cursor()
-        c.execute("SELECT client_id, console_access FROM users WHERE wg_ipv4=? OR wg_ipv6=?", (ip_address, ip_address))
+        c.execute(
+            """
+            SELECT u.client_id, u.console_access
+            FROM users u
+            JOIN sessions s ON u.client_id = s.client_id
+            WHERE (u.wg_ipv4 = ? OR u.wg_ipv6 = ?)
+              AND s.expires_at > datetime('now')
+            ORDER BY s.created_at DESC
+            LIMIT 1
+            """,
+            (ip_address, ip_address),
+        )
         row = c.fetchone()
         conn.close()
-        
+
         if row:
             client_id = row[0]
             has_access = row[1]
@@ -55,7 +71,7 @@ async def _check_console_access(request: Request) -> str:
                 return client_id
     except Exception:
         pass
-        
+
     audit_log(client_id, "CONSOLE_ACCESS", "denied", ip_address)
     raise HTTPException(status_code=403, detail="Console access denied")
 
