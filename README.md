@@ -601,40 +601,53 @@ nslookup <your-domain>
 
 ### 6. Local Network Unreachable While on VPN
 
-**Symptoms:** Client is connected to the VPN but cannot reach local resources like `192.168.169.121:8000`.
+**Symptoms:** Client is connected to the VPN but cannot reach a local resource like `192.168.169.121`.
 
-**Cause:** With `AllowedIPs = 0.0.0.0/0`, all traffic goes through the VPN tunnel — including traffic to local IPs. If the VPN server is cloud-hosted (e.g. AWS), it has no route to your private office network, so the traffic is silently dropped.
+**Cause:** With `AllowedIPs = 0.0.0.0/0`, the client OS routes all traffic into the tunnel. If the VPN server can't reach that IP either (e.g. a cloud server has no path to a private office subnet), the traffic is dropped.
 
-**Solution — Split tunneling via Tunnel Bypass Rules:**
-1. Open the WireShield console → **Split Tunnel** (under *Network* in the sidebar)
-2. Click **Add Rule** → set Client to the affected user, Target to the local subnet (e.g. `192.168.169.0/24`)
-3. Click **Generate Client Config** → pick the most reliable apply method for the client device:
-   - **Download** — click *Download .conf file*, then in the WireGuard app delete the old tunnel and import the downloaded file as a new one.
-   - **QR Code** — click *Generate QR Code*, then on mobile tap **+ → Create from QR code** and scan it.
-   - **Manual** (not recommended for long exclusions — use only if Download/QR aren't possible): copy the `AllowedIPs` line and replace it in the existing config.
-4. Reconnect the VPN so WireGuard picks up the new `AllowedIPs`
+**Solution — Tunnel Bypass Rules:**
 
-**Verify the config is correct:**
+1. Console → **Split Tunnel** → **Add Rule** → set the affected client + target.
+2. Click **Generate Client Config** → **Download** tab → *Download .conf file*.
+3. In the client's VPN app, **deactivate + delete** the old tunnel, then **import** the downloaded file as a new tunnel.
+4. Activate the new tunnel.
+
+The downloaded `.conf` contains:
+- An `AllowedIPs` line that mathematically excludes every target.
+- `PostUp` / `PreDown` hooks that install an explicit host route via the client's LAN interface — these only run on `wg-quick`-based clients (Linux, macOS CLI). The macOS / Windows / iOS / Android GUI apps **ignore** these hooks.
+
+**Verify it worked — run on the client device after the tunnel is active:**
+
+| OS | Check command | Expected |
+|----|---------------|---------|
+| Linux | `ip route get <target-ip>` | Must NOT show `dev wg0` |
+| macOS | `route -n get <target-ip>` | `interface:` line should be `en0`/`en1`, not `utun*` |
+| Windows | `route print <target-ip>` | Interface index should point to the LAN adapter |
+
+**If the macOS GUI app still routes the target through `utun*`** (common: `route -n get` shows `destination: default, interface: utun4` because the app installed a full default route regardless of AllowedIPs), add an explicit host route that shadows the tunnel's default:
+
 ```bash
-# The client's WireGuard config should NOT contain 0.0.0.0/0
-# Instead it should have multiple CIDRs that exclude the local subnet:
-grep AllowedIPs /path/to/your/wireguard.conf
-# Expected: AllowedIPs = 0.0.0.0/1,128.0.0.0/2,...  (NOT 0.0.0.0/0)
+# macOS — run each time the tunnel activates. <lan-if> is typically en0 (Wi-Fi) or en1 (Ethernet).
+sudo route -n add -host <target-ip> -interface <lan-if>
 ```
 
-**Diagnose if it's still not working:**
 ```bash
-# On the client machine, verify the WireGuard route table excludes the target
-# The local IP should NOT appear in the WireGuard routing table
-wg show
-ip route get 192.168.169.121
-# Expected: "192.168.169.121 via <local-gateway>" (NOT "dev wg0")
+# Linux fallback (if the PostUp hook somehow didn't run)
+sudo ip route add <target-ip>/32 via <lan-gateway> dev <lan-if>
 ```
+
+```powershell
+# Windows (run as Administrator). -p persists across reboots.
+route -p ADD <target-ip> MASK 255.255.255.255 <lan-gateway> METRIC 1
+```
+
+Re-run the check command — the interface should now be your LAN adapter.
 
 **Common mistakes:**
-- **Forgot to reconnect** after updating AllowedIPs — WireGuard applies AllowedIPs at connection time
-- **Wrong target** — if you excluded `192.168.169.121/32` but the service is on `192.168.169.122`, that IP still goes through VPN
-- **Using a CIDR is safer** — `192.168.169.0/24` covers the whole subnet instead of individual hosts
+- **Re-importing on top of the old tunnel** — some clients keep stale routes. Delete the old entry first.
+- **Skipping reconnect** — WireGuard reads `AllowedIPs` only at activation time.
+- **Wrong target granularity** — excluding `192.168.169.121/32` only helps that one host; excluding `192.168.169.0/24` covers the whole subnet.
+- **Client is remote, not on the target LAN** — split tunneling can only bypass the VPN for IPs your device can *already* reach via another path. If you're on home Wi-Fi with no link to the office LAN, no `AllowedIPs` trick can produce one.
 
 ### 7. Database Issues
 

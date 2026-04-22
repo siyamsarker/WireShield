@@ -2765,3 +2765,39 @@ tbody tr:last-child td {
     border-radius: 3px;
     font-size: 10.5px;
 }
+
+/* ── Verify section sub-headers + warning ─────────────────────────────────── */
+.verify-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 2px;
+    padding-top: 2px;
+}
+
+.verify-warn {
+    background: var(--warning-light);
+    border-left: 3px solid var(--warning);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.verify-warn code,
+.verify-warn strong {
+    background: var(--bg-card);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10.5px;
+}
+
+.verify-warn strong {
+    background: transparent;
+    color: var(--text-main);
+    padding: 0;
+}

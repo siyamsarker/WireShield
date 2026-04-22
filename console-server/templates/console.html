@@ -876,22 +876,48 @@
                                     Download .conf file
                                 </button>
                                 <details class="verify-details" style="margin-top:10px;">
-                                    <summary class="details-toggle">Verify routing after applying (optional)</summary>
+                                    <summary class="details-toggle">Verify &amp; fix routing (recommended)</summary>
                                     <div class="verify-body">
+                                        <div class="verify-section-title">Step 1 — Check which interface is carrying the target</div>
                                         <div class="verify-os">
-                                            <span class="verify-os-label">Linux / macOS</span>
+                                            <span class="verify-os-label">Linux</span>
                                             <code class="verify-cmd">ip route get &lt;target-ip&gt;</code>
-                                            <span class="verify-hint">Should NOT show <code>dev wg0</code>. If it does, the new config isn't applied.</span>
+                                            <span class="verify-hint">Must NOT show <code>dev wg0</code> (or whatever your tunnel interface is called).</span>
+                                        </div>
+                                        <div class="verify-os">
+                                            <span class="verify-os-label">macOS</span>
+                                            <code class="verify-cmd">route -n get &lt;target-ip&gt;</code>
+                                            <span class="verify-hint">The <code>interface:</code> line should be your LAN (typically <code>en0</code>), not <code>utun*</code>. If it shows <code>destination: default</code> with <code>utun*</code>, the macOS GUI app installed a full default route — use Step 2.</span>
                                         </div>
                                         <div class="verify-os">
                                             <span class="verify-os-label">Windows</span>
                                             <code class="verify-cmd">route print &lt;target-ip&gt;</code>
-                                            <span class="verify-hint">Interface should be your LAN adapter, not the WireGuard tunnel.</span>
+                                            <span class="verify-hint">Look for the lowest-metric matching route. Interface index should point to your LAN adapter, not the WireGuard tunnel.</span>
+                                        </div>
+
+                                        <div class="verify-section-title" style="margin-top:14px;">Step 2 — Force-bypass with a host route (if Step 1 shows the tunnel)</div>
+                                        <div class="verify-warn">
+                                            Some clients (notably the macOS GUI app) install a default route on the tunnel interface regardless of <code>AllowedIPs</code>. When that happens, add an explicit host route via your LAN to shadow the tunnel's default. The commands below must be run <strong>after</strong> the tunnel is active.
                                         </div>
                                         <div class="verify-os">
-                                            <span class="verify-os-label">macOS (alt)</span>
-                                            <code class="verify-cmd">route -n get &lt;target-ip&gt;</code>
-                                            <span class="verify-hint">The <code>interface:</code> line should be your LAN (en0/en1), not utun.</span>
+                                            <span class="verify-os-label">Linux</span>
+                                            <code class="verify-cmd">sudo ip route add &lt;target-ip&gt;/32 via &lt;lan-gateway&gt; dev &lt;lan-if&gt;</code>
+                                            <span class="verify-hint">Find your LAN gateway + interface with <code>ip route show default</code> (typically <code>192.168.x.1 dev eth0</code> or <code>wlan0</code>).</span>
+                                        </div>
+                                        <div class="verify-os">
+                                            <span class="verify-os-label">macOS</span>
+                                            <code class="verify-cmd">sudo route -n add -host &lt;target-ip&gt; -interface &lt;lan-if&gt;</code>
+                                            <span class="verify-hint">Find your LAN interface with <code>route -n get default</code> while the VPN is <strong>off</strong> (typically <code>en0</code> for Wi-Fi, <code>en1</code> for Ethernet). Re-run this command every time you reconnect the VPN, or add it to a launch script.</span>
+                                        </div>
+                                        <div class="verify-os">
+                                            <span class="verify-os-label">Windows</span>
+                                            <code class="verify-cmd">route ADD &lt;target-ip&gt; MASK 255.255.255.255 &lt;lan-gateway&gt; METRIC 1</code>
+                                            <span class="verify-hint">Run as Administrator. Find your LAN gateway with <code>ipconfig</code> (the "Default Gateway" line under your LAN adapter). Use <code>-p</code> to persist across reboots.</span>
+                                        </div>
+
+                                        <div class="verify-section-title" style="margin-top:14px;">Step 3 — Re-verify</div>
+                                        <div class="verify-hint" style="font-size:12px;">
+                                            Run the Step 1 command again. The interface should now show your LAN adapter instead of the tunnel. Traffic to <code>&lt;target-ip&gt;</code> will now bypass the VPN.
                                         </div>
                                     </div>
                                 </details>
