@@ -1,0 +1,47 @@
+[Unit]
+Description=WireShield Agent — heartbeat + revocation daemon
+Documentation=https://github.com/siyamsarker/wireshield
+After=network-online.target wg-quick@wg-agent0.service
+Wants=network-online.target
+Requires=wg-quick@wg-agent0.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wireshield-agent run
+# Exit code 2 == agent revoked by server. Prevent restart so the unit
+# stays down after a confirmed revocation (see revoke.go + runner.go).
+RestartPreventExitStatus=2
+Restart=on-failure
+RestartSec=10s
+# Slow, bounded restart on a flapping network blip — don't hammer the server.
+StartLimitBurst=6
+StartLimitIntervalSec=300
+
+# Security hardening. The daemon needs to read /etc/wireshield-agent and
+# execute `wg` — everything else is locked down.
+User=root
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# ReadWritePaths can be omitted since the agent only writes the runtime
+# files via wg / iptables (protected syscalls are handled via capabilities).
+ReadOnlyPaths=/etc/wireshield-agent
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
