@@ -13,6 +13,17 @@ class UserCreateRequest(BaseModel):
     client_id: str
     expiry_days: Optional[int] = None
 
+
+class AgentCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    advertised_cidrs: Optional[List[str]] = None
+
+
+class AgentPatchRequest(BaseModel):
+    advertised_cidrs: Optional[List[str]] = None
+    description: Optional[str] = None
+
 from app.core.database import get_db
 from app.core.security import audit_log
 from app.core.config import LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS
@@ -746,3 +757,241 @@ async def delete_user(
         pass
 
     return {"success": True}
+
+
+# ============================================================================
+# Agent management — admin console endpoints
+# ============================================================================
+#
+# All endpoints here are guarded by _check_console_access, which requires
+# (a) console_access=1 on the user and (b) a non-expired 2FA session. Creating
+# an agent returns the enrollment token ONCE in the response body; it's never
+# retrievable again. Callers that lose the token must delete and recreate.
+
+@router.post("/api/console/agents")
+async def create_agent_endpoint(
+    body: AgentCreateRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+):
+    """Create a pending agent and issue its one-time enrollment token."""
+    from app.core.agents import create_agent
+    try:
+        result = create_agent(
+            name=body.name,
+            description=body.description,
+            advertised_cidrs=body.advertised_cidrs,
+            created_by=client_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Most common: UNIQUE constraint on agent name
+        msg = str(e).lower()
+        if "unique" in msg or "integrityerror" in msg:
+            raise HTTPException(status_code=409, detail=f"Agent name '{body.name}' already exists")
+        logger.exception("create_agent failed")
+        raise HTTPException(status_code=500, detail="Failed to create agent")
+
+    # Audit log
+    try:
+        ip_address = request.client.host if request and request.client else "unknown"
+        audit_log(client_id, "AGENT_CREATE", f"name={body.name} id={result['id']}", ip_address)
+    except Exception:
+        pass
+
+    # Build the install command. The agent binary endpoint /api/agents/install
+    # accepts the token via env var (not URL path) so it doesn't leak into
+    # server / proxy access logs.
+    from app.core.config import UI_BASE_URL
+    install_cmd = (
+        f"curl -sSL {UI_BASE_URL}/api/agents/install | "
+        f"sudo TOKEN={result['enrollment_token']} "
+        f"WIRESHIELD_SERVER={UI_BASE_URL} bash"
+    )
+
+    return {
+        "success": True,
+        "agent": {
+            "id": result["id"],
+            "name": result["name"],
+            "description": result["description"],
+            "advertised_cidrs": result["advertised_cidrs"],
+            "status": result["status"],
+        },
+        "enrollment_token": result["enrollment_token"],  # shown ONCE
+        "token_expires_at": result["token_expires_at"],
+        "install_command": install_cmd,
+    }
+
+
+@router.get("/api/console/agents")
+async def list_agents_endpoint(
+    include_revoked: bool = False,
+    client_id: str = Depends(_check_console_access),
+):
+    """List all agents, optionally including soft-deleted ones."""
+    from app.core.agents import list_agents
+    try:
+        agents = list_agents(include_revoked=include_revoked)
+    except Exception:
+        logger.exception("list_agents failed")
+        raise HTTPException(status_code=500, detail="Failed to list agents")
+    return {"agents": agents, "count": len(agents)}
+
+
+@router.get("/api/console/agents/{agent_id}")
+async def get_agent_endpoint(
+    agent_id: int,
+    client_id: str = Depends(_check_console_access),
+):
+    """Return full detail for a single agent. PSK is never included."""
+    from app.core.agents import get_agent
+    agent = get_agent(agent_id, include_secrets=False)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+
+@router.patch("/api/console/agents/{agent_id}")
+async def patch_agent_endpoint(
+    agent_id: int,
+    body: AgentPatchRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+):
+    """Edit an agent's advertised CIDRs (live-synced to WireGuard) and/or
+    its description. Other fields are immutable (name is identifier,
+    public_key/wg_ipv4 come from enrollment)."""
+    from app.core.agents import get_agent, update_agent_cidrs
+    from app.core.database import get_db
+
+    existing = get_agent(agent_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    changed_cidrs = False
+    if body.advertised_cidrs is not None:
+        if existing["status"] != "enrolled":
+            raise HTTPException(
+                status_code=400,
+                detail="CIDRs can only be updated on enrolled agents",
+            )
+        try:
+            ok = update_agent_cidrs(agent_id, body.advertised_cidrs)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception:
+            logger.exception("update_agent_cidrs failed")
+            raise HTTPException(status_code=500, detail="Failed to update CIDRs")
+        if not ok:
+            raise HTTPException(
+                status_code=409,
+                detail="Agent state changed during update — refresh and retry",
+            )
+        changed_cidrs = True
+
+    if body.description is not None:
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            c.execute(
+                "UPDATE agents SET description = ? WHERE id = ?",
+                (body.description, agent_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    try:
+        ip_address = request.client.host if request and request.client else "unknown"
+        audit_log(
+            client_id,
+            "AGENT_UPDATE",
+            f"id={agent_id} cidrs_changed={changed_cidrs}",
+            ip_address,
+        )
+    except Exception:
+        pass
+
+    return {"success": True, "agent": get_agent(agent_id)}
+
+
+@router.delete("/api/console/agents/{agent_id}")
+async def delete_agent_endpoint(
+    agent_id: int,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+):
+    """Revoke an agent: remove its WG peer, mark soft-deleted."""
+    from app.core.agents import get_agent, revoke_agent
+    existing = get_agent(agent_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if existing["status"] == "revoked":
+        return {"success": True, "already_revoked": True}
+    try:
+        revoke_agent(agent_id)
+    except Exception:
+        logger.exception("revoke_agent failed")
+        raise HTTPException(status_code=500, detail="Failed to revoke agent")
+
+    try:
+        ip_address = request.client.host if request and request.client else "unknown"
+        audit_log(
+            client_id,
+            "AGENT_REVOKE",
+            f"id={agent_id} name={existing['name']}",
+            ip_address,
+        )
+    except Exception:
+        pass
+    return {"success": True}
+
+
+@router.post("/api/console/agents/{agent_id}/rotate-token")
+async def rotate_agent_token_endpoint(
+    agent_id: int,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+):
+    """Reissue an enrollment token for a pending (not yet enrolled) agent.
+    Useful if the first token expired or was lost. Refuses for agents that
+    are already enrolled (they have a working WG keypair already) or
+    revoked."""
+    from app.core.agents import get_agent, issue_enrollment_token
+    from app.core.config import UI_BASE_URL
+    existing = get_agent(agent_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if existing["status"] != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot rotate token for agent in status={existing['status']}. "
+                   "Delete and recreate to start fresh.",
+        )
+
+    raw_token, expires_at = issue_enrollment_token(agent_id)
+    install_cmd = (
+        f"curl -sSL {UI_BASE_URL}/api/agents/install | "
+        f"sudo TOKEN={raw_token} "
+        f"WIRESHIELD_SERVER={UI_BASE_URL} bash"
+    )
+
+    try:
+        ip_address = request.client.host if request and request.client else "unknown"
+        audit_log(
+            client_id,
+            "AGENT_TOKEN_ROTATE",
+            f"id={agent_id} name={existing['name']}",
+            ip_address,
+        )
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "enrollment_token": raw_token,
+        "token_expires_at": expires_at.isoformat() + "Z",
+        "install_command": install_cmd,
+    }
