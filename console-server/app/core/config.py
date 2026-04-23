@@ -49,6 +49,15 @@ AGENT_IP_END = int(getenv_multi("254", "WS_AGENT_IP_END"))
 AGENT_HEARTBEAT_RETENTION_HOURS = int(getenv_multi("48", "WS_AGENT_HEARTBEAT_RETENTION_HOURS"))
 # An agent is considered offline if the last heartbeat is older than this.
 AGENT_OFFLINE_AFTER_SECONDS = int(getenv_multi("90", "WS_AGENT_OFFLINE_AFTER_SECONDS"))
+# Directory that holds pre-built Go-agent binaries + sidecar .sha256 files,
+# populated by `make -C agent dist`. Layout expected:
+#   <dir>/linux-amd64/wireshield-agent
+#   <dir>/linux-amd64/wireshield-agent.sha256
+#   <dir>/linux-arm64/wireshield-agent
+#   <dir>/linux-arm64/wireshield-agent.sha256
+# and optionally <dir>/wireshield-agent.service / <dir>/install.sh (the
+# server falls back to the bundled defaults if these are missing).
+AGENT_BINARY_DIR = getenv_multi("/etc/wireshield/agent-binaries", "WS_AGENT_BINARY_DIR")
 
 # Determine UI access URL based on config
 # Use http:// when SSL is disabled, https:// when enabled

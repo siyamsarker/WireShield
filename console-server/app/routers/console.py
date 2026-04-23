@@ -800,12 +800,13 @@ async def create_agent_endpoint(
     except Exception:
         pass
 
-    # Build the install command. The agent binary endpoint /api/agents/install
-    # accepts the token via env var (not URL path) so it doesn't leak into
-    # server / proxy access logs.
+    # Build the install command (Phase 2 — Go agent). The token is passed
+    # via env var so it does not end up in shell history / proxy access logs.
+    # The Phase-1 Bash installer remains available at /api/agents/install
+    # for operators with existing scripts.
     from app.core.config import UI_BASE_URL
     install_cmd = (
-        f"curl -sSL {UI_BASE_URL}/api/agents/install | "
+        f"curl -sSL {UI_BASE_URL}/api/agents/install-go | "
         f"sudo TOKEN={result['enrollment_token']} "
         f"WIRESHIELD_SERVER={UI_BASE_URL} bash"
     )
@@ -973,7 +974,7 @@ async def rotate_agent_token_endpoint(
 
     raw_token, expires_at = issue_enrollment_token(agent_id)
     install_cmd = (
-        f"curl -sSL {UI_BASE_URL}/api/agents/install | "
+        f"curl -sSL {UI_BASE_URL}/api/agents/install-go | "
         f"sudo TOKEN={raw_token} "
         f"WIRESHIELD_SERVER={UI_BASE_URL} bash"
     )
