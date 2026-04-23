@@ -489,25 +489,36 @@ def get_client_config_path(client_id: str) -> Optional[str]:
 
 
 def generate_split_client_config(client_id: str) -> Optional[str]:
-    """Return the client's existing config with an updated split-tunnel AllowedIPs
-    plus PostUp/PreDown hooks that install explicit host routes via the LAN.
+    """Return the client's existing config with an updated split-tunnel AllowedIPs.
 
-    Why the PostUp hooks are critical
-    ---------------------------------
-    AllowedIPs-based split tunneling is mathematically correct (32+ CIDRs that
-    exclude the target), but certain WireGuard clients — notably the macOS
-    native app — can still install a default route on the tunnel interface
-    that shadows the exclusions. PostUp/PreDown commands on wg-quick-based
-    clients (Linux + macOS CLI `wg-quick`) guarantee the target IPs are
-    reached via the LAN by adding explicit host routes AFTER the tunnel
-    comes up and removing them before it goes down.
+    Design note — why there are no PostUp/PreDown hooks
+    ---------------------------------------------------
+    An earlier version of this generator injected PostUp/PreDown commands
+    into the [Interface] section to automatically add host routes via the
+    LAN. Those keys are part of the `wg-quick` extension to the WireGuard
+    config format, not the base spec.
 
-    Clients that use the GUI app (Windows/macOS/iOS/Android) generally
-    ignore these hooks — for those the AllowedIPs alone has to suffice, and
-    the modal provides OS-specific manual fallback commands.
+    The macOS WireGuard GUI (and the WireGuard apps on Windows, iOS, and
+    Android) strictly validate [Interface] keys and **reject** the import
+    entirely with:
 
-    The replacement is a targeted regex on the AllowedIPs line inside the
-    [Peer] block; keys, endpoint, DNS, PersistentKeepalive, MTU are preserved.
+        Interface contains unrecognized key 'PostUp'
+        Valid keys are: 'PrivateKey', 'ListenPort', 'Address', 'DNS', 'MTU'
+
+    Only the `wg-quick` CLI (Linux, plus macOS via Homebrew) understands
+    PostUp/PreDown. So shipping those lines in the downloaded config
+    breaks the majority of users to benefit a minority.
+
+    Instead, we keep the generated config strictly spec-compliant and
+    rely on:
+      1. The AllowedIPs math (mathematically excludes every target).
+      2. The modal's "Verify & fix routing" section, which documents a
+         one-liner `route add` workaround per OS for the rare case where
+         a GUI client installs a default route on the tunnel anyway.
+
+    Core behaviour: targeted regex replacement of the AllowedIPs line
+    inside the [Peer] block; keys, endpoint, DNS, PersistentKeepalive,
+    and MTU are preserved verbatim.
     """
     import re
 
@@ -525,104 +536,16 @@ def generate_split_client_config(client_id: str) -> Optional[str]:
     if not split["excluded"]:
         return original  # no rules, return as-is
 
-    # 1) Replace the AllowedIPs line
+    # Replace the AllowedIPs line with the split-tunnel version.
     new_config = re.sub(
         r'AllowedIPs\s*=\s*.+',
         f'AllowedIPs = {split["allowed_ips_str"]}',
         original
     )
 
-    # 2) Inject PostUp/PreDown hooks under the [Interface] block so
-    #    wg-quick-based clients add host routes via the LAN interface.
-    #    %i is wg-quick's interface placeholder — do not substitute here.
-    hook_v4_cmds: list = []
-    hook_v6_cmds: list = []
-    predown_v4: list = []
-    predown_v6: list = []
-
-    # Only generate hooks for /32 IPv4 and /128 IPv6 host rules; CIDR rules
-    # are harder to map to a single LAN interface reliably and the user's
-    # OS routing should handle them naturally.
-    import ipaddress as _ip
-    for target in split["excluded"]:
-        # split["excluded"] stores the original policy target strings
-        raw = target
-        # If it's "domain (ip)" format from calculate_split_allowed_ips, extract the ip
-        if "(" in raw and raw.endswith(")"):
-            raw = raw.rsplit("(", 1)[1].rstrip(")")
-        raw = raw.strip()
-        try:
-            net = _ip.ip_network(raw if "/" in raw else raw + "/32", strict=False)
-        except ValueError:
-            continue
-        if net.version == 4 and net.prefixlen == 32:
-            host = str(net.network_address)
-            # Use `ip route` when available, fall back to `route` (BSD/macOS).
-            # `|| true` keeps wg-quick from failing if the command errors.
-            hook_v4_cmds.append(host)
-            predown_v4.append(host)
-        elif net.version == 6 and net.prefixlen == 128:
-            host = str(net.network_address)
-            hook_v6_cmds.append(host)
-            predown_v6.append(host)
-
-    if hook_v4_cmds or hook_v6_cmds:
-        # Build the PostUp/PreDown lines.
-        # We use a helper shell snippet that detects the default LAN interface
-        # so the hooks work without the user hand-editing anything.
-        postup_lines = []
-        predown_lines = []
-        for host in hook_v4_cmds:
-            postup_lines.append(
-                f"PostUp = LAN_IF=$(ip route show default 2>/dev/null | awk '/default/ {{print $5; exit}}' || route -n get default 2>/dev/null | awk '/interface:/ {{print $2; exit}}'); "
-                f"ip route add {host}/32 dev \"$LAN_IF\" 2>/dev/null || route -n add -host {host} -interface \"$LAN_IF\" 2>/dev/null || true"
-            )
-            predown_lines.append(
-                f"PreDown = ip route del {host}/32 2>/dev/null || route -n delete -host {host} 2>/dev/null || true"
-            )
-        for host in hook_v6_cmds:
-            postup_lines.append(
-                f"PostUp = LAN_IF=$(ip -6 route show default 2>/dev/null | awk '/default/ {{print $5; exit}}' || route -n get -inet6 default 2>/dev/null | awk '/interface:/ {{print $2; exit}}'); "
-                f"ip -6 route add {host}/128 dev \"$LAN_IF\" 2>/dev/null || route -n add -inet6 -host {host} -interface \"$LAN_IF\" 2>/dev/null || true"
-            )
-            predown_lines.append(
-                f"PreDown = ip -6 route del {host}/128 2>/dev/null || route -n delete -inet6 -host {host} 2>/dev/null || true"
-            )
-        hook_block = "\n".join(postup_lines + predown_lines) + "\n"
-
-        # Insert the hooks at the end of the [Interface] section (just before
-        # the next section header, or append if no next section).
-        def _inject_hooks(config_text: str, hook_text: str) -> str:
-            lines = config_text.splitlines(keepends=True)
-            out = []
-            in_iface = False
-            inserted = False
-            for i, line in enumerate(lines):
-                stripped = line.strip()
-                if stripped == "[Interface]":
-                    in_iface = True
-                    out.append(line)
-                    continue
-                if in_iface and not inserted and stripped.startswith("["):
-                    # About to enter next section; insert hooks first
-                    out.append(hook_text)
-                    out.append("\n")
-                    inserted = True
-                    in_iface = False
-                    out.append(line)
-                    continue
-                out.append(line)
-            if in_iface and not inserted:
-                # No next section found; append at end of file
-                if not out[-1].endswith("\n"):
-                    out.append("\n")
-                out.append(hook_text)
-            return "".join(out)
-
-        new_config = _inject_hooks(new_config, hook_block)
-
-    # 3) Prepend an ASCII-safe comment header documenting what's excluded
-    #    and flagging macOS users to the fallback instructions.
+    # Prepend an ASCII-safe comment header documenting what's excluded
+    # and pointing users to the manual fallback if a GUI client installs
+    # a default route anyway.
     header_lines = [
         "# " + "=" * 70,
         f"# Split-tunnel config for client: {client_id}",
@@ -635,15 +558,15 @@ def generate_split_client_config(client_id: str) -> Optional[str]:
     header_lines.append("#")
     header_lines.append("# All other traffic continues through the VPN.")
     header_lines.append("#")
-    header_lines.append("# Apply steps:")
-    header_lines.append("#   1. In your VPN client, deactivate and DELETE the old tunnel.")
+    header_lines.append("# Apply steps (any VPN client):")
+    header_lines.append("#   1. Deactivate and DELETE the old tunnel in your VPN app.")
     header_lines.append("#   2. Import THIS file as a new tunnel.")
     header_lines.append("#   3. Activate the new tunnel.")
     header_lines.append("#")
-    header_lines.append("# macOS / Windows GUI apps IGNORE the PostUp/PreDown hooks below.")
-    header_lines.append("# If a target stays routed through the tunnel after activation,")
-    header_lines.append("# see the \"Verify routing\" section in the console for a one-line")
-    header_lines.append("# manual `route add` workaround specific to your OS.")
+    header_lines.append("# If a target still routes through the tunnel after activation")
+    header_lines.append("# (some GUI clients install a default route on the VPN interface")
+    header_lines.append("# regardless of AllowedIPs), use the OS-specific `route add`")
+    header_lines.append("# workaround in the console's \"Verify & fix routing\" section.")
     header_lines.append("# " + "=" * 70)
     header = "\n".join(header_lines) + "\n\n"
 

@@ -612,9 +612,7 @@ nslookup <your-domain>
 3. In the client's VPN app, **deactivate + delete** the old tunnel, then **import** the downloaded file as a new tunnel.
 4. Activate the new tunnel.
 
-The downloaded `.conf` contains:
-- An `AllowedIPs` line that mathematically excludes every target.
-- `PostUp` / `PreDown` hooks that install an explicit host route via the client's LAN interface — these only run on `wg-quick`-based clients (Linux, macOS CLI). The macOS / Windows / iOS / Android GUI apps **ignore** these hooks.
+The downloaded `.conf` contains an `AllowedIPs` line that mathematically excludes every rule target. The file is strict WireGuard-spec compliant — it only uses keys in the GUI allowlist (`PrivateKey`, `Address`, `DNS`, `MTU`, `PublicKey`, `PresharedKey`, `AllowedIPs`, `Endpoint`, `PersistentKeepalive`) so it imports cleanly into the macOS / Windows / iOS / Android GUI apps and the `wg-quick` CLI.
 
 **Verify it worked — run on the client device after the tunnel is active:**
 
@@ -632,7 +630,7 @@ sudo route -n add -host <target-ip> -interface <lan-if>
 ```
 
 ```bash
-# Linux fallback (if the PostUp hook somehow didn't run)
+# Linux
 sudo ip route add <target-ip>/32 via <lan-gateway> dev <lan-if>
 ```
 
