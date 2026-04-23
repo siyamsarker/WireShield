@@ -82,4 +82,11 @@ async def health_check():
     # Watchdog snapshot (interface transitions + rule-fix counter)
     status["watchdog"] = get_watchdog_state()
 
+    # Agent subsystem stats — safe to fail independently
+    try:
+        from app.core.agents import stats as agent_stats
+        status["agents"] = agent_stats()
+    except Exception as e:
+        status["agents"] = {"error": str(e)}
+
     return status

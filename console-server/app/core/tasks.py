@@ -719,6 +719,42 @@ def get_watchdog_state() -> dict:
     return dict(_WATCHDOG_STATE)
 
 
+def _agent_housekeeping_loop():
+    """Runs once per hour: purges expired/used enrollment tokens and prunes
+    agent_heartbeats rows older than the configured retention window.
+
+    Keeps both tables bounded so /health stats queries stay fast as the
+    fleet grows."""
+    from app.core.config import AGENT_HEARTBEAT_RETENTION_HOURS
+
+    interval = 3600  # 1 hour — cleanup is not latency-sensitive
+    while True:
+        try:
+            # Import here so tests can init without importing agents first
+            from app.core.agents import purge_expired_tokens
+            purged = purge_expired_tokens()
+            if purged:
+                logger.info(f"Agent housekeeping: purged {purged} stale enrollment tokens")
+
+            conn = get_db()
+            try:
+                c = conn.cursor()
+                c.execute(
+                    "DELETE FROM agent_heartbeats WHERE received_at < datetime('now', ?)",
+                    (f"-{AGENT_HEARTBEAT_RETENTION_HOURS} hours",),
+                )
+                dropped = c.rowcount
+                conn.commit()
+            finally:
+                conn.close()
+            if dropped:
+                logger.info(f"Agent housekeeping: pruned {dropped} old heartbeat rows")
+        except Exception as exc:
+            logger.error(f"Agent housekeeping error: {exc}")
+
+        time.sleep(interval)
+
+
 def start_background_tasks():
     threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
     threading.Thread(target=_monitor_wireguard_sessions, daemon=True).start()
@@ -728,3 +764,4 @@ def start_background_tasks():
     threading.Thread(target=_start_http_redirector_ipv4, daemon=True).start()
     threading.Thread(target=_start_http_redirector_ipv6, daemon=True).start()
     threading.Thread(target=_watchdog_loop, daemon=True).start()
+    threading.Thread(target=_agent_housekeeping_loop, daemon=True).start()
