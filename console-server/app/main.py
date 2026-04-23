@@ -10,7 +10,7 @@ from app.core.config import LOG_LEVEL
 from app.core.database import init_db
 from app.core.tasks import start_background_tasks
 from app.core.sniffer import DNSSniffer
-from app.routers import auth, health, console
+from app.routers import auth, health, console, agents
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
@@ -63,6 +63,7 @@ app.state.templates = templates
 app.include_router(auth.router)
 app.include_router(console.router)
 app.include_router(health.router)
+app.include_router(agents.router)
 
 if __name__ == "__main__":
     # If run directly for debug
