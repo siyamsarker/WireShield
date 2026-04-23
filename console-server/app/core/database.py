@@ -99,7 +99,9 @@ def init_db():
         )
     ''')
 
-    # Network Policies table: per-client local IP/CIDR/domain access rules
+    # Network Policies table: legacy split-tunnel rules (feature removed
+    # in 3.0.2, table retained for safe downgrade — will be dropped in a
+    # future cleanup migration once no supported upgrade path needs it).
     c.execute('''
         CREATE TABLE IF NOT EXISTS network_policies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +115,65 @@ def init_db():
             enabled BOOLEAN NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (client_id) REFERENCES users(client_id)
+        )
+    ''')
+
+    # Agents table: one row per registered agent (Cloudflare-Tunnel-style
+    # reverse-connection gateway on a remote LAN). An agent is a special
+    # WireGuard peer that claims to reach one or more LAN CIDRs; when a
+    # VPN client sends traffic to those CIDRs, the server routes it back
+    # out wg0 to the agent, which MASQUERADEs it onto the LAN.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS agents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            public_key TEXT,
+            preshared_key TEXT,
+            wg_ipv4 TEXT,
+            advertised_cidrs TEXT,
+            hostname TEXT,
+            lan_interface TEXT,
+            agent_version TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            last_seen TIMESTAMP,
+            last_seen_ip TEXT,
+            rx_bytes INTEGER DEFAULT 0,
+            tx_bytes INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
+            enrolled_at TIMESTAMP,
+            revoked_at TIMESTAMP
+        )
+    ''')
+
+    # Agent enrollment tokens: single-use, short-lived credentials that
+    # prove an agent has been authorized to enroll. Stored hashed.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS agent_enrollment_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER NOT NULL,
+            token_hash TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL,
+            used_at TIMESTAMP,
+            used_by_ip TEXT,
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+    ''')
+
+    # Agent heartbeats: rolling window of per-agent heartbeat samples
+    # (online-status sparkline, traffic counters). Pruned by a background
+    # task similar to activity_log retention.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS agent_heartbeats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER NOT NULL,
+            received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            agent_version TEXT,
+            rx_bytes INTEGER,
+            tx_bytes INTEGER,
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
         )
     ''')
 
@@ -160,6 +221,24 @@ def init_db():
     # Migration: add gateway_client_id to network_policies if missing
     try:
         c.execute('ALTER TABLE network_policies ADD COLUMN gateway_client_id TEXT')
+    except Exception:
+        pass
+
+    # Agent-subsystem indexes
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agents_last_seen ON agents(last_seen)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agents_pubkey ON agents(public_key)")
+    except Exception:
+        pass
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_enrollment_tokens(token_hash)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_agent ON agent_enrollment_tokens(agent_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_expires ON agent_enrollment_tokens(expires_at)")
+    except Exception:
+        pass
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agent_heartbeats_agent_time ON agent_heartbeats(agent_id, received_at)")
     except Exception:
         pass
     conn.commit()
