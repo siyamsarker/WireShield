@@ -222,6 +222,7 @@ sudo systemctl restart wireshield.service
 | `WS_AGENT_IP_END` | `254` | Last WG IPv4 octet reserved for agents |
 | `WS_AGENT_HEARTBEAT_RETENTION_HOURS` | `48` | Hours of `agent_heartbeats` rows to retain before housekeeping prunes them |
 | `WS_AGENT_OFFLINE_AFTER_SECONDS` | `90` | Seconds without a heartbeat before an agent is reported as `online=false` in `/health` |
+| `WS_AGENT_BINARY_DIR` | `/etc/wireshield/agent-binaries` | Server-side directory holding pre-built Go-agent binaries + SHA-256 sidecars, populated by `make -C agent install` |
 
 ### Tuning Examples
 
@@ -364,7 +365,11 @@ The console provides:
 | `POST` | `/api/agents/enroll` | Exchange a single-use token for a WG peer config (public/keyless endpoint, rate-limited) |
 | `POST` | `/api/agents/heartbeat` | Periodic liveness + bandwidth report (auth: WG tunnel source IP) |
 | `GET` | `/api/agents/revocation-check` | Agent polls this to self-disable when revoked (auth: WG tunnel source IP) |
-| `GET` | `/api/agents/install` | Serves the Bash installer script for agent bootstrap |
+| `GET` | `/api/agents/install` | **Legacy Phase-1** Bash installer (kept for backward compatibility) |
+| `GET` | `/api/agents/install-go` | **Phase-2** Bash bootstrap that downloads the Go binary |
+| `GET` | `/api/agents/binary/{arch}` | Pre-built agent binary (`linux-amd64`, `linux-arm64`) |
+| `GET` | `/api/agents/binary/{arch}.sha256` | Sidecar SHA-256 checksum for integrity verification |
+| `GET` | `/api/agents/unit` | systemd unit file (`wireshield-agent.service`) |
 
 ---
 
@@ -444,14 +449,54 @@ The WG peer block is removed, the DB row is marked `revoked`, and the next `/api
 | Replay / enumeration | Rate-limited public endpoints; generic `401 Invalid or expired enrollment token` for all token-related failures |
 | Config hygiene | Atomic `wg0.conf` writes (`tmp + os.replace`); idempotent peer-add/remove; hourly purge of stale tokens + old heartbeats |
 
-### Agent-side layout
+### Agent-side layout (Phase 2, Go daemon)
 
 | Path | Purpose |
 |------|---------|
+| `/usr/local/bin/wireshield-agent` | Statically-linked Go binary (subcommands: `enroll`, `run`, `status`, `revoke`, `version`) |
 | `/etc/wireshield-agent/private.key` | Agent WG private key (mode 0600) |
-| `/etc/wireguard/wg-agent0.conf` | WG interface config with `PostUp` MASQUERADE for advertised LAN (mode 0600) |
-| `/usr/local/sbin/wireshield-agent-heartbeat` | Heartbeat + revocation-check script driven by systemd timer |
-| `/etc/sysctl.d/99-wireshield-agent.conf` | Persists `net.ipv4.ip_forward=1` across reboots |
+| `/etc/wireshield-agent/config.json` | Agent identity: server URL, agent ID, WG address, advertised CIDRs (mode 0600) |
+| `/etc/wireguard/wg-agent0.conf` | WG interface config with `PostUp` MASQUERADE for the advertised LAN (mode 0600) |
+| `/etc/systemd/system/wireshield-agent.service` | systemd unit running the heartbeat daemon as a hardened long-lived process |
+
+### Go agent build + deployment
+
+The Phase-2 agent is a single statically-linked Go binary. Build it on any host with Go 1.22+:
+
+```bash
+cd agent
+make test        # run unit tests
+make dist        # cross-compile static linux-amd64 + linux-arm64 + .sha256 sidecars
+```
+
+Artefacts land under `agent/dist/bin/<arch>/`. On the VPN server, publish them so the `install-go` endpoint can serve them:
+
+```bash
+# On the VPN server, after copying the agent/ tree over:
+AGENT_BINARY_DIR=/etc/wireshield/agent-binaries make -C agent install
+```
+
+Then any remote Linux host can be onboarded with the one-liner the admin console prints:
+
+```bash
+curl -sSL https://VPN_HOST/api/agents/install-go | \
+  sudo TOKEN=<enrollment-token> WIRESHIELD_SERVER=https://VPN_HOST bash
+```
+
+The installer detects architecture, downloads the binary (verifying its SHA-256 if published), drops the systemd unit, runs `wireshield-agent enroll`, and starts `wireshield-agent.service`. The daemon heartbeats every 30 s and polls revocation every 60 s; on server-confirmed revocation it exits with code 2 and systemd keeps it stopped (via `RestartPreventExitStatus=2`).
+
+Operator subcommands on the agent host:
+
+| Command | Action |
+|---------|--------|
+| `wireshield-agent status` | Print current enrollment + WG interface state |
+| `wireshield-agent run` | Long-running heartbeat daemon (invoked by systemd; rarely run by hand) |
+| `wireshield-agent revoke` | Local teardown: stop `wg-quick@wg-agent0`, remove config, delete keys |
+| `wireshield-agent version` | Print the agent version |
+
+### Phase-1 compatibility
+
+`/api/agents/install` still serves the original Bash installer and its heartbeat-timer approach so existing one-liners keep working. New agents enrolled from the admin console get the Phase-2 flow automatically.
 
 ---
 
@@ -768,6 +813,7 @@ WireShield/
 |-------|-----------|
 | VPN | WireGuard |
 | Backend | Python 3.8+, FastAPI 0.104, Uvicorn |
+| Agent daemon | Go 1.22+ (single static binary, Curve25519 via `golang.org/x/crypto`) |
 | Database | SQLite |
 | Frontend | Jinja2, vanilla JavaScript, Chart.js |
 | Auth | pyotp (TOTP), pyqrcode |

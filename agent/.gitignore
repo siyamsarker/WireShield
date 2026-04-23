@@ -1,0 +1,5 @@
+# Local dev build
+/wireshield-agent
+
+# Release build tree (populated by `make dist`)
+/dist/bin/
