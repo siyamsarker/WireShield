@@ -1624,16 +1624,14 @@ function uninstallWg() {
 		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
 
-		# Remove watchdog-inserted rules and split-tunnel policy NAT rules that
-		# are NOT tied to wg-quick PostDown. These are added by the Python
-		# watchdog/policies modules at runtime.
+		# Remove runtime-inserted iptables rules that aren't tied to
+		# wg-quick's PostDown: the global ESTABLISHED,RELATED FORWARD
+		# rule and any residual WG-subnet MASQUERADE entries left behind
+		# by old installs (pre-3.0.2 split-tunnel feature, now removed).
 		_ws_ui_info "Removing runtime-inserted iptables rules..."
-		# Global ESTABLISHED,RELATED rule inserted by policies.py
 		while iptables -C FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; do
 			iptables -D FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || break
 		done
-		# Any remaining MASQUERADE entries in POSTROUTING that reference the WG
-		# subnet as source (policy rules). Iterate until no matches remain.
 		if [[ -n "${SERVER_WG_IPV4}" ]]; then
 			local wg_subnet="${SERVER_WG_IPV4%.*}.0/24"
 			while iptables -t nat -S POSTROUTING 2>/dev/null | grep -q "${wg_subnet%/*}"; do

@@ -136,8 +136,7 @@ function revokeUser(clientId) {
         `This will:\n` +
         `  • Remove the peer from the VPN server\n` +
         `  • Delete the client's configuration file\n` +
-        `  • Clear all active 2FA sessions\n` +
-        `  • Drop all tunnel bypass rules for this client\n\n` +
+        `  • Clear all active 2FA sessions\n\n` +
         `This action cannot be undone.`;
     if (!confirm(message)) {
         return;

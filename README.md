@@ -76,55 +76,6 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 | **Reconnect > 1h** | Session revoked, 2FA required again |
 | **Strict revocation** | Expired sessions immediately block all traffic |
 
-### Split Tunnel
-
-By default, when a client connects with `AllowedIPs = 0.0.0.0/0`, **all traffic** goes through the VPN tunnel — including traffic to local resources like `192.168.169.121:8000`. If the VPN server is cloud-hosted (e.g. AWS), it cannot reach those private IPs, so the connection fails.
-
-The **Split Tunnel** page (under *Network* in the console) solves this by letting admins define **Tunnel Bypass Rules**: IPs or subnets that should **bypass the VPN** and go directly to the client's local network. The system calculates updated WireGuard `AllowedIPs` that exclude the rule targets and provides a ready-to-use config for the client.
-
-| Target Type | Example | Effect |
-|-------------|---------|--------|
-| IP | `192.168.169.121` | Traffic to this host bypasses VPN |
-| CIDR | `192.168.169.0/24` | Traffic to entire subnet bypasses VPN |
-| Domain | `internal.example.com` | Resolved to IP at creation time, then excluded |
-
-#### How it works
-
-1. Admin clicks **Add Rule** in the console: client `uloop`, target `192.168.169.0/24`
-2. The system computes `AllowedIPs` = `0.0.0.0/0` minus `192.168.169.0/24` (result: ~24 complementary CIDRs)
-3. Admin opens **Generate Client Config** and shares the updated config with the client
-4. Client deletes the old tunnel, imports the new config (or scans the QR code) and activates it
-5. Traffic to `192.168.169.x` now goes directly to the local network; everything else still goes through VPN
-
-> **Prerequisite:** the client device must already have a direct route to the target (e.g. on the same LAN as `192.168.169.121`). If the client is remote and has no independent path to the target, split tunneling alone cannot reach it — a gateway peer on the target LAN would be required.
-
-#### Applying the config
-
-After creating or modifying rules, click **Generate Client Config** in the console. A step-by-step modal opens with three ways to apply the updated config — pick the one that best matches the client device:
-
-| Tab | Best for | How it works |
-|-----|----------|-------------|
-| **Download** | Desktop clients (Windows, macOS, Linux) | One-click download of a ready-to-import `.conf` file. The file has a comment header listing every excluded target so it's self-documenting. |
-| **QR Code** | Mobile clients (iOS, Android) | Generate a QR code and scan it with the VPN client app (`+` → **Create from QR code**) to import the tunnel in one tap. |
-| **Manual** | Advanced users / troubleshooting | Copy the calculated `AllowedIPs` line into an existing config. Not recommended for long exclusions — a single typo silently breaks routing. |
-
-**Critical apply steps (all tabs):**
-1. Download the config (or generate the QR).
-2. **Deactivate** the current tunnel in the client app.
-3. **Delete** the old tunnel entry — don't just re-import on top, or stale routes may remain.
-4. Import the new tunnel.
-5. Activate it.
-
-After applying, you can verify routing on the client machine:
-
-| OS | Command | Expected |
-|----|---------|---------|
-| Linux / macOS | `ip route get <target-ip>` | Must NOT show `dev wg0` |
-| Windows | `route print <target-ip>` | Interface should be the LAN adapter, not the tunnel |
-| macOS (alt) | `route -n get <target-ip>` | `interface:` line should be `en0`/`en1`, not `utun` |
-
-If any of these show the tunnel interface, the new config didn't take effect — delete the tunnel and re-import.
-
 ---
 
 ## Features
@@ -135,7 +86,6 @@ If any of these show the tunnel interface, the new config didn't take effect —
 - **Rate limiting** at 30 requests per 60 seconds per IP/endpoint
 - **ipset-based firewall** for O(1) allowlist lookups (IPv4 + IPv6)
 - **Session-gated portal pages** — `/success`, `/console` and user APIs reject callers without a non-expired 2FA session
-- **Per-client split-tunnel policies** for excluding local IPs, CIDRs, or domains from the VPN tunnel
 - **WireGuard handshake monitoring** with 3-second polling for real-time session tracking
 - **Comprehensive audit logging** for all authentication events
 
@@ -143,7 +93,6 @@ If any of these show the tunnel interface, the new config didn't take effect —
 - **Dashboard** with real-time statistics, charts, and active session monitoring
 - **User management** with pagination, search, in-browser **Create / Revoke** actions and per-user **Download `.conf`** — no SSH required
 - **Per-client access control** (admin console permission, expiry dates)
-- **Split Tunnel** page with per-client Tunnel Bypass Rules and a config generator (download `.conf`, QR code, or copyable AllowedIPs)
 - **Traffic activity** logs with DNS resolution and protocol analysis
 - **Bandwidth insights** with per-client daily upload/download tracking
 - **Audit trail** for all security events (2FA setup, verification, failures)
@@ -335,7 +284,6 @@ The console provides:
 - **User Management** with status, IPs, access control — plus in-browser **Create User**, per-row **Download Config** (`.conf` file) and **Revoke** buttons
 - **Audit Trail** for security events
 - **Traffic Activity** with connection logs, DNS resolution, and filtering
-- **Split Tunnel** with Tunnel Bypass Rules — define which local IPs or subnets bypass the VPN for each client, then generate an updated WireGuard config (download `.conf`, QR code, or copyable AllowedIPs)
 
 ---
 
@@ -394,13 +342,6 @@ The console provides:
 | `GET` | `/api/console/bandwidth-usage` | Per-client bandwidth data |
 | `GET` | `/api/console/dashboard-stats` | Dashboard metrics |
 | `GET` | `/api/console/dashboard-charts` | Chart visualization data |
-| `GET` | `/api/console/policies` | List tunnel bypass rules (optional `?client_filter=<id>`) |
-| `POST` | `/api/console/policies` | Create a new tunnel bypass rule (JSON body) |
-| `DELETE` | `/api/console/policies/{id}` | Delete a tunnel bypass rule |
-| `PATCH` | `/api/console/policies/{id}/toggle` | Enable or disable a tunnel bypass rule |
-| `GET` | `/api/console/policies/split-config/{client}` | Get split-tunnel AllowedIPs and config (JSON) for a client |
-| `GET` | `/api/console/policies/split-config/{client}/download` | Download the split-tunnel `.conf` file (attachment) |
-| `GET` | `/api/console/policies/split-config/{client}/qrcode` | Return a base64 PNG QR code of the split-tunnel config |
 
 ---
 
@@ -599,55 +540,7 @@ nslookup <your-domain>
   sudo systemctl start wireshield.service
   ```
 
-### 6. Local Network Unreachable While on VPN
-
-**Symptoms:** Client is connected to the VPN but cannot reach a local resource like `192.168.169.121`.
-
-**Cause:** With `AllowedIPs = 0.0.0.0/0`, the client OS routes all traffic into the tunnel. If the VPN server can't reach that IP either (e.g. a cloud server has no path to a private office subnet), the traffic is dropped.
-
-**Solution — Tunnel Bypass Rules:**
-
-1. Console → **Split Tunnel** → **Add Rule** → set the affected client + target.
-2. Click **Generate Client Config** → **Download** tab → *Download .conf file*.
-3. In the client's VPN app, **deactivate + delete** the old tunnel, then **import** the downloaded file as a new tunnel.
-4. Activate the new tunnel.
-
-The downloaded `.conf` contains an `AllowedIPs` line that mathematically excludes every rule target. The file is strict WireGuard-spec compliant — it only uses keys in the GUI allowlist (`PrivateKey`, `Address`, `DNS`, `MTU`, `PublicKey`, `PresharedKey`, `AllowedIPs`, `Endpoint`, `PersistentKeepalive`) so it imports cleanly into the macOS / Windows / iOS / Android GUI apps and the `wg-quick` CLI.
-
-**Verify it worked — run on the client device after the tunnel is active:**
-
-| OS | Check command | Expected |
-|----|---------------|---------|
-| Linux | `ip route get <target-ip>` | Must NOT show `dev wg0` |
-| macOS | `route -n get <target-ip>` | `interface:` line should be `en0`/`en1`, not `utun*` |
-| Windows | `route print <target-ip>` | Interface index should point to the LAN adapter |
-
-**If the macOS GUI app still routes the target through `utun*`** (common: `route -n get` shows `destination: default, interface: utun4` because the app installed a full default route regardless of AllowedIPs), add an explicit host route that shadows the tunnel's default:
-
-```bash
-# macOS — run each time the tunnel activates. <lan-if> is typically en0 (Wi-Fi) or en1 (Ethernet).
-sudo route -n add -host <target-ip> -interface <lan-if>
-```
-
-```bash
-# Linux
-sudo ip route add <target-ip>/32 via <lan-gateway> dev <lan-if>
-```
-
-```powershell
-# Windows (run as Administrator). -p persists across reboots.
-route -p ADD <target-ip> MASK 255.255.255.255 <lan-gateway> METRIC 1
-```
-
-Re-run the check command — the interface should now be your LAN adapter.
-
-**Common mistakes:**
-- **Re-importing on top of the old tunnel** — some clients keep stale routes. Delete the old entry first.
-- **Skipping reconnect** — WireGuard reads `AllowedIPs` only at activation time.
-- **Wrong target granularity** — excluding `192.168.169.121/32` only helps that one host; excluding `192.168.169.0/24` covers the whole subnet.
-- **Client is remote, not on the target LAN** — split tunneling can only bypass the VPN for IPs your device can *already* reach via another path. If you're on home Wi-Fi with no link to the office LAN, no `AllowedIPs` trick can produce one.
-
-### 7. Database Issues
+### 6. Database Issues
 
 **Symptoms:** Service won't start, SQLite errors in logs.
 
@@ -739,7 +632,6 @@ WireShield/
     │   │   ├── config.py         # Environment configuration
     │   │   ├── database.py       # SQLite schema and migrations
     │   │   ├── security.py       # Auth, rate limiting, ipset
-    │   │   ├── policies.py       # Split-tunnel rules: AllowedIPs calculator + config generator
     │   │   ├── wireguard.py      # Client lifecycle: create/revoke/download .conf (Python mirror of ws_add_client)
     │   │   ├── tasks.py          # Background monitors + interface watchdog
     │   │   └── sniffer.py        # DNS + TLS SNI packet capture (auto-recovering)
