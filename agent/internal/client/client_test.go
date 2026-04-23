@@ -35,9 +35,11 @@ func TestEnrollHappyPath(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(EnrollResponse{
-			AgentID: 7, AgentName: "n", WGIPv4: "10.8.0.200",
+			Success: true, AgentID: 7, AgentName: "n", WGIPv4: "10.8.0.200",
 			ServerPublicKey: "srv", ServerEndpoint: "vpn:51820",
-			PresharedKey: "psk", AdvertisedCIDRs: []string{"10.0.0.0/24"},
+			PresharedKey: "psk", AgentAllowedIPs: "10.8.0.0/24",
+			AdvertisedCIDRs: []string{"10.0.0.0/24"},
+			Config:          "[Interface]\n...",
 		})
 	}))
 	defer srv.Close()

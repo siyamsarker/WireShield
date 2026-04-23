@@ -95,16 +95,19 @@ type EnrollRequest struct {
 }
 
 // EnrollResponse is the server's reply: WG peer config the agent should
-// apply locally to bring up its tunnel.
+// apply locally to bring up its tunnel. Field tags mirror the JSON keys
+// returned by console-server routers/agents.py /api/agents/enroll.
 type EnrollResponse struct {
+	Success         bool     `json:"success"`
 	AgentID         int64    `json:"agent_id"`
-	AgentName       string   `json:"agent_name"`
+	AgentName       string   `json:"name"`
 	WGIPv4          string   `json:"wg_ipv4"`
-	ServerPublicKey string   `json:"server_public_key"`
-	ServerEndpoint  string   `json:"server_endpoint"`
 	PresharedKey    string   `json:"preshared_key"`
+	ServerPublicKey string   `json:"server_public_key"`
+	ServerEndpoint  string   `json:"endpoint"`
+	AgentAllowedIPs string   `json:"agent_allowed_ips"`
 	AdvertisedCIDRs []string `json:"advertised_cidrs"`
-	DNS             []string `json:"dns,omitempty"`
+	Config          string   `json:"config"`
 }
 
 // HeartbeatRequest mirrors AgentHeartbeatRequest on the server.
