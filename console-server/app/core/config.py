@@ -36,6 +36,20 @@ SESSION_IDLE_TIMEOUT_SECONDS = int(getenv_multi("3600", "WS_2FA_SESSION_IDLE_TIM
 DISCONNECT_GRACE_SECONDS = int(getenv_multi("3600", "WS_2FA_DISCONNECT_GRACE_SECONDS", "2FA_DISCONNECT_GRACE_SECONDS"))
 ACTIVITY_LOG_RETENTION_DAYS = int(getenv_multi("30", "WS_2FA_ACTIVITY_LOG_RETENTION_DAYS", "2FA_ACTIVITY_LOG_RETENTION_DAYS"))
 
+# ── Agent subsystem ──────────────────────────────────────────────────────
+# Lifetime of an enrollment token issued by an admin (single-use).
+AGENT_TOKEN_TTL_SECONDS = int(getenv_multi("3600", "WS_AGENT_TOKEN_TTL_SECONDS"))
+# First octet of the IPv4 range reserved for agent peers in the WG subnet.
+# Agents are assigned sequentially starting here, walking upward, skipping
+# any IP already present in wg0.conf (client or existing agent).
+AGENT_IP_START = int(getenv_multi("200", "WS_AGENT_IP_START"))
+# Highest octet to try (inclusive) — default .254.
+AGENT_IP_END = int(getenv_multi("254", "WS_AGENT_IP_END"))
+# Retention for the agent_heartbeats sparkline table.
+AGENT_HEARTBEAT_RETENTION_HOURS = int(getenv_multi("48", "WS_AGENT_HEARTBEAT_RETENTION_HOURS"))
+# An agent is considered offline if the last heartbeat is older than this.
+AGENT_OFFLINE_AFTER_SECONDS = int(getenv_multi("90", "WS_AGENT_OFFLINE_AFTER_SECONDS"))
+
 # Determine UI access URL based on config
 # Use http:// when SSL is disabled, https:// when enabled
 # Include port if it's not the default for the scheme
