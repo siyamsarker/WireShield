@@ -13,7 +13,7 @@
 
 WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authentication at the connection layer. Every client must verify through a captive portal before any traffic is allowed through the tunnel.
 
-[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Usage](#usage) &bull; [Contributing](#contributing)
+[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Usage](#usage) &bull; [Agents](#agents) &bull; [Contributing](#contributing)
 
 </div>
 
@@ -105,7 +105,8 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 - **Configurable log retention** with automatic cleanup
 - **Activity logging** with iptables-based traffic capture and DNS enrichment
 - **Self-healing watchdog** that detects WireGuard interface flaps, re-asserts portal firewall rules, and auto-restarts the DNS/TLS sniffer
-- **Diagnostic `/health` endpoint** exposing WireGuard state, iptables rules, database stats, and watchdog history for monitoring
+- **Diagnostic `/health` endpoint** exposing WireGuard state, iptables rules, database stats, watchdog history, and agent fleet stats for monitoring
+- **Agent fleet** — deploy WireShield agent daemons on remote Linux servers to let VPN clients reach private LANs behind those servers (reverse-connection, outbound-only, token-enrolled)
 
 ---
 
@@ -216,6 +217,11 @@ sudo systemctl restart wireshield.service
 | `WS_2FA_LOG_LEVEL` | `INFO` | Logging verbosity |
 | `WS_2FA_SSL_TYPE` | `self-signed` | `letsencrypt`, `self-signed`, or `disabled` |
 | `WS_2FA_DOMAIN` | | Domain name for Let's Encrypt |
+| `WS_AGENT_TOKEN_TTL_SECONDS` | `3600` | Enrollment token lifetime (1 hour) |
+| `WS_AGENT_IP_START` | `200` | First WG IPv4 octet reserved for agents (inside the server subnet) |
+| `WS_AGENT_IP_END` | `254` | Last WG IPv4 octet reserved for agents |
+| `WS_AGENT_HEARTBEAT_RETENTION_HOURS` | `48` | Hours of `agent_heartbeats` rows to retain before housekeeping prunes them |
+| `WS_AGENT_OFFLINE_AFTER_SECONDS` | `90` | Seconds without a heartbeat before an agent is reported as `online=false` in `/health` |
 
 ### Tuning Examples
 
@@ -300,6 +306,7 @@ The console provides:
 | VPN | WireGuard | Encrypted tunnel |
 | DNS Sniffer | scapy | IP-to-domain resolution for activity logs |
 | Monitors | Background threads | Handshake tracking, ipset sync, HTTP redirect |
+| Agents | WireGuard peer + Bash daemon | Reverse-connection gateways that expose remote LANs to VPN clients |
 
 ### Background Services
 
@@ -312,6 +319,7 @@ The console provides:
 | Log retention cleanup | Daily | Purges activity logs older than retention period |
 | Interface watchdog | 30s | Tracks WireGuard interface state; logs flaps; re-inserts missing `INPUT ACCEPT` rules for ports 80/443 |
 | DNS + TLS SNI sniffer | Continuous | Auto-recovering sniffer; waits for `wg0` to come back up before resuming after interface drops |
+| Agent housekeeping | 1h | Purges expired/used enrollment tokens and prunes `agent_heartbeats` older than the retention window |
 
 ### API Endpoints
 
@@ -342,6 +350,108 @@ The console provides:
 | `GET` | `/api/console/bandwidth-usage` | Per-client bandwidth data |
 | `GET` | `/api/console/dashboard-stats` | Dashboard metrics |
 | `GET` | `/api/console/dashboard-charts` | Chart visualization data |
+| `POST` | `/api/console/agents` | Register a new agent; returns a single-use enrollment token + install command |
+| `GET` | `/api/console/agents` | List agents (add `?include_revoked=true` to include revoked rows) |
+| `GET` | `/api/console/agents/{id}` | Agent detail (preshared key is redacted) |
+| `PATCH` | `/api/console/agents/{id}` | Update advertised CIDRs or description |
+| `DELETE` | `/api/console/agents/{id}` | Revoke an agent (removes its WG peer + marks DB row as revoked) |
+| `POST` | `/api/console/agents/{id}/rotate-token` | Reissue an enrollment token for a `pending` agent |
+
+**Agent Public API** (called by the agent daemon, not by humans):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/agents/enroll` | Exchange a single-use token for a WG peer config (public/keyless endpoint, rate-limited) |
+| `POST` | `/api/agents/heartbeat` | Periodic liveness + bandwidth report (auth: WG tunnel source IP) |
+| `GET` | `/api/agents/revocation-check` | Agent polls this to self-disable when revoked (auth: WG tunnel source IP) |
+| `GET` | `/api/agents/install` | Serves the Bash installer script for agent bootstrap |
+
+---
+
+## Agents
+
+Agents are Bash-based daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
+
+### End-to-end cURL walkthrough
+
+Replace `VPN_HOST`, `COOKIE`, and the agent ID as appropriate. The admin requests require an active 2FA session cookie from `/console`.
+
+**1. Admin registers a new agent**
+
+```bash
+curl -sS -X POST https://VPN_HOST/api/console/agents \
+  -H "Cookie: session=$COOKIE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "branch-office-01",
+    "description": "Dhaka office LAN gateway",
+    "advertised_cidrs": ["10.50.0.0/24"]
+  }'
+```
+
+Response (token is returned **once**):
+
+```json
+{
+  "agent": { "id": 1, "name": "branch-office-01", "status": "pending", ... },
+  "enrollment_token": "RgV9...truncated...Ks",
+  "expires_at": "2026-04-23T17:36:00Z",
+  "install_command": "curl -sSL https://VPN_HOST/api/agents/install | TOKEN=RgV9...Ks WIRESHIELD_SERVER=https://VPN_HOST bash"
+}
+```
+
+**2. Operator runs the install command on the remote Linux server (as root)**
+
+The installer generates a WG keypair, enrolls the agent, writes `/etc/wireguard/wg-agent0.conf`, enables the `wg-quick@wg-agent0` unit, and installs a 30-second systemd heartbeat timer. No further manual steps are required.
+
+**3. Agent heartbeat (runs automatically every 30s)**
+
+```bash
+curl -sS -X POST https://VPN_HOST/api/agents/heartbeat \
+  -H "Content-Type: application/json" \
+  -d '{"agent_version":"1.0.0","rx_bytes":1024,"tx_bytes":2048}'
+```
+
+Authentication is implicit: this call only succeeds through the WireGuard tunnel, where the source IP matches the agent's allocated WG address. The VPN server rejects callers whose source IP isn't an enrolled agent.
+
+**4. Admin updates advertised CIDRs**
+
+```bash
+curl -sS -X PATCH https://VPN_HOST/api/console/agents/1 \
+  -H "Cookie: session=$COOKIE" \
+  -H "Content-Type: application/json" \
+  -d '{"advertised_cidrs":["10.50.0.0/24","10.50.1.0/24"]}'
+```
+
+The server rewrites the peer's `AllowedIPs` in `wg0.conf` and live-reloads WireGuard via `wg syncconf` — no interface bounce, no client disconnection.
+
+**5. Admin revokes an agent**
+
+```bash
+curl -sS -X DELETE https://VPN_HOST/api/console/agents/1 \
+  -H "Cookie: session=$COOKIE"
+```
+
+The WG peer block is removed, the DB row is marked `revoked`, and the next `/api/agents/revocation-check` poll causes the agent to self-disable its local `wg-agent0` unit.
+
+### Security model
+
+| Control | Mechanism |
+|---------|-----------|
+| Enrollment token | 32-byte `secrets.token_urlsafe`, SHA-256 hashed in DB, single-use (atomic `UPDATE ... WHERE used_at IS NULL`), 1-hour TTL, IP-bound |
+| Heartbeat / revocation-check auth | Source IP must match the agent's allocated WG address — only reachable through the decrypted tunnel |
+| CIDR escalation defence | Admin-pre-declared CIDRs take precedence over agent-declared CIDRs at enrollment |
+| Replay / enumeration | Rate-limited public endpoints; generic `401 Invalid or expired enrollment token` for all token-related failures |
+| Config hygiene | Atomic `wg0.conf` writes (`tmp + os.replace`); idempotent peer-add/remove; hourly purge of stale tokens + old heartbeats |
+
+### Agent-side layout
+
+| Path | Purpose |
+|------|---------|
+| `/etc/wireshield-agent/private.key` | Agent WG private key (mode 0600) |
+| `/etc/wireguard/wg-agent0.conf` | WG interface config with `PostUp` MASQUERADE for advertised LAN (mode 0600) |
+| `/usr/local/sbin/wireshield-agent-heartbeat` | Heartbeat + revocation-check script driven by systemd timer |
+| `/etc/sysctl.d/99-wireshield-agent.conf` | Persists `net.ipv4.ip_forward=1` across reboots |
 
 ---
 
