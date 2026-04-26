@@ -75,32 +75,34 @@ Every VPN client must pass a TOTP challenge through the captive portal before an
 Agents are Go daemons deployed on remote Linux servers. Each agent dials outbound into the WireShield VPN as a WireGuard peer and advertises its local LAN CIDRs. The server adds those CIDRs to the agent's `AllowedIPs`, so any authenticated VPN client can reach them without any client-side changes.
 
 ```
-┌────────────────┐                 ┌──────────────────────────────────────────┐
-│  VPN Client    │  WG tunnel      │            WireShield Server             │
-│  (WireGuard)   │◄───────────────►│                  (wg0)                   │
-└────────────────┘                 │                                          │
-                                   │  Peer: VPN Client                        │
-                                   │    AllowedIPs: 10.8.0.2/32               │
-                                   │                                          │
-                                   │  Peer: Agent                             │
-                                   │    AllowedIPs: 10.8.0.200/32             │
-                                   │              + 10.50.0.0/24  ◄───────┐  │
-                                   │               (advertised LAN CIDRs) │  │
-                                   └────────────────────┬─────────────────┘  │
-                                                        │ outbound WG tunnel │
-                                                        │ (wg-agent0)        │
-                                                        ▼                    │
-                                   ┌──────────────────────────────────────┐  │
-                                   │       Remote Linux Server            │  │
-                                   │  ┌────────────────────────────────┐  │  │
-                                   │  │   wireshield-agent daemon      │  │  │
-                                   │  │   · heartbeat every 30 s      │  │  │
-                                   │  │   · revocation poll / 60 s    │  │  │
-                                   │  │   · token-enrolled, auto-start │  │  │
-                                   │  └────────────────────────────────┘  │  │
-                                   │                                      │  │
-                                   │  Private LAN: 10.50.0.0/24 ──────────┼──┘
-                                   └──────────────────────────────────────┘
+┌──────────────────────┐       ┌────────────────────────────────────────────┐
+│     VPN Client       │       │           WireShield Server                │
+│     (WireGuard)      │◄─────►│                  (wg0)                     │
+└──────────────────────┘  WG   │                                            │
+                        tunnel │  wg0 peer table:                           │
+                               │  ┌──────────────────────────────────────┐  │
+                               │  │ VPN Client   AllowedIPs 10.8.0.2/32  │  │
+                               │  │ Agent        AllowedIPs 10.8.0.200/32│  │
+                               │  │              + 10.50.0.0/24          │  │
+                               │  │              (advertised LAN CIDRs)  │  │
+                               │  └──────────────────────────────────────┘  │
+                               └──────────────────────┬─────────────────────┘
+                                                      │
+                                          outbound WireGuard tunnel
+                                                 (wg-agent0)
+                                                      │
+                                                      ▼
+                               ┌────────────────────────────────────────────┐
+                               │          Remote Linux Server               │
+                               │                                            │
+                               │   wireshield-agent                         │
+                               │   · dials outbound, no open inbound ports  │
+                               │   · heartbeat to server every 30 s         │
+                               │   · polls revocation every 60 s            │
+                               │   · token-enrolled, managed by systemd     │
+                               │                                            │
+                               │   Private LAN: 10.50.0.0/24               │
+                               └────────────────────────────────────────────┘
 ```
 
 Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forwarded through the server's WireGuard peer for the agent, which NATs it into the remote LAN. No routes, no config changes, no restarts on the client side — the server applies `wg syncconf` live.
