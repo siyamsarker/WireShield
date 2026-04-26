@@ -321,6 +321,7 @@ The console provides:
 | Interface watchdog | 30s | Tracks WireGuard interface state; logs flaps; re-inserts missing `INPUT ACCEPT` rules for ports 80/443 |
 | DNS + TLS SNI sniffer | Continuous | Auto-recovering sniffer; waits for `wg0` to come back up before resuming after interface drops |
 | Agent housekeeping | 1h | Purges expired/used enrollment tokens and prunes `agent_heartbeats` older than the retention window |
+| Agent ACL iptables sync | 30s | Rebuilds the `WS_AGENT_ACL` iptables chain to match the current per-user allowlist for all restricted agents; also triggered immediately on every grant/revoke |
 
 ### API Endpoints
 
@@ -334,7 +335,7 @@ The console provides:
 | `POST` | `/api/setup-verify` | Verify initial TOTP code during setup |
 | `POST` | `/api/verify` | Verify TOTP code for existing users |
 | `POST` | `/api/validate-session` | Check session token validity |
-| `GET` | `/health` | Diagnostic snapshot: database, WireGuard interface, iptables rules, watchdog state |
+| `GET` | `/health` | Diagnostic snapshot: database, WireGuard interface, iptables rules, watchdog state, agent ACL chain |
 
 **Admin Console:**
 
@@ -512,7 +513,7 @@ The WG peer block is removed, the DB row is marked `revoked`, and the next `/api
 
 | Path | Purpose |
 |------|---------|
-| `/usr/local/bin/wireshield-agent` | Statically-linked Go binary (subcommands: `enroll`, `run`, `status`, `revoke`, `version`) |
+| `/usr/local/bin/wireshield-agent` | Statically-linked Go binary (subcommands: `enroll`, `run`, `status`, `revoke`, `update`, `version`) |
 | `/etc/wireshield-agent/private.key` | Agent WG private key (mode 0600) |
 | `/etc/wireshield-agent/config.json` | Agent identity: server URL, agent ID, WG address, advertised CIDRs (mode 0600) |
 | `/etc/wireguard/wg-agent0.conf` | WG interface config with `PostUp` MASQUERADE for the advertised LAN (mode 0600) |
@@ -609,6 +610,12 @@ Example response:
     "iface_state": "up",
     "last_transition": { "from": "down", "to": "up", "at": "..." },
     "portal_rule_fixes": 0
+  },
+  "agent_acl": {
+    "chain": "WS_AGENT_ACL",
+    "rules": 3,
+    "last_sync": "2026-04-19T10:12:10.123Z",
+    "error": null
   }
 }
 ```
@@ -623,6 +630,7 @@ What each field tells you:
 | `iptables_portal.80/443` | INPUT ACCEPT rule exists | Portal is firewall-blocked even though uvicorn is listening |
 | `watchdog.portal_rule_fixes` | `0` means stable | Non-zero = the watchdog had to re-add stripped firewall rules (wg-quick flaps) |
 | `watchdog.last_transition` | `null` means no flaps | Shows the most recent wg0 up/down transition for outage correlation |
+| `agent_acl.error` | `null` means last sync succeeded | Non-null string = iptables command failed; restricted agents may have stale rules |
 
 ### 1. No Internet After 2FA Verification
 
@@ -797,6 +805,43 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
   "SELECT timestamp, client_id, action, status FROM audit_log ORDER BY timestamp DESC LIMIT 20;"
 ```
 
+### 7. Agent Issues
+
+**Agent not connecting / stuck in `pending`:**
+
+```bash
+# On the agent host — check the daemon logs
+sudo journalctl -u wireshield-agent.service -f
+
+# Print current enrollment state and WG interface status
+wireshield-agent status
+
+# Verify the WireGuard tunnel is up
+sudo wg show wg-agent0
+```
+
+**Agent ACL rules not applying:**
+
+Check the `agent_acl` block in the `/health` response — a non-null `error` field means the last iptables sync failed:
+
+```bash
+curl -sk https://<your-server>/health | jq .agent_acl
+```
+
+To force an immediate sync, grant or revoke any access entry from the console — this triggers `trigger_agent_acl_sync()` in addition to the 30-second background timer.
+
+**Agent not self-updating:**
+
+```bash
+# One-shot dry-run to see what would happen
+wireshield-agent update --dry-run
+
+# Check the version manifest the server is serving
+curl -sk https://<your-server>/api/agents/version | jq
+```
+
+Ensure the operator has run `make -C agent dist && make -C agent install` and that `WS_AGENT_BINARY_DIR` points to the directory containing the built binaries.
+
 ---
 
 ## Development
@@ -833,6 +878,32 @@ WireShield/
 │   ├── test_bandwidth_usage_api.py
 │   ├── test-2fa-access.sh
 │   └── test-integration.sh
+├── agent/                        # Go agent daemon
+│   ├── go.mod
+│   ├── Makefile                  # build / test / dist / install targets
+│   ├── cmd/
+│   │   └── wireshield-agent/
+│   │       ├── main.go           # Subcommand dispatch
+│   │       ├── enroll.go         # Enrollment flow
+│   │       ├── daemon.go         # Heartbeat daemon (run subcommand)
+│   │       ├── update.go         # One-shot self-update (update subcommand)
+│   │       ├── revoke.go         # Local teardown
+│   │       └── status.go         # Enrollment state printer
+│   ├── internal/
+│   │   ├── client/client.go      # HTTP client for server API
+│   │   ├── config/config.go      # config.json read/write (atomic)
+│   │   ├── logx/logx.go          # Leveled stderr logger
+│   │   ├── runner/runner.go      # Event-loop with heartbeat + revocation + auto-update timers
+│   │   ├── updater/updater.go    # Semver compare, binary download + SHA-256 verify, atomic replace
+│   │   └── wg/
+│   │       ├── keys.go           # Curve25519 keypair generation
+│   │       ├── config.go         # wg-agent0.conf builder (atomic write)
+│   │       ├── lan.go            # Default-route LAN detection
+│   │       ├── stats.go          # wg show transfer parser
+│   │       └── systemd.go        # systemctl enable/disable --now wrappers
+│   └── dist/
+│       ├── wireshield-agent.service  # Hardened systemd unit
+│       └── install.sh            # Bootstrap installer (arch-detect, binary download, enroll)
 └── console-server/
     ├── run.py                    # Service entry point
     ├── requirements.txt
