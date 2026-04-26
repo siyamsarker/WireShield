@@ -1006,3 +1006,143 @@ async def rotate_agent_token_endpoint(
         "token_expires_at": expires_at.isoformat() + "Z",
         "install_command": install_cmd,
     }
+
+
+# ============================================================================
+# Phase 4 — agent traffic + uptime metrics
+#
+# /api/console/agents/{id}/metrics aggregates the existing
+# agent_heartbeats table into evenly-spaced time buckets so the UI's
+# detail drawer can render a sparkline + uptime %. No schema change —
+# heartbeats already carry rx_bytes/tx_bytes per 30 s tick and are
+# pruned by the housekeeping task per WS_AGENT_HEARTBEAT_RETENTION_HOURS.
+# ============================================================================
+
+
+@router.get("/api/console/agents/{agent_id}/metrics")
+async def agent_metrics_endpoint(
+    agent_id: int,
+    window_hours: int = 24,
+    bucket_minutes: int = 15,
+    client_id: str = Depends(_check_console_access),
+):
+    """Return rx/tx delta time-series + uptime % for one agent.
+
+    window_hours / bucket_minutes are clamped to safe-but-flexible
+    ranges. Buckets that contain no heartbeat are emitted with zero
+    deltas + counted toward downtime (matches what an operator
+    interprets visually: gap = agent was offline).
+    """
+    if window_hours < 1:
+        window_hours = 1
+    if window_hours > 168:  # one week
+        window_hours = 168
+    if bucket_minutes < 1:
+        bucket_minutes = 1
+    if bucket_minutes > 60:
+        bucket_minutes = 60
+
+    from app.core.agents import get_agent
+    agent = get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        # Pull every heartbeat in the window, ordered by time. We compute
+        # rx/tx deltas client-side because the agent's bytes counter is a
+        # cumulative counter that resets when wg-quick bounces; a per-row
+        # SQL diff would mistake a counter reset for a negative delta.
+        c.execute(
+            """
+            SELECT received_at, rx_bytes, tx_bytes
+            FROM agent_heartbeats
+            WHERE agent_id = ?
+              AND received_at >= datetime('now', ?)
+            ORDER BY received_at ASC
+            """,
+            (agent_id, f"-{window_hours} hours"),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+
+    # Bucket boundaries — UTC, anchored to "now" so the right edge of the
+    # chart is always the most recent tick.
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(tz=timezone.utc).replace(microsecond=0)
+    end = now
+    start = end - timedelta(hours=window_hours)
+    bucket = timedelta(minutes=bucket_minutes)
+    n_buckets = int((end - start) / bucket)
+    buckets = [start + bucket * i for i in range(n_buckets + 1)]
+
+    # Pre-compute per-bucket cumulative-counter snapshots, then derive
+    # deltas with monotonicity checks so a counter reset reads as zero.
+    rx_seen = [None] * (n_buckets + 1)
+    tx_seen = [None] * (n_buckets + 1)
+    heartbeat_count = [0] * (n_buckets + 1)
+    for r in rows:
+        try:
+            ts = datetime.fromisoformat(r["received_at"]).replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        idx = int((ts - start) / bucket)
+        if idx < 0 or idx > n_buckets:
+            continue
+        # Within a bucket, the LAST heartbeat wins; that's the most
+        # accurate snapshot of the cumulative counter at bucket-end.
+        rx_seen[idx] = r.get("rx_bytes") or 0
+        tx_seen[idx] = r.get("tx_bytes") or 0
+        heartbeat_count[idx] += 1
+
+    # Forward-fill the snapshots so a gap doesn't generate a false positive
+    # delta. After fill, compute deltas. Negative deltas (counter reset)
+    # are clamped to zero.
+    last_rx, last_tx = 0, 0
+    rx_filled = []
+    tx_filled = []
+    for i in range(n_buckets + 1):
+        if rx_seen[i] is None:
+            rx_filled.append(last_rx)
+            tx_filled.append(last_tx)
+        else:
+            rx_filled.append(rx_seen[i])
+            tx_filled.append(tx_seen[i])
+            last_rx = rx_seen[i]
+            last_tx = tx_seen[i]
+
+    rx_delta = []
+    tx_delta = []
+    prev_rx, prev_tx = rx_filled[0], tx_filled[0]
+    for i in range(1, n_buckets + 1):
+        d_rx = max(0, rx_filled[i] - prev_rx)
+        d_tx = max(0, tx_filled[i] - prev_tx)
+        rx_delta.append(d_rx)
+        tx_delta.append(d_tx)
+        prev_rx, prev_tx = rx_filled[i], tx_filled[i]
+
+    # Uptime %: a bucket is "up" when it received ≥1 heartbeat.
+    # The first bucket is excluded from delta math (it's the baseline)
+    # but is included in uptime counting since a heartbeat there means
+    # the agent was alive at the start of the window.
+    up_buckets = sum(1 for c in heartbeat_count if c > 0)
+    uptime_pct = round(100.0 * up_buckets / max(1, len(heartbeat_count)), 2)
+
+    return {
+        "agent_id": agent_id,
+        "agent_name": agent.get("name"),
+        "window_hours": window_hours,
+        "bucket_minutes": bucket_minutes,
+        "uptime_percent": uptime_pct,
+        "online_buckets": up_buckets,
+        "total_buckets": len(heartbeat_count),
+        # Bucket midpoints (ISO Z) for chart x-axis labels.
+        "labels": [
+            (start + bucket * (i + 1)).isoformat().replace("+00:00", "Z")
+            for i in range(n_buckets)
+        ],
+        "rx_bytes_per_bucket": rx_delta,
+        "tx_bytes_per_bucket": tx_delta,
+    }

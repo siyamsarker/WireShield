@@ -563,6 +563,11 @@
 
                 while (body.firstChild) body.removeChild(body.firstChild);
                 body.appendChild(grid);
+
+                // Attach the metrics section under the grid. Failures are
+                // non-fatal — the detail drawer is still usable without
+                // the chart if /metrics returns 404 or 500.
+                _attachMetrics(body, agentId);
             })
             .catch(err => {
                 while (body.firstChild) body.removeChild(body.firstChild);
@@ -574,8 +579,115 @@
             });
     }
 
+    // Per-modal-open metrics chart. We destroy any prior chart instance
+    // before drawing so re-opening the drawer for the same or another
+    // agent doesn't leak Chart.js state.
+    let _metricsChart = null;
+
+    function _attachMetrics(parent, agentId) {
+        const section = _el('div', { style: 'margin-top:18px;' });
+        section.appendChild(_el('div', {
+            style: 'font-weight:600;color:var(--text-main);font-size:13px;margin-bottom:6px;',
+            text: 'Traffic — last 24 hours',
+        }));
+        const summary = _el('div', {
+            style: 'font-size:11px;color:var(--text-muted);margin-bottom:8px;',
+            text: 'Loading metrics…',
+        });
+        section.appendChild(summary);
+
+        const canvasWrap = _el('div', {
+            style: 'position:relative;height:160px;background:var(--bg-body);border:1px solid var(--border);border-radius:8px;padding:8px;',
+        });
+        const canvas = document.createElement('canvas');
+        canvas.id = 'agent-metrics-chart';
+        canvasWrap.appendChild(canvas);
+        section.appendChild(canvasWrap);
+        parent.appendChild(section);
+
+        fetch(`/api/console/agents/${agentId}/metrics?window_hours=24&bucket_minutes=15`, { cache: 'no-store' })
+            .then(async r => {
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${r.status}`);
+                }
+                return r.json();
+            })
+            .then(m => {
+                summary.textContent =
+                    `Uptime ${m.uptime_percent}% · ${m.online_buckets}/${m.total_buckets} buckets reported a heartbeat`;
+                if (typeof Chart === 'undefined') {
+                    summary.textContent += ' (Chart.js not loaded)';
+                    return;
+                }
+                if (_metricsChart) {
+                    _metricsChart.destroy();
+                    _metricsChart = null;
+                }
+                _metricsChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: m.labels.map(s => s.replace('T', ' ').replace('Z', '')),
+                        datasets: [
+                            {
+                                label: 'RX',
+                                data: m.rx_bytes_per_bucket,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59,130,246,0.10)',
+                                fill: true,
+                                tension: 0.25,
+                                pointRadius: 0,
+                                borderWidth: 1.5,
+                            },
+                            {
+                                label: 'TX',
+                                data: m.tx_bytes_per_bucket,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16,185,129,0.10)',
+                                fill: true,
+                                tension: 0.25,
+                                pointRadius: 0,
+                                borderWidth: 1.5,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: {
+                            legend: { display: true, position: 'bottom', labels: { font: { size: 11 } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: ctx => `${ctx.dataset.label}: ${_formatBytesShort(ctx.parsed.y)}`,
+                                },
+                            },
+                        },
+                        scales: {
+                            x: { display: false },
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    font: { size: 10 },
+                                    callback: v => _formatBytesShort(v),
+                                },
+                            },
+                        },
+                    },
+                });
+            })
+            .catch(err => {
+                summary.textContent = `Metrics unavailable: ${err.message}`;
+                summary.style.color = 'var(--error)';
+            });
+    }
+
     function closeAgentDetailModal() {
         document.getElementById('agent-detail-modal').style.display = 'none';
+        if (_metricsChart) {
+            _metricsChart.destroy();
+            _metricsChart = null;
+        }
     }
 
     // Public exports — referenced from inline onclick attributes in the
