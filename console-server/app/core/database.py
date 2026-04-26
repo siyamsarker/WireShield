@@ -232,7 +232,7 @@ def init_db():
     except Exception:
         pass
 
-    # Phase-4 migration: per-user agent allowlist.
+    # Migration: per-user agent allowlist.
     # is_restricted defaults to 0 (false) so every existing agent stays
     # default-allow — no operator action required to keep current behaviour.
     try:

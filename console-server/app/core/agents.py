@@ -785,16 +785,16 @@ def stats() -> Dict[str, int]:
 
 
 # ============================================================================
-# Phase 4 — per-user agent allowlist
+# Per-user agent allowlist
 #
 # When agents.is_restricted = 1, only users present in the
 # agent_user_access join table are permitted to route traffic through
 # that agent's advertised CIDRs. Default behaviour (is_restricted=0) is
-# unchanged: all VPN clients have access to all agents — backward-
-# compatible with Phase 1/2/3.
+# unchanged: all VPN clients have access to all agents — preserves the
+# legacy default-allow contract.
 #
 # These helpers are the single source of truth for the firewall sync
-# logic landing in C5 (tasks.py) and the UI (console.py admin API).
+# logic in tasks.py and the admin API in console.py.
 # ============================================================================
 
 
@@ -879,7 +879,7 @@ def revoke_agent_access(agent_id: int, client_id: str) -> bool:
 
 
 def user_can_reach_agent(agent_id: int, client_id: str) -> bool:
-    """Authoritative access check used by the firewall sync (C5).
+    """Authoritative access check used by the firewall sync.
 
     Returns True if either:
       - the agent is unrestricted (is_restricted=0), OR
@@ -905,7 +905,7 @@ def user_can_reach_agent(agent_id: int, client_id: str) -> bool:
 
 def all_access_grants() -> List[Dict[str, Any]]:
     """Return every (enrolled-agent × allowlisted-client) pair plus the
-    agent's wg_ipv4 + advertised_cidrs and the client's wg_ipv4. C5's
+    agent's wg_ipv4 + advertised_cidrs and the client's wg_ipv4. The
     firewall sync uses this to compute the iptables rule set in one pass.
     Restricted agents with no allowlist entries return one row with
     client_id=None so the sync knows to drop ALL non-listed clients."""

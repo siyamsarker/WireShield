@@ -357,10 +357,10 @@ The console provides:
 | `PATCH` | `/api/console/agents/{id}` | Update advertised CIDRs or description |
 | `DELETE` | `/api/console/agents/{id}` | Revoke an agent (removes its WG peer + marks DB row as revoked) |
 | `POST` | `/api/console/agents/{id}/rotate-token` | Reissue an enrollment token for a `pending` agent |
-| `GET` | `/api/console/agents/{id}/metrics` | **Phase-4** time-bucketed RX/TX deltas + uptime % from heartbeats |
-| `GET` | `/api/console/agents/{id}/access` | **Phase-4** read `is_restricted` flag + per-user allowlist |
-| `POST` | `/api/console/agents/{id}/access` | **Phase-4** grant a user (body: `{client_id}`) — triggers immediate iptables sync |
-| `DELETE` | `/api/console/agents/{id}/access/{client_id}` | **Phase-4** remove a user from the allowlist |
+| `GET` | `/api/console/agents/{id}/metrics` | Time-bucketed RX/TX deltas + uptime % from heartbeats |
+| `GET` | `/api/console/agents/{id}/access` | Read `is_restricted` flag + per-user allowlist |
+| `POST` | `/api/console/agents/{id}/access` | Grant a user (body: `{client_id}`) — triggers immediate iptables sync |
+| `DELETE` | `/api/console/agents/{id}/access/{client_id}` | Remove a user from the allowlist |
 
 **Agent Public API** (called by the agent daemon, not by humans):
 
@@ -369,12 +369,12 @@ The console provides:
 | `POST` | `/api/agents/enroll` | Exchange a single-use token for a WG peer config (public/keyless endpoint, rate-limited) |
 | `POST` | `/api/agents/heartbeat` | Periodic liveness + bandwidth report (auth: WG tunnel source IP) |
 | `GET` | `/api/agents/revocation-check` | Agent polls this to self-disable when revoked (auth: WG tunnel source IP) |
-| `GET` | `/api/agents/install` | **Legacy Phase-1** Bash installer (kept for backward compatibility) |
-| `GET` | `/api/agents/install-go` | **Phase-2** Bash bootstrap that downloads the Go binary |
+| `GET` | `/api/agents/install` | **Legacy** Bash installer (kept for backward compatibility) |
+| `GET` | `/api/agents/install-go` | Bash bootstrap that downloads the Go binary |
 | `GET` | `/api/agents/binary/{arch}` | Pre-built agent binary (`linux-amd64`, `linux-arm64`) |
 | `GET` | `/api/agents/binary/{arch}.sha256` | Sidecar SHA-256 checksum for integrity verification |
 | `GET` | `/api/agents/unit` | systemd unit file (`wireshield-agent.service`) |
-| `GET` | `/api/agents/version` | **Phase-4** version manifest used by `--auto-update` agents |
+| `GET` | `/api/agents/version` | Version manifest used by `--auto-update` agents |
 
 ---
 
@@ -397,7 +397,7 @@ The admin dashboard ships an **Agents** tab (sidebar, under "Users & Access") wi
 
 The **Overview** tab shows an "Agents" stat card alongside Users/Sessions/Failed/Bandwidth: enrolled count + online indicator + pending count.
 
-### Auto-update flow (Phase 4)
+### Auto-update flow
 
 Agents can self-upgrade against a server-published version manifest. Off by default — enable with `--auto-update` on the systemd unit:
 
@@ -508,7 +508,7 @@ The WG peer block is removed, the DB row is marked `revoked`, and the next `/api
 | Replay / enumeration | Rate-limited public endpoints; generic `401 Invalid or expired enrollment token` for all token-related failures |
 | Config hygiene | Atomic `wg0.conf` writes (`tmp + os.replace`); idempotent peer-add/remove; hourly purge of stale tokens + old heartbeats |
 
-### Agent-side layout (Phase 2, Go daemon)
+### Agent-side layout
 
 | Path | Purpose |
 |------|---------|
@@ -520,7 +520,7 @@ The WG peer block is removed, the DB row is marked `revoked`, and the next `/api
 
 ### Go agent build + deployment
 
-The Phase-2 agent is a single statically-linked Go binary. Build it on any host with Go 1.22+:
+The agent is a single statically-linked Go binary. Build it on any host with Go 1.22+:
 
 ```bash
 cd agent
@@ -553,9 +553,9 @@ Operator subcommands on the agent host:
 | `wireshield-agent revoke` | Local teardown: stop `wg-quick@wg-agent0`, remove config, delete keys |
 | `wireshield-agent version` | Print the agent version |
 
-### Phase-1 compatibility
+### Legacy installer compatibility
 
-`/api/agents/install` still serves the original Bash installer and its heartbeat-timer approach so existing one-liners keep working. New agents enrolled from the admin console get the Phase-2 flow automatically.
+`/api/agents/install` still serves the original Bash installer and its heartbeat-timer approach so existing one-liners keep working. New agents enrolled from the admin console get the Go-daemon flow automatically.
 
 ---
 

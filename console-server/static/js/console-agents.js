@@ -1,4 +1,4 @@
-// console-agents.js — Phase 3 Agents tab controller.
+// console-agents.js — Agents tab controller.
 //
 // All dynamic content is inserted via DOM .textContent / element creation —
 // no innerHTML on user-controlled values, anywhere. Static SVG/markup uses
@@ -698,7 +698,7 @@
         }
     }
 
-    // ── Manage Access (Phase 4) ────────────────────────────────────────────
+    // ── Manage Access ─────────────────────────────────────────────────────
 
     let _accessAgentId = null;
 

@@ -196,7 +196,7 @@ async def revocation_check_endpoint(request: Request):
 # Install script
 # ============================================================================
 
-# The Phase 1 install script is an idempotent Bash bootstrap that uses
+# The legacy install script is an idempotent Bash bootstrap that uses
 # wg-quick (already required on any Linux host) and curl. It:
 #   1. Validates $TOKEN and $WIRESHIELD_SERVER are set.
 #   2. Requires root.
@@ -208,9 +208,9 @@ async def revocation_check_endpoint(request: Request):
 #   8. Starts wg-quick@wg-agent0 via systemd.
 #   9. Installs a systemd timer that runs the heartbeat every 30s.
 #
-# Phase 2 will replace this with a proper Go binary; for Phase 1 this is
-# a fully functional agent with no external dependencies beyond coreutils,
-# wg-quick, and curl.
+# Newer deployments use the Go agent (see /api/agents/install-go); this
+# Bash flow stays as a fully functional fallback with no dependencies
+# beyond coreutils, wg-quick, and curl.
 
 _INSTALL_SCRIPT = r"""#!/usr/bin/env bash
 #
@@ -439,16 +439,16 @@ printf "   rm -f %s %s %s\n" "$HEARTBEAT_SCRIPT" "$HEARTBEAT_SERVICE" "$HEARTBEA
 
 @router.get("/api/agents/install", tags=["agent"], response_class=PlainTextResponse)
 async def install_script_endpoint():
-    """Return the Bash bootstrap script for agent installation (Phase 1).
+    """Return the legacy Bash bootstrap script for agent installation.
 
     Preserved for backward compatibility — operators with existing cURL
     one-liners continue to work. New installs should use /api/agents/install-go
-    (Phase 2, Go daemon)."""
+    (Go daemon)."""
     return PlainTextResponse(content=_INSTALL_SCRIPT, media_type="text/x-shellscript")
 
 
 # ============================================================================
-# Phase 2 — Go agent distribution
+# Go agent distribution
 # ----------------------------------------------------------------------------
 # The admin populates AGENT_BINARY_DIR via `make -C agent dist` (tarball
 # lands on the VPN server, unpacks into a per-arch tree). These endpoints
@@ -539,7 +539,7 @@ async def agent_systemd_unit_endpoint():
 
 @router.get("/api/agents/install-go", tags=["agent"], response_class=PlainTextResponse)
 async def install_script_go_endpoint():
-    """Serve the Phase-2 Bash bootstrap (fetches the Go binary + enrolls).
+    """Serve the Bash bootstrap that fetches the Go binary + enrolls.
 
     Mirrors the legacy /api/agents/install flow but for the Go daemon.
     Same precedence rule as /api/agents/unit: published copy first,
@@ -556,7 +556,7 @@ async def install_script_go_endpoint():
 
 
 # ----------------------------------------------------------------------------
-# Phase 4 — auto-update version manifest
+# Auto-update version manifest
 #
 # /api/agents/version is the cheap polling endpoint the daemon hits every
 # few hours to decide whether it needs to pull a new binary. Format:

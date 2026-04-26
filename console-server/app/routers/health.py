@@ -89,7 +89,7 @@ async def health_check():
     except Exception as e:
         status["agents"] = {"error": str(e)}
 
-    # Phase-4 agent ACL sync state.
+    # Agent ACL sync state.
     try:
         from app.core.tasks import get_agent_acl_state
         status["agent_acl"] = get_agent_acl_state()

@@ -720,7 +720,7 @@ def get_watchdog_state() -> dict:
 
 
 # ============================================================================
-# Phase 4 — per-user agent allowlist enforcement
+# Per-user agent allowlist enforcement
 # ----------------------------------------------------------------------------
 # Reconciliative iptables sync. Every interval we compute the desired
 # rule set from the DB and overwrite the WS_AGENT_ACL chain. Behaviour:
@@ -730,9 +730,9 @@ def get_watchdog_state() -> dict:
 #      WS_AGENT_ACL for traffic whose -d matches the CIDR.
 #   2. Then prepend ACCEPT rules for each allowlisted (client_ipv4,
 #      agent_cidr) pair so allowed clients short-circuit the DROP.
-#   3. Unrestricted agents (is_restricted=0) get no rules — same as
-#      Phase-1/2/3 behaviour. Existing 2FA + ipset gating still applies
-#      to those flows.
+#   3. Unrestricted agents (is_restricted=0) get no rules — preserves
+#      the legacy default-allow behaviour. Existing 2FA + ipset gating
+#      still applies to those flows.
 #
 # The chain is JUMPed-to from FORWARD exactly once. We never duplicate
 # the JUMP (idempotent ensure) and rebuild the chain by flush + re-add.

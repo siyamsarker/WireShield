@@ -811,9 +811,9 @@ async def create_agent_endpoint(
     except Exception:
         pass
 
-    # Build the install command (Phase 2 — Go agent). The token is passed
+    # Build the install command for the Go agent. The token is passed
     # via env var so it does not end up in shell history / proxy access logs.
-    # The Phase-1 Bash installer remains available at /api/agents/install
+    # The legacy Bash installer remains available at /api/agents/install
     # for operators with existing scripts.
     from app.core.config import UI_BASE_URL
     install_cmd = (
@@ -1023,7 +1023,7 @@ async def rotate_agent_token_endpoint(
 
 
 # ============================================================================
-# Phase 4 — per-user agent allowlist admin API
+# Per-user agent allowlist admin API
 #
 # Default behaviour is unchanged (every agent has is_restricted=0 →
 # all users can reach all agents). The admin opts a specific agent into
@@ -1132,7 +1132,7 @@ async def revoke_agent_access_endpoint(
 
 
 # ============================================================================
-# Phase 4 — agent traffic + uptime metrics
+# Agent traffic + uptime metrics
 #
 # /api/console/agents/{id}/metrics aggregates the existing
 # agent_heartbeats table into evenly-spaced time buckets so the UI's

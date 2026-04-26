@@ -18,7 +18,7 @@ import (
 // new, please bounce me so the new image runs". Matches sysexits(3)
 // EX_TEMPFAIL (75): "system temporarily unable to perform requested
 // service" — restart-friendly without flagging it as an actual failure.
-// The systemd unit (C4 of Phase 2) has Restart=on-failure which fires
+// The systemd unit has Restart=on-failure which fires
 // for any non-zero exit, so 75 cleanly triggers the bounce. Code 2
 // remains reserved for runner.ErrRevoked (RestartPreventExitStatus=2).
 const ExitCodeUpdated = 75

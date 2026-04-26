@@ -19,7 +19,7 @@ import (
 )
 
 // runDaemon is the long-running heartbeat + revocation loop, invoked by
-// the systemd unit shipped in Phase-2 C4. Exit semantics:
+// the bundled systemd unit. Exit semantics:
 //
 //   0   — received SIGTERM/SIGINT; clean shutdown (systemd restart policy
 //         does not re-fire because exit was expected)

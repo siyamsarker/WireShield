@@ -2309,7 +2309,7 @@ tbody tr:last-child td {
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
-   Agents page — Phase 3
+   Agents page
    Reuses .status-pill / .ws-modal / .data-table for the bulk of the layout;
    the rules below add only what is genuinely agent-specific.
    ─────────────────────────────────────────────────────────────────────────── */
@@ -2455,7 +2455,7 @@ tbody tr:last-child td {
     font-size: 13px;
 }
 
-/* Phase 4 — restricted-agent badge + access-modal toggle switch.       */
+/* Restricted-agent badge + access-modal toggle switch.                 */
 
 .agent-restricted-pill {
     display: inline-flex;
