@@ -231,6 +231,33 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_agents_pubkey ON agents(public_key)")
     except Exception:
         pass
+
+    # Phase-4 migration: per-user agent allowlist.
+    # is_restricted defaults to 0 (false) so every existing agent stays
+    # default-allow — no operator action required to keep current behaviour.
+    try:
+        c.execute("ALTER TABLE agents ADD COLUMN is_restricted INTEGER DEFAULT 0")
+    except Exception:
+        pass
+
+    # Join table: which user (client_id) is permitted to reach an
+    # agent's advertised CIDRs. Only consulted when agents.is_restricted=1.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS agent_user_access (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER NOT NULL,
+            client_id TEXT NOT NULL,
+            granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            granted_by TEXT,
+            UNIQUE(agent_id, client_id),
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+    ''')
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agent_user_access_agent ON agent_user_access(agent_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_agent_user_access_client ON agent_user_access(client_id)")
+    except Exception:
+        pass
     try:
         c.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_enrollment_tokens(token_hash)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_agent ON agent_enrollment_tokens(agent_id)")

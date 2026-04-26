@@ -782,3 +782,156 @@ def stats() -> Dict[str, int]:
     finally:
         conn.close()
     return {k: int(v or 0) for k, v in row.items()}
+
+
+# ============================================================================
+# Phase 4 — per-user agent allowlist
+#
+# When agents.is_restricted = 1, only users present in the
+# agent_user_access join table are permitted to route traffic through
+# that agent's advertised CIDRs. Default behaviour (is_restricted=0) is
+# unchanged: all VPN clients have access to all agents — backward-
+# compatible with Phase 1/2/3.
+#
+# These helpers are the single source of truth for the firewall sync
+# logic landing in C5 (tasks.py) and the UI (console.py admin API).
+# ============================================================================
+
+
+def set_agent_restriction(agent_id: int, is_restricted: bool) -> bool:
+    """Toggle agents.is_restricted. Returns True if a row was updated."""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE agents SET is_restricted = ? WHERE id = ?",
+            (1 if is_restricted else 0, agent_id),
+        )
+        changed = c.rowcount > 0
+        conn.commit()
+    finally:
+        conn.close()
+    return changed
+
+
+def list_agent_users(agent_id: int) -> List[Dict[str, Any]]:
+    """Return the list of (client_id, granted_at, granted_by) rows for
+    one agent. Empty list if the agent has no entries (regardless of
+    is_restricted)."""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "SELECT client_id, granted_at, granted_by "
+            "FROM agent_user_access WHERE agent_id = ? ORDER BY client_id ASC",
+            (agent_id,),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+    return rows
+
+
+def grant_agent_access(agent_id: int, client_id: str, granted_by: Optional[str]) -> bool:
+    """Add (agent_id, client_id) to the allowlist. Idempotent — re-granting
+    is a no-op. Returns True if a new row was created.
+    Raises ValueError if the client_id does not exist in the users table."""
+    client_id = (client_id or "").strip()
+    if not client_id:
+        raise ValueError("client_id is required")
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM users WHERE client_id = ?", (client_id,))
+        if c.fetchone() is None:
+            raise ValueError(f"unknown client_id: {client_id!r}")
+        c.execute("SELECT 1 FROM agents WHERE id = ?", (agent_id,))
+        if c.fetchone() is None:
+            raise ValueError(f"unknown agent_id: {agent_id}")
+        c.execute(
+            "INSERT OR IGNORE INTO agent_user_access (agent_id, client_id, granted_by) "
+            "VALUES (?, ?, ?)",
+            (agent_id, client_id, granted_by),
+        )
+        added = c.rowcount > 0
+        conn.commit()
+    finally:
+        conn.close()
+    return added
+
+
+def revoke_agent_access(agent_id: int, client_id: str) -> bool:
+    """Remove (agent_id, client_id) from the allowlist. Idempotent.
+    Returns True if a row was actually deleted."""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "DELETE FROM agent_user_access WHERE agent_id = ? AND client_id = ?",
+            (agent_id, client_id),
+        )
+        removed = c.rowcount > 0
+        conn.commit()
+    finally:
+        conn.close()
+    return removed
+
+
+def user_can_reach_agent(agent_id: int, client_id: str) -> bool:
+    """Authoritative access check used by the firewall sync (C5).
+
+    Returns True if either:
+      - the agent is unrestricted (is_restricted=0), OR
+      - the user is in agent_user_access for this agent.
+    Returns False on unknown agent_id."""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT is_restricted FROM agents WHERE id = ?", (agent_id,))
+        row = c.fetchone()
+        if row is None:
+            return False
+        if not int(row["is_restricted"] or 0):
+            return True
+        c.execute(
+            "SELECT 1 FROM agent_user_access WHERE agent_id = ? AND client_id = ?",
+            (agent_id, client_id),
+        )
+        return c.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def all_access_grants() -> List[Dict[str, Any]]:
+    """Return every (enrolled-agent × allowlisted-client) pair plus the
+    agent's wg_ipv4 + advertised_cidrs and the client's wg_ipv4. C5's
+    firewall sync uses this to compute the iptables rule set in one pass.
+    Restricted agents with no allowlist entries return one row with
+    client_id=None so the sync knows to drop ALL non-listed clients."""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT a.id AS agent_id, a.wg_ipv4 AS agent_ipv4,
+                   a.advertised_cidrs AS advertised_cidrs,
+                   a.is_restricted AS is_restricted,
+                   au.client_id AS client_id,
+                   u.wg_ipv4 AS client_ipv4
+            FROM agents a
+            LEFT JOIN agent_user_access au ON au.agent_id = a.id
+            LEFT JOIN users u ON u.client_id = au.client_id
+            WHERE a.status = 'enrolled'
+            """
+        )
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+    for r in rows:
+        try:
+            r["advertised_cidrs"] = json.loads(r.get("advertised_cidrs") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            r["advertised_cidrs"] = []
+        r["is_restricted"] = bool(r.get("is_restricted") or 0)
+    return rows

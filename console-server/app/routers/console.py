@@ -23,6 +23,7 @@ class AgentCreateRequest(BaseModel):
 class AgentPatchRequest(BaseModel):
     advertised_cidrs: Optional[List[str]] = None
     description: Optional[str] = None
+    is_restricted: Optional[bool] = None
 
 from app.core.database import get_db
 from app.core.security import audit_log
@@ -914,12 +915,19 @@ async def patch_agent_endpoint(
         finally:
             conn.close()
 
+    restriction_changed = False
+    if body.is_restricted is not None:
+        from app.core.agents import set_agent_restriction
+        restriction_changed = set_agent_restriction(agent_id, bool(body.is_restricted))
+
     try:
         ip_address = request.client.host if request and request.client else "unknown"
         audit_log(
             client_id,
             "AGENT_UPDATE",
-            f"id={agent_id} cidrs_changed={changed_cidrs}",
+            f"id={agent_id} cidrs_changed={changed_cidrs} "
+            f"restriction_changed={restriction_changed} "
+            f"is_restricted={body.is_restricted}",
             ip_address,
         )
     except Exception:
@@ -1006,6 +1014,101 @@ async def rotate_agent_token_endpoint(
         "token_expires_at": expires_at.isoformat() + "Z",
         "install_command": install_cmd,
     }
+
+
+# ============================================================================
+# Phase 4 — per-user agent allowlist admin API
+#
+# Default behaviour is unchanged (every agent has is_restricted=0 →
+# all users can reach all agents). The admin opts a specific agent into
+# restriction by PATCHing /api/console/agents/{id} with is_restricted=true,
+# then grants access to specific users via POST/DELETE under
+# /api/console/agents/{id}/access.
+# ============================================================================
+
+
+class AgentAccessRequest(BaseModel):
+    client_id: str
+
+
+@router.get("/api/console/agents/{agent_id}/access")
+async def list_agent_access(
+    agent_id: int,
+    client_id: str = Depends(_check_console_access),
+):
+    """Return the per-user allowlist for an agent + current is_restricted flag."""
+    from app.core.agents import get_agent, list_agent_users
+
+    agent = get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    return {
+        "agent_id": agent_id,
+        "agent_name": agent.get("name"),
+        "is_restricted": bool(agent.get("is_restricted") or 0),
+        "users": list_agent_users(agent_id),
+    }
+
+
+@router.post("/api/console/agents/{agent_id}/access")
+async def grant_agent_access_endpoint(
+    agent_id: int,
+    body: AgentAccessRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+):
+    """Add a user to an agent's allowlist."""
+    from app.core.agents import grant_agent_access, get_agent
+
+    if get_agent(agent_id) is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    try:
+        added = grant_agent_access(agent_id, body.client_id, granted_by=client_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        ip_address = request.client.host if request and request.client else "unknown"
+        audit_log(
+            client_id,
+            "AGENT_ACCESS_GRANT",
+            f"agent_id={agent_id} target_client={body.client_id} added={added}",
+            ip_address,
+        )
+    except Exception:
+        pass
+
+    return {"success": True, "added": added, "agent_id": agent_id, "client_id": body.client_id}
+
+
+@router.delete("/api/console/agents/{agent_id}/access/{target_client_id}")
+async def revoke_agent_access_endpoint(
+    agent_id: int,
+    target_client_id: str,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+):
+    """Remove a user from an agent's allowlist. Idempotent: returns 200
+    with removed=false if the row was already absent."""
+    from app.core.agents import revoke_agent_access, get_agent
+
+    if get_agent(agent_id) is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    removed = revoke_agent_access(agent_id, target_client_id)
+
+    try:
+        ip_address = request.client.host if request and request.client else "unknown"
+        audit_log(
+            client_id,
+            "AGENT_ACCESS_REVOKE",
+            f"agent_id={agent_id} target_client={target_client_id} removed={removed}",
+            ip_address,
+        )
+    except Exception:
+        pass
+
+    return {"success": True, "removed": removed, "agent_id": agent_id, "client_id": target_client_id}
 
 
 # ============================================================================
