@@ -2305,3 +2305,150 @@ tbody tr:last-child td {
     justify-content: center;
     gap: 6px;
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Agents page — Phase 3
+   Reuses .status-pill / .ws-modal / .data-table for the bulk of the layout;
+   the rules below add only what is genuinely agent-specific.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Status pill colour variants for the three agent lifecycle states. */
+.status-pill.agent-pending  { background: rgba(245,158,11,0.10); color: #b45309; }
+.status-pill.agent-enrolled { background: rgba(16,185,129,0.10); color: #059669; }
+.status-pill.agent-revoked  { background: rgba(244,63,94,0.10);  color: #dc2626; }
+
+/* Online dot — solid circle prefix on enrolled rows that have a fresh
+   heartbeat. Pulse animation matches .nav-status-dot-wg in the sidebar. */
+.agent-online-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    background: #10b981;
+    box-shadow: 0 0 0 0 rgba(16,185,129,0.6);
+    animation: agent-online-pulse 2s ease-out infinite;
+}
+.agent-offline-dot {
+    background: #94a3b8;
+    box-shadow: none;
+    animation: none;
+}
+@keyframes agent-online-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+    100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+
+/* Action-cluster: small icon-only buttons in the table's last column. */
+.agent-actions {
+    display: inline-flex;
+    gap: 4px;
+}
+.agent-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.agent-action-btn:hover {
+    background: var(--bg-body);
+    color: var(--text-main);
+    border-color: var(--text-muted);
+}
+.agent-action-btn.danger:hover {
+    background: rgba(244,63,94,0.10);
+    color: #dc2626;
+    border-color: #fca5a5;
+}
+
+/* Mono cell for IPs, CIDRs, public-key fingerprints. */
+.agent-mono {
+    font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--text-main);
+}
+.agent-mono-muted {
+    color: var(--text-muted);
+}
+
+/* CIDR list inside the table cell — wraps cleanly when there are many. */
+.agent-cidrs-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.agent-cidr-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-main);
+}
+
+/* Install-command reveal block in the create-agent success state — the
+   one place the raw enrollment token is ever shown. The `code` element is
+   horizontally scrollable so a long URL doesn't break layout. */
+.agent-install-block {
+    position: relative;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 56px 12px 12px;
+    font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+.agent-install-copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #e2e8f0;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.agent-install-copy:hover    { background: rgba(255,255,255,0.16); }
+.agent-install-copy.copied   { background: #059669; border-color: #059669; }
+
+/* Detail-drawer key/value grid. */
+.agent-detail-grid {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 8px 14px;
+    font-size: 13px;
+    line-height: 1.55;
+}
+.agent-detail-grid > .key {
+    color: var(--text-muted);
+}
+.agent-detail-grid > .val {
+    color: var(--text-main);
+    word-break: break-all;
+}
+
+/* Empty / loading states for the table body. */
+.agent-table-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
