@@ -11,7 +11,7 @@
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776ab.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688.svg)](https://fastapi.tiangolo.com/)
 
-WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authentication at the connection layer. Every client must verify through a captive portal before any traffic is allowed through the tunnel.
+WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authentication at the connection layer. Every client must verify through a captive portal before any traffic is allowed through the tunnel. A built-in agent system lets remote Linux servers register as WireGuard peers — authenticated VPN clients can then route traffic to private LANs on those servers with no extra client-side configuration.
 
 [Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Usage](#usage) &bull; [Agents](#agents) &bull; [Contributing](#contributing)
 
@@ -32,6 +32,10 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 ---
 
 ## How It Works
+
+### VPN + 2FA flow
+
+Every VPN client must pass a TOTP challenge through the captive portal before any traffic is forwarded through the tunnel.
 
 ```
 ┌──────────────────┐
@@ -61,10 +65,45 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 │  │   2. Redirected to portal                  │  │
 │  │   3. Enter TOTP code from authenticator    │  │
 │  │   4. Client IP added to ipset allowlist    │  │
-│  │   5. Full internet access granted          │  │
+│  │   5. Full internet + agent LAN access      │  │
 │  └────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────┘
 ```
+
+### Agent network extension
+
+Agents are Go daemons deployed on remote Linux servers. Each agent dials outbound into the WireShield VPN as a WireGuard peer and advertises its local LAN CIDRs. The server adds those CIDRs to the agent's `AllowedIPs`, so any authenticated VPN client can reach them without any client-side changes.
+
+```
+┌────────────────┐                 ┌──────────────────────────────────────────┐
+│  VPN Client    │  WG tunnel      │            WireShield Server             │
+│  (WireGuard)   │◄───────────────►│                  (wg0)                   │
+└────────────────┘                 │                                          │
+                                   │  Peer: VPN Client                        │
+                                   │    AllowedIPs: 10.8.0.2/32               │
+                                   │                                          │
+                                   │  Peer: Agent                             │
+                                   │    AllowedIPs: 10.8.0.200/32             │
+                                   │              + 10.50.0.0/24  ◄───────┐  │
+                                   │               (advertised LAN CIDRs) │  │
+                                   └────────────────────┬─────────────────┘  │
+                                                        │ outbound WG tunnel │
+                                                        │ (wg-agent0)        │
+                                                        ▼                    │
+                                   ┌──────────────────────────────────────┐  │
+                                   │       Remote Linux Server            │  │
+                                   │  ┌────────────────────────────────┐  │  │
+                                   │  │   wireshield-agent daemon      │  │  │
+                                   │  │   · heartbeat every 30 s      │  │  │
+                                   │  │   · revocation poll / 60 s    │  │  │
+                                   │  │   · token-enrolled, auto-start │  │  │
+                                   │  └────────────────────────────────┘  │  │
+                                   │                                      │  │
+                                   │  Private LAN: 10.50.0.0/24 ──────────┼──┘
+                                   └──────────────────────────────────────┘
+```
+
+Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forwarded through the server's WireGuard peer for the agent, which NATs it into the remote LAN. No routes, no config changes, no restarts on the client side — the server applies `wg syncconf` live.
 
 ### Session Rules
 
