@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -123,6 +124,24 @@ type RevocationResponse struct {
 	Status  string `json:"status"`
 }
 
+// VersionArchEntry is one element of VersionResponse.Arches; it tells the
+// agent where to download the binary for a given arch and the expected
+// SHA-256 of the bytes that come back.
+type VersionArchEntry struct {
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256,omitempty"`
+}
+
+// VersionResponse mirrors /api/agents/version. CurrentVersion may be the
+// literal "unknown" string when the server is in synthesized-fallback
+// mode; the updater package treats that as "do nothing".
+type VersionResponse struct {
+	CurrentVersion string                      `json:"current_version"`
+	ReleasedAt     string                      `json:"released_at,omitempty"`
+	MinVersion     string                      `json:"min_version,omitempty"`
+	Arches         map[string]VersionArchEntry `json:"arches"`
+}
+
 // Enroll posts the single-use token + agent public key and returns the WG
 // peer config. Called once per agent lifetime.
 func (c *Client) Enroll(ctx context.Context, req *EnrollRequest) (*EnrollResponse, error) {
@@ -147,6 +166,63 @@ func (c *Client) RevocationCheck(ctx context.Context) (*RevocationResponse, erro
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// Version returns the published agent version manifest. Used by the
+// updater package to decide whether a self-upgrade is warranted.
+func (c *Client) Version(ctx context.Context) (*VersionResponse, error) {
+	var resp VersionResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/agents/version", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DownloadBinary streams a path on the same baseURL into a temp file and
+// returns the path. Cleanup is the caller's responsibility. Used by the
+// updater to fetch the new binary; we keep this on Client so it shares
+// the same transport/timeout/TLS config as the JSON endpoints.
+func (c *Client) DownloadBinary(ctx context.Context, path string) (tmpPath string, err error) {
+	full := path
+	if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
+		full = c.serverURL + path
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("User-Agent", userAgentPrefix+c.version)
+	httpReq.Header.Set("Accept", "application/octet-stream")
+
+	httpResp, err := c.http.Do(httpReq)
+	if err != nil {
+		return "", err
+	}
+	defer httpResp.Body.Close()
+	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(httpResp.Body, 4*1024))
+		return "", &HTTPError{
+			StatusCode: httpResp.StatusCode,
+			Body:       strings.TrimSpace(string(body)),
+			Endpoint:   "GET " + path,
+		}
+	}
+
+	tmp, err := os.CreateTemp("", "wireshield-agent-update-*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath = tmp.Name()
+	if _, err := io.Copy(tmp, httpResp.Body); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return "", err
+	}
+	return tmpPath, nil
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, in, out any) error {

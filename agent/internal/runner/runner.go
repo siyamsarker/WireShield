@@ -19,15 +19,23 @@ import (
 // (RevocationInterval) are independent so a larger HeartbeatInterval can be
 // paired with a more responsive RevocationInterval if needed. In practice we
 // piggy-back revocation checks on the heartbeat tick.
+//
+// AutoUpdateInterval is opt-in (zero = disabled). When non-zero the runner
+// invokes UpdateCheck on that cadence; an UpdateCheck that returns true
+// triggers ErrUpgraded — cmd's main loop maps that to exit code 75 so
+// systemd reloads the daemon onto the new on-disk binary.
 type Options struct {
 	HeartbeatInterval  time.Duration
 	RevocationInterval time.Duration
 	MaxBackoff         time.Duration // clamp for network-error retry backoff
 	AgentVersion       string
+	AutoUpdateInterval time.Duration
+	UpdateCheck        func(ctx context.Context) (upgraded bool, err error)
 }
 
 // DefaultOptions returns the production cadence: 30s heartbeat, 60s
-// revocation poll, 5-minute backoff cap.
+// revocation poll, 5-minute backoff cap. Auto-update is OFF by default —
+// callers (cmd/daemon.go) opt in explicitly via the --auto-update flag.
 func DefaultOptions(version string) Options {
 	return Options{
 		HeartbeatInterval:  30 * time.Second,
@@ -56,6 +64,11 @@ type HeartbeatClient interface {
 // `wireshield-agent revoke`.
 var ErrRevoked = errors.New("agent revoked by server")
 
+// ErrUpgraded is returned by Run when the auto-update path successfully
+// replaced the on-disk binary. cmd maps this to exit code 75 so the
+// systemd unit (with Restart=on-failure) reloads onto the new binary.
+var ErrUpgraded = errors.New("agent binary upgraded")
+
 // Run drives the heartbeat loop until ctx is cancelled or ErrRevoked
 // fires. The function is blocking; the caller (cmd/main) handles signal
 // plumbing.
@@ -75,6 +88,20 @@ func Run(ctx context.Context, c HeartbeatClient, r TransferReader, opts Options)
 	revTimer := time.NewTimer(opts.RevocationInterval)
 	defer revTimer.Stop()
 
+	// Auto-update is opt-in. nil channel + a paused timer means the
+	// select branch is never taken, keeping the existing test suite (and
+	// existing daemon installs) behaviourally identical when disabled.
+	var updateTimerC <-chan time.Time
+	var updateTimer *time.Timer
+	if opts.AutoUpdateInterval > 0 && opts.UpdateCheck != nil {
+		// First check fires after one interval — never on cold start, so a
+		// crash-loop bug in the updater can't keep replacing the binary.
+		updateTimer = time.NewTimer(opts.AutoUpdateInterval)
+		updateTimerC = updateTimer.C
+		defer updateTimer.Stop()
+		logx.Info("runner: auto-update enabled (interval=%s)", opts.AutoUpdateInterval)
+	}
+
 	var consecutiveHBFailures int
 
 	for {
@@ -82,6 +109,17 @@ func Run(ctx context.Context, c HeartbeatClient, r TransferReader, opts Options)
 		case <-ctx.Done():
 			logx.Info("runner: context cancelled, exiting")
 			return ctx.Err()
+
+		case <-updateTimerC:
+			// Failures here are non-fatal — log + reschedule.
+			upgraded, err := opts.UpdateCheck(ctx)
+			if err != nil {
+				logx.Warn("auto-update check failed: %v", err)
+			} else if upgraded {
+				logx.Info("auto-update applied; exiting so systemd reloads")
+				return ErrUpgraded
+			}
+			updateTimer.Reset(opts.AutoUpdateInterval)
 
 		case <-hbTimer.C:
 			if err := sendHeartbeat(ctx, c, r, opts.AgentVersion); err != nil {

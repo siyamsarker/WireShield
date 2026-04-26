@@ -14,23 +14,28 @@ import (
 	"github.com/siyamsarker/wireshield/agent/internal/config"
 	"github.com/siyamsarker/wireshield/agent/internal/logx"
 	"github.com/siyamsarker/wireshield/agent/internal/runner"
+	"github.com/siyamsarker/wireshield/agent/internal/updater"
 	"github.com/siyamsarker/wireshield/agent/internal/wg"
 )
 
 // runDaemon is the long-running heartbeat + revocation loop, invoked by
-// the systemd unit shipped in C4. Exit semantics:
+// the systemd unit shipped in Phase-2 C4. Exit semantics:
 //
 //   0   — received SIGTERM/SIGINT; clean shutdown (systemd restart policy
 //         does not re-fire because exit was expected)
 //   1   — fatal config/startup error
 //   2   — server confirmed the agent has been revoked (runner.ErrRevoked);
-//         systemd unit is configured with Restart=no on this code so the
-//         daemon stays down after revocation
+//         systemd unit is configured with RestartPreventExitStatus=2 so
+//         the daemon stays down after revocation
+//   75  — auto-update replaced the on-disk binary (sysexits EX_TEMPFAIL);
+//         systemd's Restart=on-failure rule reloads onto the new image
 func runDaemon(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	var (
-		heartbeatSec  = fs.Int("heartbeat", 30, "heartbeat interval seconds")
-		revocationSec = fs.Int("revocation", 60, "revocation-check interval seconds")
+		heartbeatSec   = fs.Int("heartbeat", 30, "heartbeat interval seconds")
+		revocationSec  = fs.Int("revocation", 60, "revocation-check interval seconds")
+		autoUpdate     = fs.Bool("auto-update", false, "enable periodic self-upgrade against the server's published manifest")
+		updateHours    = fs.Int("update-interval", 6, "auto-update check interval (hours, only used with --auto-update)")
 	)
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: wireshield-agent run [flags]\n\n")
@@ -56,11 +61,25 @@ func runDaemon(args []string) error {
 	opts.HeartbeatInterval = time.Duration(*heartbeatSec) * time.Second
 	opts.RevocationInterval = time.Duration(*revocationSec) * time.Second
 
+	if *autoUpdate {
+		if *updateHours < 1 {
+			*updateHours = 1
+		}
+		opts.AutoUpdateInterval = time.Duration(*updateHours) * time.Hour
+		opts.UpdateCheck = func(uctx context.Context) (bool, error) {
+			res, err := updater.Run(uctx, httpc, updater.Options{CurrentVersion: Version})
+			if err != nil {
+				return false, err
+			}
+			return res.UpgradeApplied, nil
+		}
+	}
+
 	ctx, cancel := signalContext()
 	defer cancel()
 
-	logx.Info("daemon starting: agent_id=%d iface=%s hb=%s rev=%s",
-		cfg.AgentID, cfg.WGInterface, opts.HeartbeatInterval, opts.RevocationInterval)
+	logx.Info("daemon starting: agent_id=%d iface=%s hb=%s rev=%s auto_update=%v",
+		cfg.AgentID, cfg.WGInterface, opts.HeartbeatInterval, opts.RevocationInterval, *autoUpdate)
 
 	err = runner.Run(ctx, httpc, reader, opts)
 	switch {
@@ -69,6 +88,11 @@ func runDaemon(args []string) error {
 		// RestartPreventExitStatus=2).
 		logx.Error("exiting: %v", err)
 		os.Exit(2)
+	case errors.Is(err, runner.ErrUpgraded):
+		// Exit code 75 (sysexits EX_TEMPFAIL) — systemd's Restart=on-failure
+		// reloads us onto the new on-disk binary.
+		logx.Info("exiting %d for systemd reload onto new binary", ExitCodeUpdated)
+		os.Exit(ExitCodeUpdated)
 	case errors.Is(err, context.Canceled):
 		logx.Info("daemon exited cleanly")
 		return nil

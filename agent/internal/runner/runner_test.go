@@ -136,6 +136,55 @@ func TestRunToleratesNonRetryableHeartbeatError(t *testing.T) {
 	}
 }
 
+func TestRunReturnsErrUpgradedWhenUpdateApplies(t *testing.T) {
+	c := &fakeClient{}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	calls := 0
+	opts := Options{
+		HeartbeatInterval:  300 * time.Millisecond,
+		RevocationInterval: 300 * time.Millisecond,
+		AutoUpdateInterval: 30 * time.Millisecond,
+		UpdateCheck: func(ctx context.Context) (bool, error) {
+			calls++
+			return calls >= 1, nil // upgrade on first check
+		},
+	}
+	err := Run(ctx, c, nil, opts)
+	if !errors.Is(err, ErrUpgraded) {
+		t.Fatalf("expected ErrUpgraded, got %v", err)
+	}
+	if calls < 1 {
+		t.Fatal("expected at least one update check call")
+	}
+}
+
+func TestRunIgnoresUpdateCheckErrors(t *testing.T) {
+	// Network error in the update path must NOT take the daemon down.
+	c := &fakeClient{}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	calls := 0
+	opts := Options{
+		HeartbeatInterval:  time.Hour,
+		RevocationInterval: time.Hour,
+		AutoUpdateInterval: 25 * time.Millisecond,
+		UpdateCheck: func(ctx context.Context) (bool, error) {
+			calls++
+			return false, errors.New("boom")
+		},
+	}
+	err := Run(ctx, c, nil, opts)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline exceeded, got %v", err)
+	}
+	if calls < 2 {
+		t.Fatalf("expected ≥ 2 update attempts despite errors, got %d", calls)
+	}
+}
+
 func TestBackoffJitteredAndClamped(t *testing.T) {
 	base := 10 * time.Millisecond
 	max := 100 * time.Millisecond

@@ -6,6 +6,7 @@
 //   run      — long-running daemon: heartbeat + revocation polling
 //   status   — print current enrollment + WG interface state
 //   revoke   — local cleanup (remove config + bring down WG interface)
+//   update   — one-shot self-upgrade against the server's published manifest
 //   version  — print the agent version and exit
 //
 // The binary is intended to be invoked by systemd (for `run`) and by the
@@ -46,6 +47,8 @@ func main() {
 		exit(runStatus(args))
 	case "revoke":
 		exit(runRevoke(args))
+	case "update":
+		exit(runUpdate(args))
 	case "version", "-v", "--version":
 		fmt.Println(Version)
 	case "help", "-h", "--help":
@@ -78,6 +81,7 @@ commands:
   run       long-running heartbeat + revocation daemon (used by systemd)
   status    print local enrollment + WG interface state
   revoke    remove local agent config and tear down the WG interface
+  update    one-shot self-upgrade against the server's published manifest
   version   print version
   help      show this message
 
