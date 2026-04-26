@@ -919,6 +919,12 @@ async def patch_agent_endpoint(
     if body.is_restricted is not None:
         from app.core.agents import set_agent_restriction
         restriction_changed = set_agent_restriction(agent_id, bool(body.is_restricted))
+        if restriction_changed:
+            try:
+                from app.core.tasks import trigger_agent_acl_sync
+                trigger_agent_acl_sync()
+            except Exception:
+                pass
 
     try:
         ip_address = request.client.host if request and request.client else "unknown"
@@ -1079,6 +1085,14 @@ async def grant_agent_access_endpoint(
     except Exception:
         pass
 
+    # Trigger an immediate firewall sync so the grant takes effect
+    # without waiting for the 30s reconcile loop.
+    try:
+        from app.core.tasks import trigger_agent_acl_sync
+        trigger_agent_acl_sync()
+    except Exception:
+        pass
+
     return {"success": True, "added": added, "agent_id": agent_id, "client_id": body.client_id}
 
 
@@ -1105,6 +1119,12 @@ async def revoke_agent_access_endpoint(
             f"agent_id={agent_id} target_client={target_client_id} removed={removed}",
             ip_address,
         )
+    except Exception:
+        pass
+
+    try:
+        from app.core.tasks import trigger_agent_acl_sync
+        trigger_agent_acl_sync()
     except Exception:
         pass
 

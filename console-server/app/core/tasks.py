@@ -8,7 +8,7 @@ import hashlib
 import re
 import ipaddress
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from app.core.config import (
@@ -719,6 +719,160 @@ def get_watchdog_state() -> dict:
     return dict(_WATCHDOG_STATE)
 
 
+# ============================================================================
+# Phase 4 — per-user agent allowlist enforcement
+# ----------------------------------------------------------------------------
+# Reconciliative iptables sync. Every interval we compute the desired
+# rule set from the DB and overwrite the WS_AGENT_ACL chain. Behaviour:
+#
+#   1. For every *restricted* enrolled agent (is_restricted=1) with at
+#      least one advertised CIDR: install a default-DROP rule in
+#      WS_AGENT_ACL for traffic whose -d matches the CIDR.
+#   2. Then prepend ACCEPT rules for each allowlisted (client_ipv4,
+#      agent_cidr) pair so allowed clients short-circuit the DROP.
+#   3. Unrestricted agents (is_restricted=0) get no rules — same as
+#      Phase-1/2/3 behaviour. Existing 2FA + ipset gating still applies
+#      to those flows.
+#
+# The chain is JUMPed-to from FORWARD exactly once. We never duplicate
+# the JUMP (idempotent ensure) and rebuild the chain by flush + re-add.
+# ============================================================================
+
+_AGENT_ACL_CHAIN = "WS_AGENT_ACL"
+_AGENT_ACL_LOCK = threading.Lock()
+_AGENT_ACL_STATE = {
+    "last_sync_unix": 0,
+    "last_rule_count": 0,
+    "last_error": None,
+    "missing_iptables": False,
+}
+
+
+def _has_iptables() -> bool:
+    return shutil.which("iptables") is not None
+
+
+def _iptables_run(args, check=False) -> subprocess.CompletedProcess:
+    """Wrapper that returns CompletedProcess; never raises unless check=True."""
+    return subprocess.run(
+        ["iptables"] + args,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        check=check,
+    )
+
+
+def _ensure_agent_acl_chain():
+    """Create WS_AGENT_ACL + the FORWARD JUMP if missing. Idempotent."""
+    r = _iptables_run(["-n", "-L", _AGENT_ACL_CHAIN])
+    if r.returncode != 0:
+        _iptables_run(["-N", _AGENT_ACL_CHAIN])
+    r = _iptables_run(["-C", "FORWARD", "-j", _AGENT_ACL_CHAIN])
+    if r.returncode != 0:
+        # INSERT at position 1 so the ACL fires before any FORWARD rule
+        # could short-circuit the flow.
+        _iptables_run(["-I", "FORWARD", "1", "-j", _AGENT_ACL_CHAIN])
+
+
+def _flush_agent_acl_chain():
+    _iptables_run(["-F", _AGENT_ACL_CHAIN])
+
+
+def _build_acl_rules() -> List[List[str]]:
+    """Compute the desired iptables -A rules for WS_AGENT_ACL from
+    current DB state. Order matters: ACCEPTs first so an allowlisted
+    client short-circuits before the per-CIDR DROP."""
+    try:
+        from app.core.agents import all_access_grants
+    except Exception as e:
+        logger.error(f"agent ACL: import failed: {e}")
+        return []
+
+    grants = all_access_grants()
+    accepts: List[List[str]] = []
+    drops: List[List[str]] = []
+    seen_drop_cidrs: set = set()
+
+    by_agent: Dict[int, Dict[str, Any]] = {}
+    for g in grants:
+        aid = g.get("agent_id")
+        if aid is None:
+            continue
+        bucket = by_agent.setdefault(aid, {
+            "is_restricted": g.get("is_restricted"),
+            "advertised_cidrs": g.get("advertised_cidrs") or [],
+            "clients": [],
+        })
+        if g.get("client_id") and g.get("client_ipv4"):
+            bucket["clients"].append(g["client_ipv4"])
+
+    for aid, bucket in by_agent.items():
+        if not bucket["is_restricted"]:
+            continue
+        for cidr in bucket["advertised_cidrs"]:
+            if not cidr:
+                continue
+            for client_ipv4 in bucket["clients"]:
+                accepts.append(
+                    ["-A", _AGENT_ACL_CHAIN,
+                     "-s", client_ipv4, "-d", cidr,
+                     "-j", "ACCEPT"]
+                )
+            if cidr not in seen_drop_cidrs:
+                seen_drop_cidrs.add(cidr)
+                drops.append(
+                    ["-A", _AGENT_ACL_CHAIN, "-d", cidr, "-j", "DROP"]
+                )
+
+    return accepts + drops
+
+
+def _sync_agent_acl_once():
+    """Run one iptables sync pass."""
+    with _AGENT_ACL_LOCK:
+        if not _has_iptables():
+            _AGENT_ACL_STATE["missing_iptables"] = True
+            return
+
+        try:
+            _ensure_agent_acl_chain()
+            _flush_agent_acl_chain()
+            rules = _build_acl_rules()
+            for r in rules:
+                _iptables_run(r)
+            _AGENT_ACL_STATE["last_rule_count"] = len(rules)
+            _AGENT_ACL_STATE["last_error"] = None
+            _AGENT_ACL_STATE["last_sync_unix"] = int(time.time())
+            logger.debug(f"agent ACL: synced {len(rules)} rules")
+        except Exception as e:
+            _AGENT_ACL_STATE["last_error"] = str(e)
+            logger.error(f"agent ACL sync failed: {e}")
+
+
+def _sync_agent_acl_loop():
+    """Background reconciliation loop. 30s cadence — matches existing
+    ipset sync. time.sleep before the first pass so a crash-loop in
+    the sync can't thrash iptables."""
+    interval = 30
+    while True:
+        time.sleep(interval)
+        try:
+            _sync_agent_acl_once()
+        except Exception as e:
+            logger.error(f"agent ACL loop unexpected error: {e}")
+
+
+def get_agent_acl_state() -> dict:
+    """Snapshot used by /health for observability."""
+    return dict(_AGENT_ACL_STATE)
+
+
+def trigger_agent_acl_sync():
+    """Synchronous on-demand sync. Called from admin endpoints so a
+    grant is reflected in iptables immediately rather than waiting for
+    the next 30s tick."""
+    threading.Thread(target=_sync_agent_acl_once, daemon=True).start()
+
+
 def _agent_housekeeping_loop():
     """Runs once per hour: purges expired/used enrollment tokens and prunes
     agent_heartbeats rows older than the configured retention window.
@@ -765,3 +919,4 @@ def start_background_tasks():
     threading.Thread(target=_start_http_redirector_ipv6, daemon=True).start()
     threading.Thread(target=_watchdog_loop, daemon=True).start()
     threading.Thread(target=_agent_housekeeping_loop, daemon=True).start()
+    threading.Thread(target=_sync_agent_acl_loop, daemon=True).start()

@@ -68,6 +68,7 @@
     const ICON_EDIT    = [['path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }], ['path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' }]];
     const ICON_REFRESH = [['path', { d: 'M3 12a9 9 0 1 0 3.41-7.06L3 8' }], ['path', { d: 'M3 4v4h4' }]];
     const ICON_TRASH   = [['path', { d: 'M3 6h18' }], ['path', { d: 'M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6' }], ['path', { d: 'M10 11v6M14 11v6' }], ['path', { d: 'M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2' }]];
+    const ICON_SHIELD  = [['path', { d: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' }]];
 
     // ── List + render ──────────────────────────────────────────────────────
 
@@ -151,6 +152,12 @@
             }));
         }
         nameTd.appendChild(_el('strong', { text: a.name || '' }));
+        if (a.is_restricted) {
+            const pill = _el('span', { cls: 'agent-restricted-pill', title: 'Restricted — only allowlisted users can reach this agent' });
+            pill.appendChild(_svg(ICON_SHIELD, 10));
+            pill.appendChild(_el('span', { text: 'restricted' }));
+            nameTd.appendChild(pill);
+        }
         if (a.description) {
             nameTd.appendChild(_el('div', {
                 text: a.description,
@@ -211,6 +218,7 @@
         actWrap.appendChild(_actionBtn(ICON_INFO, 'Details', false, () => openAgentDetailModal(a.id)));
         if (a.status === 'enrolled') {
             actWrap.appendChild(_actionBtn(ICON_EDIT, 'Update CIDRs', false, () => openEditAgentModal(a.id)));
+            actWrap.appendChild(_actionBtn(ICON_SHIELD, 'Manage Access', false, () => openAgentAccessModal(a.id)));
         }
         if (a.status === 'pending') {
             actWrap.appendChild(_actionBtn(ICON_REFRESH, 'Reissue token', false, () => rotateAgentToken(a.id)));
@@ -690,6 +698,146 @@
         }
     }
 
+    // ── Manage Access (Phase 4) ────────────────────────────────────────────
+
+    let _accessAgentId = null;
+
+    function openAgentAccessModal(agentId) {
+        _accessAgentId = agentId;
+        const a = _agentsCache.find(x => x.id === agentId);
+        document.getElementById('agent-access-title').textContent = a ? `Manage Access — ${a.name}` : `Manage Access — agent #${agentId}`;
+        document.getElementById('agent-access-subtitle').textContent = 'Loading…';
+        document.getElementById('agent-access-error').style.display = 'none';
+        document.getElementById('agent-access-add-input').value = '';
+        const usersDiv = document.getElementById('agent-access-users');
+        while (usersDiv.firstChild) usersDiv.removeChild(usersDiv.firstChild);
+        document.getElementById('agent-access-restricted-toggle').checked = !!(a && a.is_restricted);
+        document.getElementById('agent-access-modal').style.display = 'flex';
+        _loadAccessList();
+    }
+
+    function closeAgentAccessModal() {
+        document.getElementById('agent-access-modal').style.display = 'none';
+        _accessAgentId = null;
+    }
+
+    function _showAccessError(msg) {
+        const el = document.getElementById('agent-access-error');
+        el.textContent = msg;
+        el.style.display = 'block';
+    }
+
+    function _loadAccessList() {
+        if (!_accessAgentId) return;
+        fetch(`/api/console/agents/${_accessAgentId}/access`, { cache: 'no-store' })
+            .then(async r => {
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${r.status}`);
+                }
+                return r.json();
+            })
+            .then(data => {
+                document.getElementById('agent-access-restricted-toggle').checked = !!data.is_restricted;
+                document.getElementById('agent-access-subtitle').textContent =
+                    data.is_restricted
+                        ? `Restricted — ${data.users.length} user(s) on the allowlist`
+                        : 'Unrestricted — every VPN user can reach this agent';
+                const usersDiv = document.getElementById('agent-access-users');
+                while (usersDiv.firstChild) usersDiv.removeChild(usersDiv.firstChild);
+                if (data.users.length === 0) {
+                    usersDiv.appendChild(_el('div', {
+                        cls: 'agent-table-empty',
+                        style: 'padding:12px;font-size:12px;',
+                        text: data.is_restricted
+                            ? 'No users on the allowlist — every connection will be DROPPED until at least one is granted.'
+                            : 'No grants. Toggle "Restrict access" ON to start gating users.',
+                    }));
+                } else {
+                    for (const u of data.users) {
+                        const row = _el('div', { cls: 'agent-access-user-row' });
+                        const left = _el('div');
+                        left.appendChild(_el('strong', { text: u.client_id }));
+                        if (u.granted_by) left.appendChild(_el('span', { cls: 'meta', text: `by ${u.granted_by}` }));
+                        if (u.granted_at) left.appendChild(_el('span', { cls: 'meta', text: u.granted_at }));
+                        row.appendChild(left);
+                        const rm = _el('button', { attrs: { type: 'button' }, text: 'Remove' });
+                        rm.addEventListener('click', () => submitAgentAccessRemove(u.client_id));
+                        row.appendChild(rm);
+                        usersDiv.appendChild(row);
+                    }
+                }
+            })
+            .catch(err => _showAccessError(err.message || 'Failed to load access list.'));
+    }
+
+    function toggleAgentRestriction() {
+        if (!_accessAgentId) return;
+        const isRestricted = document.getElementById('agent-access-restricted-toggle').checked;
+        document.getElementById('agent-access-error').style.display = 'none';
+        fetch(`/api/console/agents/${_accessAgentId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_restricted: isRestricted }),
+        })
+            .then(async r => {
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${r.status}`);
+                }
+                return r.json();
+            })
+            .then(() => {
+                _loadAccessList();
+                loadAgents(); // refresh row pill
+            })
+            .catch(err => {
+                _showAccessError(err.message || 'Failed to update restriction.');
+                // Revert the toggle on failure.
+                document.getElementById('agent-access-restricted-toggle').checked = !isRestricted;
+            });
+    }
+
+    function submitAgentAccessAdd() {
+        if (!_accessAgentId) return;
+        const inp = document.getElementById('agent-access-add-input');
+        const cid = (inp.value || '').trim();
+        if (!cid) { _showAccessError('client_id is required.'); return; }
+        document.getElementById('agent-access-error').style.display = 'none';
+        fetch(`/api/console/agents/${_accessAgentId}/access`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_id: cid }),
+        })
+            .then(async r => {
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${r.status}`);
+                }
+                return r.json();
+            })
+            .then(() => {
+                inp.value = '';
+                _loadAccessList();
+            })
+            .catch(err => _showAccessError(err.message || 'Failed to add user.'));
+    }
+
+    function submitAgentAccessRemove(targetClientId) {
+        if (!_accessAgentId) return;
+        const url = `/api/console/agents/${_accessAgentId}/access/${encodeURIComponent(targetClientId)}`;
+        fetch(url, { method: 'DELETE' })
+            .then(async r => {
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${r.status}`);
+                }
+                return r.json();
+            })
+            .then(() => _loadAccessList())
+            .catch(err => _showAccessError(err.message || 'Failed to remove user.'));
+    }
+
     // Public exports — referenced from inline onclick attributes in the
     // template, so they must live on `window`.
     window.loadAgents             = loadAgents;
@@ -704,4 +852,9 @@
     window.rotateAgentToken       = rotateAgentToken;
     window.openAgentDetailModal   = openAgentDetailModal;
     window.closeAgentDetailModal  = closeAgentDetailModal;
+    window.openAgentAccessModal   = openAgentAccessModal;
+    window.closeAgentAccessModal  = closeAgentAccessModal;
+    window.toggleAgentRestriction = toggleAgentRestriction;
+    window.submitAgentAccessAdd   = submitAgentAccessAdd;
+    window.submitAgentAccessRemove= submitAgentAccessRemove;
 })();

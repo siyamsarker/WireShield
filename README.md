@@ -357,6 +357,10 @@ The console provides:
 | `PATCH` | `/api/console/agents/{id}` | Update advertised CIDRs or description |
 | `DELETE` | `/api/console/agents/{id}` | Revoke an agent (removes its WG peer + marks DB row as revoked) |
 | `POST` | `/api/console/agents/{id}/rotate-token` | Reissue an enrollment token for a `pending` agent |
+| `GET` | `/api/console/agents/{id}/metrics` | **Phase-4** time-bucketed RX/TX deltas + uptime % from heartbeats |
+| `GET` | `/api/console/agents/{id}/access` | **Phase-4** read `is_restricted` flag + per-user allowlist |
+| `POST` | `/api/console/agents/{id}/access` | **Phase-4** grant a user (body: `{client_id}`) — triggers immediate iptables sync |
+| `DELETE` | `/api/console/agents/{id}/access/{client_id}` | **Phase-4** remove a user from the allowlist |
 
 **Agent Public API** (called by the agent daemon, not by humans):
 
@@ -370,6 +374,7 @@ The console provides:
 | `GET` | `/api/agents/binary/{arch}` | Pre-built agent binary (`linux-amd64`, `linux-arm64`) |
 | `GET` | `/api/agents/binary/{arch}.sha256` | Sidecar SHA-256 checksum for integrity verification |
 | `GET` | `/api/agents/unit` | systemd unit file (`wireshield-agent.service`) |
+| `GET` | `/api/agents/version` | **Phase-4** version manifest used by `--auto-update` agents |
 
 ---
 
@@ -385,11 +390,51 @@ The admin dashboard ships an **Agents** tab (sidebar, under "Users & Access") wi
 |--------|--------------|
 | **Register Agent** | Opens a modal with name, description, and advertised-CIDR fields. On submit the server allocates a token + builds the install command, which is shown **once** in a copy-to-clipboard block. |
 | **Update CIDRs** (enrolled rows) | Inline textarea PATCHes the agent and live-applies via `wg syncconf` — no client disconnect. |
+| **Manage Access** (enrolled rows) | Toggle per-agent restriction + maintain a per-user allowlist. Default OFF (every VPN user can reach). When ON, only allowlisted client IDs can route to the agent's CIDRs; enforced by an `iptables` chain rebuilt every 30 s and on every grant/revoke. |
 | **Reissue token** (pending rows) | Generates a new single-use token and re-shows the install command. |
 | **Revoke** | Removes the WG peer immediately and stops accepting heartbeats. The agent self-disables on its next revocation-check poll. |
-| **Details** | Read-only drawer with all 19 agent fields (public key, hostname, last-seen IP, RX/TX byte totals, etc.). |
+| **Details** | Read-only drawer with all 19 agent fields plus a 24-hour traffic sparkline (RX/TX deltas) and an uptime % derived from heartbeat coverage. |
 
 The **Overview** tab shows an "Agents" stat card alongside Users/Sessions/Failed/Bandwidth: enrolled count + online indicator + pending count.
+
+### Auto-update flow (Phase 4)
+
+Agents can self-upgrade against a server-published version manifest. Off by default — enable with `--auto-update` on the systemd unit:
+
+```bash
+ExecStart=/usr/local/bin/wireshield-agent run --auto-update --update-interval 6
+```
+
+How it works:
+
+1. The operator runs `make -C agent dist` + `make install AGENT_BINARY_DIR=/etc/wireshield/agent-binaries` and drops a `version.json` next to the binaries:
+
+   ```json
+   {
+     "current_version": "1.1.0",
+     "released_at":     "2026-04-26T10:00:00Z",
+     "min_version":     "1.0.0",
+     "arches": {
+       "linux-amd64": { "url": "/api/agents/binary/linux-amd64", "sha256": "<64hex>" },
+       "linux-arm64": { "url": "/api/agents/binary/linux-arm64", "sha256": "<64hex>" }
+     }
+   }
+   ```
+
+   Per-arch SHA-256 is auto-backfilled from the sidecars `make dist` produces, so a hand-written manifest can omit them.
+
+2. Each enrolled agent polls `GET /api/agents/version` on the configured cadence (default 6 hours).
+3. When the published version is newer than the running version (or when `min_version` is set above the running version), the agent downloads the new binary, verifies the SHA-256 against the manifest, atomically replaces `/usr/local/bin/wireshield-agent`, and exits with code **75** (`sysexits EX_TEMPFAIL`).
+4. The systemd unit's `Restart=on-failure` rule reloads the daemon onto the new binary. Code **2** (revocation) and code **0** (clean SIGTERM) both leave the unit stopped, so update vs. revocation never collide.
+
+For a one-shot upgrade trigger:
+
+```bash
+wireshield-agent update           # check + apply if newer
+wireshield-agent update --dry-run # check only, do not touch /usr/local/bin
+```
+
+A SHA-256 mismatch *never* replaces the binary — the daemon logs and continues with the old image.
 
 ### End-to-end cURL walkthrough
 

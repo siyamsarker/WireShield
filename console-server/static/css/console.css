@@ -2454,3 +2454,87 @@ tbody tr:last-child td {
     color: var(--text-muted);
     font-size: 13px;
 }
+
+/* Phase 4 — restricted-agent badge + access-modal toggle switch.       */
+
+.agent-restricted-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    border-radius: 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    background: rgba(139,92,246,0.10);
+    color: #7c3aed;
+    vertical-align: middle;
+}
+.agent-restricted-pill svg { width: 10px; height: 10px; }
+
+.agent-access-user-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+}
+.agent-access-user-row .meta {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-left: 8px;
+}
+.agent-access-user-row button {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+}
+.agent-access-user-row button:hover {
+    color: #dc2626;
+    border-color: #fca5a5;
+    background: rgba(244,63,94,0.05);
+}
+
+/* Toggle switch (Manage Access modal). Mirrors macOS-style toggle so
+   the operator instantly recognises it as a binary on/off. */
+.ws-switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 22px;
+    flex: 0 0 38px;
+}
+.ws-switch input { display: none; }
+.ws-switch-slider {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+    background: var(--border);
+    border-radius: 22px;
+    transition: background 0.15s ease;
+}
+.ws-switch-slider::before {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    top: 2px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.18s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.ws-switch input:checked + .ws-switch-slider {
+    background: #8b5cf6;
+}
+.ws-switch input:checked + .ws-switch-slider::before {
+    transform: translateX(16px);
+}
