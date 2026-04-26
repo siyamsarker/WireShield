@@ -141,6 +141,21 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 
 ## Installation
 
+### Prerequisites
+
+Before running the installer, ensure the following are in place:
+
+| Requirement | Details |
+|-------------|---------|
+| **Operating system** | Linux with systemd — see [Supported Distributions](#supported-distributions) |
+| **Privileges** | Root or `sudo` access during installation |
+| **Inbound ports** | UDP `51820` (WireGuard, configurable) · TCP `80` and `443` (captive portal) |
+| **Public address** | A static public IP or a domain name pointing to the server |
+| **Domain name** | Required only for Let's Encrypt; a bare IP works fine with self-signed TLS |
+| **Packages** | `git` and `curl` — pre-installed on most distributions |
+
+### Step 1 — Clone and run the installer
+
 ```bash
 git clone https://github.com/siyamsarker/WireShield.git
 cd WireShield
@@ -148,25 +163,63 @@ chmod +x wireshield.sh
 sudo ./wireshield.sh
 ```
 
-The interactive wizard walks you through configuration in clear sections:
+Select **Install WireShield** from the main menu. The interactive wizard walks through each component in order:
 
-| Section | Prompts |
-|---------|---------|
+| Section | What it configures |
+|---------|--------------------|
 | **Network** | Public IP/hostname (auto-detected), public interface |
-| **WireGuard** | Interface name, server IPv4/IPv6, UDP port |
-| **Client DNS** | Primary and secondary resolvers (default: Cloudflare) |
-| **Routing** | AllowedIPs for client traffic routing |
-| **SSL/TLS** | Let's Encrypt, self-signed, or disabled |
+| **WireGuard** | Interface name, server IPv4/IPv6 subnet, UDP listen port |
+| **Client DNS** | Primary and secondary resolvers pushed to clients (default: Cloudflare) |
+| **Routing** | `AllowedIPs` controlling what traffic routes through the tunnel |
+| **SSL/TLS** | Let's Encrypt (certbot), self-signed certificate, or disabled |
 
-A review summary is shown before installation begins. All prompts have sensible defaults — press Enter to accept.
+A review summary is displayed before anything is written to disk. All prompts have sensible defaults — press Enter to accept them.
 
-### Verify
+The installer sets up WireGuard, configures iptables/ipset firewall rules, generates SSL certificates, deploys the 2FA FastAPI service under systemd, and writes all configuration to `/etc/wireshield/`.
+
+### Step 2 — Verify the installation
 
 ```bash
-sudo wg show                              # WireGuard status
-sudo systemctl status wireshield.service   # 2FA service
-sudo journalctl -u wireshield.service -f   # Live logs
+sudo wg show                                         # WireGuard interface + peers
+sudo systemctl status wireshield.service             # 2FA portal service running?
+sudo journalctl -u wireshield.service -f             # Live service logs
+curl -sk https://localhost/health | jq .status       # Expect "ok"
 ```
+
+The `/health` endpoint returns a JSON snapshot of every subsystem. If `status` is `"degraded"`, check the individual fields (`database`, `wireguard`, `iptables_portal`) to identify which component needs attention.
+
+### Step 3 — Add your first VPN client
+
+```bash
+sudo ./wireshield.sh   # Select option 1 — Create Client
+```
+
+Enter a client ID when prompted (e.g. `alice`). The wizard generates a WireGuard `.conf` file and a QR code at:
+
+```
+/etc/wireshield/clients/alice.conf
+```
+
+Transfer it to the client device via `scp`, email, or by scanning the QR code printed directly in the terminal.
+
+### Step 4 — Enable admin console access
+
+By default no client has admin console access. Grant it to a specific client:
+
+```bash
+sudo ./wireshield.sh   # Select option 12 — Console Access
+```
+
+Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client can reach `https://<server-ip>/console` — but only while holding an active 2FA session (connect VPN → complete captive portal → browse to `/console`).
+
+### Step 5 — Connect the VPN client
+
+1. Import the `.conf` file into any WireGuard app (Windows, macOS, Linux, iOS, Android) or scan the QR code.
+2. Toggle the VPN tunnel on.
+3. Open a browser — you will be redirected to the captive portal automatically.
+4. **First connection:** the portal shows a QR code; scan it with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code.
+5. **Subsequent connections:** enter the current 6-digit TOTP code directly.
+6. Access granted. Session stays valid for 24 hours.
 
 ### File Layout
 
@@ -382,6 +435,100 @@ The console provides:
 ## Agents
 
 Agents are statically-linked Go daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
+
+### Quickstart: connect an agent
+
+Follow these four steps to connect a remote Linux server to your WireShield VPN as an agent.
+
+#### Step 1 — publish agent binaries on the VPN server (one-time setup)
+
+The agent installer downloads the `wireshield-agent` binary directly from your VPN server, so you must build and publish it once before enrolling any agents. You need **Go 1.22+** available on the build host (the VPN server itself or any Linux machine).
+
+```bash
+# Clone the repo if not already present
+git clone https://github.com/siyamsarker/WireShield.git
+cd WireShield
+
+# Cross-compile static binaries for linux-amd64 and linux-arm64
+make -C agent dist
+
+# Copy binaries + SHA-256 sidecars to the directory the API endpoint serves
+sudo make -C agent install AGENT_BINARY_DIR=/etc/wireshield/agent-binaries
+```
+
+This populates `/etc/wireshield/agent-binaries/` with:
+
+```
+linux-amd64/wireshield-agent
+linux-amd64/wireshield-agent.sha256
+linux-arm64/wireshield-agent
+linux-arm64/wireshield-agent.sha256
+version.json
+```
+
+> **No Go available?** Use the [legacy Bash installer](#legacy-installer-compatibility) instead — it requires no build step and works on any enrolled agent.
+
+#### Step 2 — register the agent in the admin console
+
+1. Open `https://<server-ip>/console` in your browser and complete 2FA.
+2. Click **Agents** in the left sidebar.
+3. Click **Register Agent**.
+4. Fill in the form:
+   - **Name** — a short, unique identifier (e.g. `branch-office-01`)
+   - **Description** — optional free text
+   - **Advertised CIDRs** — the LAN subnets reachable through this agent, one per line (e.g. `10.50.0.0/24`)
+5. Click **Register**.
+
+The console displays a one-time install command. **Copy it immediately** — it will not be shown again. If it expires (1-hour TTL), use the **Reissue token** button on the pending agent row.
+
+#### Step 3 — run the install command on the remote server
+
+SSH into the remote Linux server as root and paste the install command from Step 2. It looks like:
+
+```bash
+curl -sSL https://<server-ip>/api/agents/install-go | \
+  sudo TOKEN=<enrollment-token> WIRESHIELD_SERVER=https://<server-ip> bash
+```
+
+The bootstrap script automatically:
+
+1. Detects the CPU architecture (`amd64` or `arm64`)
+2. Installs WireGuard tools if missing (supports `apt`, `dnf`, `yum`, `pacman`, `apk`)
+3. Downloads the `wireshield-agent` binary and verifies its SHA-256 checksum
+4. Runs `wireshield-agent enroll` — generates a Curve25519 keypair, exchanges the enrollment token for a WireGuard peer config, and writes `/etc/wireguard/wg-agent0.conf`
+5. Brings up the `wg-agent0` interface and enables `wireshield-agent.service` under systemd
+
+The entire process takes under 60 seconds on a standard server.
+
+#### Step 4 — verify the connection
+
+**On the remote agent host:**
+
+```bash
+# Check that the systemd service is running
+sudo systemctl status wireshield-agent.service
+
+# Print current enrollment state and WireGuard interface info
+wireshield-agent status
+
+# Confirm the tunnel is up and exchanging handshakes with the VPN server
+sudo wg show wg-agent0
+```
+
+**In the admin console:**
+
+The agent row in the **Agents** tab changes from **Pending** to **Enrolled** within 30 seconds of the first heartbeat. The online indicator turns green and the last-seen timestamp updates every 30 seconds.
+
+**On the VPN server:**
+
+```bash
+# Confirm the agent peer appears with the advertised CIDRs in AllowedIPs
+sudo wg show wg0
+```
+
+VPN clients can now route traffic to the advertised CIDRs through the agent. No configuration changes are needed on the client side — routing is enforced server-side via `wg syncconf`.
+
+---
 
 ### Managing agents from the console
 
