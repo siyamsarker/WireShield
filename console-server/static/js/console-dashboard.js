@@ -80,6 +80,27 @@ async function loadDashboardData() {
                 </div>
                 <div class="stat-change neutral">Last 24h</div>
             </div>
+
+            <div class="stat-card sc-agents">
+                <div class="stat-header">
+                    <div>
+                        <div class="stat-title">Agents</div>
+                        <div class="stat-value">${(stats.agents && stats.agents.enrolled) || 0}</div>
+                    </div>
+                    <div class="stat-icon si-agents">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <rect x="2" y="3" width="20" height="6" rx="1.5"/>
+                            <rect x="2" y="15" width="20" height="6" rx="1.5"/>
+                            <line x1="6" y1="6" x2="6.01" y2="6"/>
+                            <line x1="6" y1="18" x2="6.01" y2="18"/>
+                            <path d="M12 9v6"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="stat-change ${((stats.agents && stats.agents.online) || 0) > 0 ? 'positive' : 'neutral'}">
+                    ${(stats.agents && stats.agents.online) || 0} online · ${(stats.agents && stats.agents.pending) || 0} pending
+                </div>
+            </div>
         `;
 
         const chartsResponse = await fetch('/api/console/dashboard-charts', { cache: 'no-store' });

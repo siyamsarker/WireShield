@@ -359,6 +359,7 @@ header {
 .stat-card.sc-sessions { border-left-color: #10b981; }
 .stat-card.sc-failed   { border-left-color: #f43f5e; }
 .stat-card.sc-bandwidth{ border-left-color: #3b82f6; }
+.stat-card.sc-agents   { border-left-color: #8b5cf6; }
 
 .stat-card:hover {
     box-shadow: var(--shadow-md);
@@ -398,6 +399,7 @@ header {
 .stat-icon.si-sessions { background: rgba(16,185,129,0.1); color: #10b981; }
 .stat-icon.si-failed   { background: rgba(244,63,94,0.1);  color: #f43f5e; }
 .stat-icon.si-bandwidth{ background: rgba(59,130,246,0.1); color: #3b82f6; }
+.stat-icon.si-agents   { background: rgba(139,92,246,0.1); color: #8b5cf6; }
 
 .stat-value {
     font-size: 26px;

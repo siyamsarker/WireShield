@@ -375,7 +375,21 @@ The console provides:
 
 ## Agents
 
-Agents are Bash-based daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
+Agents are statically-linked Go daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
+
+### Managing agents from the console
+
+The admin dashboard ships an **Agents** tab (sidebar, under "Users & Access") with a no-CLI-required workflow:
+
+| Action | What happens |
+|--------|--------------|
+| **Register Agent** | Opens a modal with name, description, and advertised-CIDR fields. On submit the server allocates a token + builds the install command, which is shown **once** in a copy-to-clipboard block. |
+| **Update CIDRs** (enrolled rows) | Inline textarea PATCHes the agent and live-applies via `wg syncconf` — no client disconnect. |
+| **Reissue token** (pending rows) | Generates a new single-use token and re-shows the install command. |
+| **Revoke** | Removes the WG peer immediately and stops accepting heartbeats. The agent self-disables on its next revocation-check poll. |
+| **Details** | Read-only drawer with all 19 agent fields (public key, hostname, last-seen IP, RX/TX byte totals, etc.). |
+
+The **Overview** tab shows an "Agents" stat card alongside Users/Sessions/Failed/Bandwidth: enrolled count + online indicator + pending count.
 
 ### End-to-end cURL walkthrough
 
