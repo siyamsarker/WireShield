@@ -19,7 +19,7 @@ let activityPages = 1;
 
 function getSectionFromHash() {
     const raw = (window.location.hash || '').replace('#', '').trim();
-    const allowed = ['dashboard', 'users', 'logs', 'activity', 'bandwidth'];
+    const allowed = ['dashboard', 'users', 'agents', 'logs', 'activity', 'bandwidth'];
     return allowed.includes(raw) ? raw : 'dashboard';
 }
 
@@ -28,7 +28,7 @@ function showSection(section, event, fromHash = false) {
         event.preventDefault();
     }
 
-    const allowed = ['dashboard', 'users', 'logs', 'activity', 'bandwidth'];
+    const allowed = ['dashboard', 'users', 'agents', 'logs', 'activity', 'bandwidth'];
     if (!allowed.includes(section)) {
         section = 'dashboard';
     }
@@ -65,6 +65,7 @@ function showSection(section, event, fromHash = false) {
     const titles = {
         'dashboard': 'Overview',
         'users': 'Users & Access',
+        'agents': 'Agents',
         'logs': 'Audit Trail',
         'activity': 'Traffic Activity',
         'bandwidth': 'Bandwidth Insights'
@@ -94,6 +95,8 @@ function showSection(section, event, fromHash = false) {
     // Load section data
     if (section === 'users') {
         loadUsers();
+    } else if (section === 'agents') {
+        if (typeof loadAgents === 'function') loadAgents();
     } else if (section === 'logs') {
         loadUserFilter('audit-user-filter');
         loadAuditLogs();
