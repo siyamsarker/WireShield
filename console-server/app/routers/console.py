@@ -369,19 +369,28 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
         
         # Get new users in last 24 hours
         c.execute("""
-            SELECT COUNT(*) FROM users 
+            SELECT COUNT(*) FROM users
             WHERE created_at >= ?
         """, (yesterday,))
         new_users_24h = c.fetchone()[0]
-        
+
         conn.close()
-        
+
+        # Agent fleet stats — reuse the same helper /health uses so the
+        # numbers are consistent across the two surfaces.
+        try:
+            from app.core.agents import stats as agent_stats
+            agents = agent_stats()
+        except Exception:
+            agents = {"total": 0, "enrolled": 0, "pending": 0, "revoked": 0, "online": 0}
+
         return {
             "total_users": total_users,
             "active_sessions": active_sessions,
             "failed_attempts_24h": failed_attempts_24h,
             "bandwidth_24h": bandwidth_24h,
-            "new_users_24h": new_users_24h
+            "new_users_24h": new_users_24h,
+            "agents": agents,
         }
     except Exception as e:
         logger.error(f"Error fetching dashboard stats: {e}")
@@ -390,7 +399,8 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
             "active_sessions": 0,
             "failed_attempts_24h": 0,
             "bandwidth_24h": 0,
-            "new_users_24h": 0
+            "new_users_24h": 0,
+            "agents": {"total": 0, "enrolled": 0, "pending": 0, "revoked": 0, "online": 0},
         }
 
 
