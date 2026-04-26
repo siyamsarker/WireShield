@@ -101,7 +101,7 @@ Agents are Go daemons deployed on remote Linux servers. Each agent dials outboun
                                │   · polls revocation every 60 s            │
                                │   · token-enrolled, managed by systemd     │
                                │                                            │
-                               │   Private LAN: 10.50.0.0/24               │
+                               │   Private LAN: 10.50.0.0/24                │
                                └────────────────────────────────────────────┘
 ```
 
@@ -266,12 +266,12 @@ Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client ca
 
 ```
 /etc/wireguard/
-├── wg0.conf                  # WireGuard server configuration
+├── wg0.conf                  # WireGuard server configuration (VPN clients + agent peers)
 └── params                    # Installation parameters
 
 /etc/wireshield/2fa/
-├── config.env                # Service configuration
-├── auth.db                   # SQLite database
+├── config.env                # Service configuration (WS_2FA_* and WS_AGENT_* variables)
+├── auth.db                   # SQLite database (users, sessions, agents, heartbeats, audit)
 ├── cert.pem                  # SSL certificate
 ├── key.pem                   # SSL private key
 ├── app/                      # FastAPI application
@@ -279,13 +279,21 @@ Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client ca
 ├── static/                   # CSS, JS, fonts
 └── .venv/                    # Python virtual environment
 
-/etc/wireshield/clients/       # Canonical location for generated client .conf files
-└── <client>.conf             # Both the CLI (ws_add_client, newClient) and the
-                              # console's "Create User" write here. Mode 0700/0600.
+/etc/wireshield/clients/       # Generated VPN client .conf files (mode 0700/0600)
+└── <client>.conf             # Written by CLI (ws_add_client) and console "Create User"
+
+/etc/wireshield/agent-binaries/  # Pre-built Go agent binaries served by the API
+├── linux-amd64/
+│   ├── wireshield-agent      # Static binary for x86_64
+│   └── wireshield-agent.sha256
+├── linux-arm64/
+│   ├── wireshield-agent      # Static binary for ARM64
+│   └── wireshield-agent.sha256
+└── version.json              # Auto-update manifest (current_version, arches, sha256)
 
 /etc/systemd/system/
-├── wireshield.service        # 2FA service unit
-└── wireshield-2fa-renew.timer  # Let's Encrypt renewal (if applicable)
+├── wireshield.service        # 2FA + admin console service unit
+└── wireshield-2fa-renew.timer  # Let's Encrypt renewal timer (if applicable)
 ```
 
 ---
@@ -320,18 +328,40 @@ sudo systemctl restart wireshield.service
 
 ### Tuning Examples
 
+**Session and portal:**
+
 ```bash
-# Extend session to 7 days
+# Extend session lifetime to 7 days
 WS_2FA_SESSION_TIMEOUT=10080
 
-# More lenient disconnect detection (2 hours)
+# More lenient disconnect detection (2 hours grace)
 WS_2FA_SESSION_IDLE_TIMEOUT=7200
 
-# Tighter disconnect detection (10 seconds)
+# Tighter disconnect detection (10 seconds grace)
 WS_2FA_DISCONNECT_GRACE_SECONDS=10
 
-# Keep activity logs for 90 days
+# Keep activity logs for 90 days instead of 30
 WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=90
+```
+
+**Agent fleet:**
+
+```bash
+# Shorten enrollment token TTL to 15 minutes for tighter security
+WS_AGENT_TOKEN_TTL_SECONDS=900
+
+# Mark agents offline faster — useful if heartbeat interval is tuned down
+WS_AGENT_OFFLINE_AFTER_SECONDS=45
+
+# Reserve a different IP range for agents (e.g. .150–.199 within the server subnet)
+WS_AGENT_IP_START=150
+WS_AGENT_IP_END=199
+
+# Keep 7 days of heartbeat history for the metrics sparklines
+WS_AGENT_HEARTBEAT_RETENTION_HOURS=168
+
+# Serve agent binaries from a custom directory
+WS_AGENT_BINARY_DIR=/opt/wireshield/agent-binaries
 ```
 
 ---
