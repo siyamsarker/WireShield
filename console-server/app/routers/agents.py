@@ -553,3 +553,116 @@ async def install_script_go_endpoint():
                 media_type="text/x-shellscript",
             )
     raise HTTPException(status_code=404, detail="install script not found on server")
+
+
+# ----------------------------------------------------------------------------
+# Phase 4 — auto-update version manifest
+#
+# /api/agents/version is the cheap polling endpoint the daemon hits every
+# few hours to decide whether it needs to pull a new binary. Format:
+#
+#   {
+#     "current_version": "1.1.0",
+#     "released_at":     "2026-04-26T10:00:00Z",   (optional)
+#     "min_version":     "1.0.0",                  (optional, force-upgrade gate)
+#     "arches": {
+#       "linux-amd64": {
+#         "url":    "/api/agents/binary/linux-amd64",
+#         "sha256": "abc...64chars"
+#       },
+#       "linux-arm64": { ... }
+#     }
+#   }
+#
+# Source of truth: $AGENT_BINARY_DIR/version.json, written by the operator's
+# release flow (typically `make dist` followed by manual edit). If the file
+# is missing we fall back to a synthetic manifest computed from whatever
+# binaries are on disk — keeps the endpoint useful in dev installs without
+# requiring a manual JSON file.
+# ----------------------------------------------------------------------------
+
+import json as _json  # local import alias to avoid shadowing earlier `json` if added
+
+_VERSION_MANIFEST_FILENAME = "version.json"
+
+
+def _read_published_sha256(arch: str) -> Optional[str]:
+    """Read the sidecar SHA-256 produced by `make dist` for one arch.
+    Returns the 64-char lowercase hex digest, or None if missing/malformed."""
+    path = Path(AGENT_BINARY_DIR) / arch / f"{_BINARY_FILENAME}.sha256"
+    try:
+        line = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    # `sha256sum` and `shasum -a 256` both emit "<hex>  <filename>"
+    digest = line.split()[0] if line else ""
+    if len(digest) == 64 and all(c in "0123456789abcdefABCDEF" for c in digest):
+        return digest.lower()
+    return None
+
+
+def _synthesize_manifest() -> Dict[str, Any]:
+    """Best-effort manifest when version.json is absent. Reports
+    current_version='unknown' so well-behaved agents do nothing."""
+    arches: Dict[str, Any] = {}
+    for arch in sorted(_ALLOWED_ARCHES):
+        binary = Path(AGENT_BINARY_DIR) / arch / _BINARY_FILENAME
+        if binary.is_file():
+            entry: Dict[str, Any] = {"url": f"/api/agents/binary/{arch}"}
+            sha = _read_published_sha256(arch)
+            if sha:
+                entry["sha256"] = sha
+            arches[arch] = entry
+    return {
+        "current_version": "unknown",
+        "arches": arches,
+        "synthesized": True,
+    }
+
+
+@router.get("/api/agents/version", tags=["agent"])
+async def agent_version_endpoint():
+    """Return the published agent version manifest.
+
+    Intentionally unauthenticated: same rationale as /api/agents/binary —
+    the manifest is not a secret and the agent needs to call this before
+    it has any kind of session. Cache-Control: no-store so a stale CDN
+    layer (if any) doesn't pin agents to an old version after a release.
+    """
+    manifest_path = Path(AGENT_BINARY_DIR) / _VERSION_MANIFEST_FILENAME
+    if manifest_path.is_file():
+        try:
+            data = _json.loads(manifest_path.read_text(encoding="utf-8"))
+        except _json.JSONDecodeError as exc:
+            logger.warning("version.json malformed: %s", exc)
+            raise HTTPException(status_code=500, detail="version manifest malformed")
+
+        # Validate the arch allow-list — never let an operator typo a
+        # manifest into pointing agents at a download for an unknown arch.
+        arches = data.get("arches") or {}
+        sanitized: Dict[str, Any] = {}
+        for arch, entry in arches.items():
+            if arch not in _ALLOWED_ARCHES or not isinstance(entry, dict):
+                continue
+            url = entry.get("url") or f"/api/agents/binary/{arch}"
+            sanitized_entry = {"url": url}
+            if isinstance(entry.get("sha256"), str) and len(entry["sha256"]) == 64:
+                sanitized_entry["sha256"] = entry["sha256"].lower()
+            sanitized[arch] = sanitized_entry
+
+        # Backfill missing sha256 from the on-disk sidecar if available.
+        for arch in _ALLOWED_ARCHES:
+            entry = sanitized.get(arch)
+            if entry and "sha256" not in entry:
+                sha = _read_published_sha256(arch)
+                if sha:
+                    entry["sha256"] = sha
+
+        return {
+            "current_version": str(data.get("current_version") or "unknown"),
+            "released_at": data.get("released_at"),
+            "min_version": data.get("min_version"),
+            "arches": sanitized,
+        }
+
+    return _synthesize_manifest()
