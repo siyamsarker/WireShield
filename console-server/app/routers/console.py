@@ -27,7 +27,26 @@ class AgentPatchRequest(BaseModel):
 
 from app.core.database import get_db
 from app.core.security import audit_log
-from app.core.config import LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS
+from app.core.config import LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS, SSL_TYPE
+
+
+def _build_agent_install_command(token: str, server_base_url: str) -> str:
+    """Build the one-line install command shown in the Register-Agent modal.
+
+    When the server uses a self-signed TLS certificate, the outer ``curl`` —
+    the one that downloads the bootstrap script — also needs ``-k`` to
+    proceed, and the bootstrap script's nested calls need
+    ``AGENT_INSECURE_TLS=1`` to inherit the same trust posture. With a real
+    Let's Encrypt cert neither flag is required.
+    """
+    is_self_signed = (SSL_TYPE or "").strip().lower() in ("self-signed", "selfsigned")
+    curl_flags = "-ksSL" if is_self_signed else "-sSL"
+    extra_env = " AGENT_INSECURE_TLS=1" if is_self_signed else ""
+    return (
+        f"curl {curl_flags} {server_base_url}/api/agents/install-go | "
+        f"sudo TOKEN={token} "
+        f"WIRESHIELD_SERVER={server_base_url}{extra_env} bash"
+    )
 from app.templates import get_access_denied_html, get_console_html
 
 logger = logging.getLogger(__name__)
@@ -816,11 +835,7 @@ async def create_agent_endpoint(
     # The legacy Bash installer remains available at /api/agents/install
     # for operators with existing scripts.
     from app.core.config import UI_BASE_URL
-    install_cmd = (
-        f"curl -sSL {UI_BASE_URL}/api/agents/install-go | "
-        f"sudo TOKEN={result['enrollment_token']} "
-        f"WIRESHIELD_SERVER={UI_BASE_URL} bash"
-    )
+    install_cmd = _build_agent_install_command(result["enrollment_token"], UI_BASE_URL)
 
     return {
         "success": True,
@@ -997,11 +1012,7 @@ async def rotate_agent_token_endpoint(
         )
 
     raw_token, expires_at = issue_enrollment_token(agent_id)
-    install_cmd = (
-        f"curl -sSL {UI_BASE_URL}/api/agents/install-go | "
-        f"sudo TOKEN={raw_token} "
-        f"WIRESHIELD_SERVER={UI_BASE_URL} bash"
-    )
+    install_cmd = _build_agent_install_command(raw_token, UI_BASE_URL)
 
     try:
         ip_address = request.client.host if request and request.client else "unknown"

@@ -2402,13 +2402,16 @@ tbody tr:last-child td {
 
 /* Install-command reveal block in the create-agent success state — the
    one place the raw enrollment token is ever shown. The `code` element is
-   horizontally scrollable so a long URL doesn't break layout. */
+   horizontally scrollable so a long URL doesn't break layout. The Copy
+   button sits absolutely-positioned in the top-right with an opaque
+   background + left-edge gradient fade so scrolled text never bleeds
+   through it. */
 .agent-install-block {
     position: relative;
     background: #0f172a;
     color: #e2e8f0;
     border-radius: 8px;
-    padding: 12px 56px 12px 12px;
+    padding: 12px 80px 12px 12px;
     font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11.5px;
     line-height: 1.55;
@@ -2419,17 +2422,21 @@ tbody tr:last-child td {
     position: absolute;
     top: 8px;
     right: 8px;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.12);
-    color: #e2e8f0;
+    z-index: 2;
+    background: #334155;
+    border: 1px solid #475569;
+    color: #f1f5f9;
     border-radius: 6px;
-    padding: 4px 10px;
+    padding: 5px 12px;
     font-size: 11px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    box-shadow: -12px 0 14px 6px #0f172a;
 }
-.agent-install-copy:hover    { background: rgba(255,255,255,0.16); }
-.agent-install-copy.copied   { background: #059669; border-color: #059669; }
+.agent-install-copy:hover    { background: #475569; border-color: #64748b; }
+.agent-install-copy:active   { background: #1e293b; }
+.agent-install-copy.copied   { background: #059669; border-color: #059669; box-shadow: -12px 0 14px 6px #0f172a; }
 
 /* Detail-drawer key/value grid. */
 .agent-detail-grid {
