@@ -53,17 +53,18 @@ dist: $(ARCHES:%=dist-%)
 	@find $(DIST_DIR) -type f -printf "  %p (%s bytes)\n" 2>/dev/null || find $(DIST_DIR) -type f -exec ls -l {} \;
 
 # Pattern rule: dist-linux-amd64, dist-linux-arm64, ...
+# Output naming convention: <binary>_<os>_<arch>  e.g. wireshield-agent_linux_amd64
 dist-%:
-	@mkdir -p $(DIST_DIR)/$*
+	@mkdir -p $(DIST_DIR)
 	@echo "→ $*"
 	@os=$$(echo $* | cut -d- -f1); arch=$$(echo $* | cut -d- -f2); \
+		fname="$(BINARY)_$${os}_$${arch}"; \
 		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 \
 		$(GO) build $(BUILDFLAGS) -ldflags "$(LDFLAGS)" \
-			-o $(DIST_DIR)/$*/$(BINARY) $(CMD_PKG)
-	@cd $(DIST_DIR)/$* && \
-		(sha256sum $(BINARY) > $(BINARY).sha256 2>/dev/null || \
-		 shasum -a 256 $(BINARY) > $(BINARY).sha256)
-	@cd $(DIST_DIR)/$* && chmod 0755 $(BINARY)
+			-o $(DIST_DIR)/$$fname $(CMD_PKG); \
+		(sha256sum $(DIST_DIR)/$$fname > $(DIST_DIR)/$$fname.sha256 2>/dev/null || \
+		 shasum -a 256 $(DIST_DIR)/$$fname > $(DIST_DIR)/$$fname.sha256); \
+		chmod 0755 $(DIST_DIR)/$$fname
 
 # Copy dist tree + systemd unit + install.sh into AGENT_BINARY_DIR on this
 # host (used on the VPN server after `make dist`). Idempotent; overwrites.

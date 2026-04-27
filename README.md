@@ -283,13 +283,11 @@ Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client ca
 └── <client>.conf             # Written by CLI (ws_add_client) and console "Create User"
 
 /etc/wireshield/agent-binaries/  # Pre-built Go agent binaries served by the API
-├── linux-amd64/
-│   ├── wireshield-agent      # Static binary for x86_64
-│   └── wireshield-agent.sha256
-├── linux-arm64/
-│   ├── wireshield-agent      # Static binary for ARM64
-│   └── wireshield-agent.sha256
-└── version.json              # Auto-update manifest (current_version, arches, sha256)
+├── wireshield-agent_linux_amd64        # Static binary for x86_64
+├── wireshield-agent_linux_amd64.sha256
+├── wireshield-agent_linux_arm64        # Static binary for ARM64
+├── wireshield-agent_linux_arm64.sha256
+└── version.json                        # Auto-update manifest
 
 /etc/systemd/system/
 ├── wireshield.service        # 2FA + admin console service unit
@@ -513,27 +511,23 @@ Follow these four steps to connect a remote Linux server to your WireShield VPN 
 
 #### Step 1 — publish agent binaries on the VPN server (one-time setup)
 
-The agent installer downloads the `wireshield-agent` binary directly from your VPN server, so you must build and publish it once before enrolling any agents. You need **Go 1.22+** available on the build host (the VPN server itself or any Linux machine).
+**If you installed WireShield with `sudo ./wireshield.sh`, this step is done automatically** — the installer detects Go, cross-compiles both architectures, and publishes the binaries to `/etc/wireshield/agent-binaries/` as the final step of installation. Skip to Step 2.
+
+If Go was not available during install, or you need to rebuild after a code update, run this manually on the VPN server (requires **Go 1.22+**):
 
 ```bash
-# Clone the repo if not already present
-git clone https://github.com/siyamsarker/WireShield.git
 cd WireShield
-
-# Cross-compile static binaries for linux-amd64 and linux-arm64
 make -C agent dist
-
-# Copy binaries + SHA-256 sidecars to the directory the API endpoint serves
 sudo make -C agent install AGENT_BINARY_DIR=/etc/wireshield/agent-binaries
 ```
 
 This populates `/etc/wireshield/agent-binaries/` with:
 
 ```
-linux-amd64/wireshield-agent
-linux-amd64/wireshield-agent.sha256
-linux-arm64/wireshield-agent
-linux-arm64/wireshield-agent.sha256
+wireshield-agent_linux_amd64
+wireshield-agent_linux_amd64.sha256
+wireshield-agent_linux_arm64
+wireshield-agent_linux_arm64.sha256
 version.json
 ```
 
@@ -747,7 +741,7 @@ make test        # run unit tests
 make dist        # cross-compile static linux-amd64 + linux-arm64 + .sha256 sidecars
 ```
 
-Artefacts land under `agent/dist/bin/<arch>/`. On the VPN server, publish them so the `install-go` endpoint can serve them:
+Artefacts land under `agent/dist/bin/` as flat files (`wireshield-agent_linux_amd64`, `wireshield-agent_linux_arm64`, and their `.sha256` sidecars). On the VPN server, publish them so the `install-go` endpoint can serve them:
 
 ```bash
 # On the VPN server, after copying the agent/ tree over:

@@ -462,13 +462,19 @@ _UNIT_FILENAME = "wireshield-agent.service"
 _INSTALLER_GO_FILENAME = "install.sh"
 
 
+def _binary_filename(arch: str) -> str:
+    """Return the on-disk filename for arch using the standard <name>_<os>_<arch>
+    convention, e.g. 'wireshield-agent_linux_amd64'."""
+    return f"{_BINARY_FILENAME}_{arch.replace('-', '_')}"
+
+
 def _binary_path(arch: str) -> Path:
     """Return the on-disk binary path for a whitelisted arch, or raise 404.
     Only names in _ALLOWED_ARCHES are accepted; this blocks path traversal
     regardless of FastAPI's route parsing."""
     if arch not in _ALLOWED_ARCHES:
         raise HTTPException(status_code=404, detail=f"unsupported arch: {arch}")
-    return Path(AGENT_BINARY_DIR) / arch / _BINARY_FILENAME
+    return Path(AGENT_BINARY_DIR) / _binary_filename(arch)
 
 
 def _agent_dist_file(relative: str) -> Path:
@@ -490,7 +496,7 @@ async def agent_binary_sha_endpoint(arch: str):
     more-specific `.sha256` suffix first."""
     if arch not in _ALLOWED_ARCHES:
         raise HTTPException(status_code=404, detail=f"unsupported arch: {arch}")
-    path = Path(AGENT_BINARY_DIR) / arch / f"{_BINARY_FILENAME}.sha256"
+    path = Path(AGENT_BINARY_DIR) / f"{_binary_filename(arch)}.sha256"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="no checksum published")
     return FileResponse(str(path), media_type="text/plain")
@@ -589,7 +595,7 @@ _VERSION_MANIFEST_FILENAME = "version.json"
 def _read_published_sha256(arch: str) -> Optional[str]:
     """Read the sidecar SHA-256 produced by `make dist` for one arch.
     Returns the 64-char lowercase hex digest, or None if missing/malformed."""
-    path = Path(AGENT_BINARY_DIR) / arch / f"{_BINARY_FILENAME}.sha256"
+    path = Path(AGENT_BINARY_DIR) / f"{_binary_filename(arch)}.sha256"
     try:
         line = path.read_text(encoding="utf-8").strip()
     except OSError:
@@ -606,7 +612,7 @@ def _synthesize_manifest() -> Dict[str, Any]:
     current_version='unknown' so well-behaved agents do nothing."""
     arches: Dict[str, Any] = {}
     for arch in sorted(_ALLOWED_ARCHES):
-        binary = Path(AGENT_BINARY_DIR) / arch / _BINARY_FILENAME
+        binary = Path(AGENT_BINARY_DIR) / _binary_filename(arch)
         if binary.is_file():
             entry: Dict[str, Any] = {"url": f"/api/agents/binary/{arch}"}
             sha = _read_published_sha256(arch)

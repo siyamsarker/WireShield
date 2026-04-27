@@ -554,6 +554,60 @@ EOFSERVICE
 	echo "WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA}" >> /etc/wireshield/2fa/config.env
 }
 
+function _ws_build_agent() {
+	# Build and publish wireshield-agent binaries to AGENT_BINARY_DIR so the
+	# /api/agents/binary/* endpoints are immediately ready to serve. Non-fatal:
+	# a missing or too-old Go toolchain just prints a warning with manual steps.
+	local SCRIPT_DIR
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+	local AGENT_DIR="${SCRIPT_DIR}/agent"
+	local AGENT_BINARY_DIR="/etc/wireshield/agent-binaries"
+
+	_ws_ui_section "Agent Binary Build"
+
+	if [[ ! -d "${AGENT_DIR}" ]]; then
+		_ws_ui_warn "agent/ source directory not found — skipping agent build"
+		_ws_ui_info  "Build manually: make -C agent dist && sudo make -C agent install"
+		return 0
+	fi
+
+	if ! command -v go >/dev/null 2>&1; then
+		_ws_ui_warn "Go toolchain not found — skipping agent build"
+		_ws_ui_info  "Install Go 1.22+, then run:"
+		_ws_ui_info  "  make -C agent dist && sudo make -C agent install AGENT_BINARY_DIR=${AGENT_BINARY_DIR}"
+		return 0
+	fi
+
+	local GO_VERSION
+	GO_VERSION=$(go version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
+	local GO_MAJOR GO_MINOR
+	GO_MAJOR=$(echo "${GO_VERSION}" | cut -d. -f1)
+	GO_MINOR=$(echo "${GO_VERSION}" | cut -d. -f2)
+	if [[ "${GO_MAJOR}" -lt 1 ]] || { [[ "${GO_MAJOR}" -eq 1 ]] && [[ "${GO_MINOR}" -lt 22 ]]; }; then
+		_ws_ui_warn "Go ${GO_VERSION} found but 1.22+ is required — skipping agent build"
+		_ws_ui_info  "Upgrade Go, then run:"
+		_ws_ui_info  "  make -C agent dist && sudo make -C agent install AGENT_BINARY_DIR=${AGENT_BINARY_DIR}"
+		return 0
+	fi
+
+	_ws_ui_info "Building wireshield-agent for linux-amd64 and linux-arm64 (Go ${GO_VERSION})..."
+	if ! make -C "${AGENT_DIR}" dist >/dev/null 2>&1; then
+		_ws_ui_warn "Agent build failed"
+		_ws_ui_info  "Retry manually: make -C agent dist"
+		return 0
+	fi
+
+	_ws_ui_info "Publishing binaries to ${AGENT_BINARY_DIR}..."
+	if ! make -C "${AGENT_DIR}" install AGENT_BINARY_DIR="${AGENT_BINARY_DIR}" >/dev/null 2>&1; then
+		_ws_ui_warn "Agent install failed"
+		_ws_ui_info  "Retry manually: sudo make -C agent install AGENT_BINARY_DIR=${AGENT_BINARY_DIR}"
+		return 0
+	fi
+
+	_ws_ui_success "wireshield-agent_linux_amd64 and wireshield-agent_linux_arm64 published"
+	_ws_ui_success "Agents are ready — register them from the admin console → Agents tab"
+}
+
 function _ws_install_2fa_service() {
 	# Install Python 2FA service and dependencies
 	echo ""
@@ -1098,6 +1152,9 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 		echo -e "${GREEN}View connected peers with: wg show${NC}"
 		echo -e "${ORANGE}If you don't have internet connectivity from your client, try to reboot the server.${NC}"
 	fi
+
+	# Build and publish agent binaries so the Agents tab is immediately usable.
+	_ws_build_agent
 }
 
 function newClient() {
