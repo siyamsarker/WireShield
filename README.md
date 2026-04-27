@@ -820,35 +820,47 @@ Example response:
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-04-19T10:12:34.567Z",
-  "database": { "status": "ok", "users": 5, "active_sessions": 2 },
-  "wireguard": { "status": "up", "interface": "wg0", "operstate": "up" },
+  "timestamp": "2026-04-27T05:23:55.528379Z",
+  "database": { "status": "ok", "users": 1, "active_sessions": 0 },
+  "wireguard": { "status": "up", "interface": "wg0", "operstate": "unknown" },
   "iptables_portal": { "80": "present", "443": "present" },
   "watchdog": {
+    "iface": "wg0",
     "iface_state": "up",
-    "last_transition": { "from": "down", "to": "up", "at": "..." },
-    "portal_rule_fixes": 0
+    "last_transition": null,
+    "portal_rule_fixes": 0,
+    "last_check": "2026-04-27T05:23:42.854502"
+  },
+  "agents": {
+    "enrolled": 0,
+    "pending": 0,
+    "revoked": 0,
+    "total": 0,
+    "online": 0
   },
   "agent_acl": {
-    "chain": "WS_AGENT_ACL",
-    "rules": 3,
-    "last_sync": "2026-04-19T10:12:10.123Z",
-    "error": null
+    "last_sync_unix": 1777267422,
+    "last_rule_count": 0,
+    "last_error": null,
+    "missing_iptables": false
   }
 }
 ```
 
 What each field tells you:
 
-| Field | `"ok"` / `"present"` means | Problem if not |
-|-------|----------------------------|----------------|
-| `status` | All subsystems healthy | `"degraded"` = at least one check below failed |
-| `database` | SQLite reachable, schema intact | Service won't be able to verify codes or track sessions |
-| `wireguard.status` | Kernel reports `wg0` as up | VPN clients cannot connect or reach captive portal |
-| `iptables_portal.80/443` | INPUT ACCEPT rule exists | Portal is firewall-blocked even though uvicorn is listening |
-| `watchdog.portal_rule_fixes` | `0` means stable | Non-zero = the watchdog had to re-add stripped firewall rules (wg-quick flaps) |
-| `watchdog.last_transition` | `null` means no flaps | Shows the most recent wg0 up/down transition for outage correlation |
-| `agent_acl.error` | `null` means last sync succeeded | Non-null string = iptables command failed; restricted agents may have stale rules |
+| Field | Healthy value | Problem if not |
+|-------|---------------|----------------|
+| `status` | `"ok"` | `"degraded"` = at least one subsystem check failed |
+| `database.status` | `"ok"` | SQLite unreachable — service cannot verify codes or track sessions |
+| `wireguard.status` | `"up"` | VPN clients cannot connect or reach captive portal |
+| `wireguard.operstate` | `"up"` or `"unknown"` | WireGuard virtual interfaces always report `"unknown"` on Linux — this is normal, not an error |
+| `iptables_portal.80/443` | `"present"` | Portal is firewall-blocked even though uvicorn is listening |
+| `watchdog.portal_rule_fixes` | `0` | Non-zero = watchdog had to re-add stripped firewall rules (wg-quick flaps) |
+| `watchdog.last_transition` | `null` | Non-null = shows the most recent wg0 up/down transition for outage correlation |
+| `agents.online` | any integer | Shows how many enrolled agents sent a heartbeat within `WS_AGENT_OFFLINE_AFTER_SECONDS` |
+| `agent_acl.last_error` | `null` | Non-null string = iptables command failed; restricted agents may have stale rules |
+| `agent_acl.missing_iptables` | `false` | `true` = iptables not available on this host; agent ACL enforcement disabled |
 
 ### 1. No Internet After 2FA Verification
 
@@ -1040,7 +1052,7 @@ sudo wg show wg-agent0
 
 **Agent ACL rules not applying:**
 
-Check the `agent_acl` block in the `/health` response — a non-null `error` field means the last iptables sync failed:
+Check the `agent_acl` block in the `/health` response — a non-null `last_error` field means the last iptables sync failed:
 
 ```bash
 curl -sk https://<your-server>/health | jq .agent_acl
