@@ -554,10 +554,151 @@ EOFSERVICE
 	echo "WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA}" >> /etc/wireshield/2fa/config.env
 }
 
+_WS_GO_MIN_MAJOR=1
+_WS_GO_MIN_MINOR=22
+_WS_GO_PIN_VERSION="1.22.10"
+_WS_GO_INSTALL_DIR="/usr/local/go"
+_WS_GO_PROFILE_SCRIPT="/etc/profile.d/wireshield-go.sh"
+_WS_GO_INSTALL_MARKER="/etc/wireshield/.go-installed-by-wireshield"
+
+function _ws_go_meets_minimum() {
+	# Echoes "yes" if the supplied `go` binary path reports >= 1.22.
+	local go_bin="$1"
+	[[ -x "${go_bin}" ]] || { echo "no"; return; }
+	local v major minor
+	v=$("${go_bin}" version 2>/dev/null | grep -oE 'go[0-9]+\.[0-9]+' | head -1 | sed 's/^go//')
+	[[ -n "${v}" ]] || { echo "no"; return; }
+	major=$(echo "${v}" | cut -d. -f1)
+	minor=$(echo "${v}" | cut -d. -f2)
+	if [[ "${major}" -gt "${_WS_GO_MIN_MAJOR}" ]] || \
+	   { [[ "${major}" -eq "${_WS_GO_MIN_MAJOR}" ]] && [[ "${minor}" -ge "${_WS_GO_MIN_MINOR}" ]]; }; then
+		echo "yes"
+	else
+		echo "no"
+	fi
+}
+
+function _ws_ensure_go() {
+	# Make a Go 1.22+ toolchain available for the agent build. Sets:
+	#   _WS_GO_BIN — absolute path to the `go` binary to use
+	# Returns 0 on success, 1 if installation failed.
+	#
+	# Precedence:
+	#   1. Existing `go` on PATH that meets the minimum version
+	#   2. Existing /usr/local/go/bin/go that meets the minimum version
+	#   3. Fresh install — apk on Alpine, otherwise official tarball from go.dev
+	#
+	# Marker file at $_WS_GO_INSTALL_MARKER tells the uninstaller that we
+	# installed Go and may remove it on teardown.
+
+	# (1) PATH
+	if command -v go >/dev/null 2>&1; then
+		local existing
+		existing=$(command -v go)
+		if [[ "$(_ws_go_meets_minimum "${existing}")" == "yes" ]]; then
+			_WS_GO_BIN="${existing}"
+			return 0
+		fi
+		_ws_ui_warn "Found Go below ${_WS_GO_MIN_MAJOR}.${_WS_GO_MIN_MINOR} on PATH — installing newer toolchain"
+	fi
+
+	# (2) Pre-existing /usr/local/go from a prior install
+	if [[ -x "${_WS_GO_INSTALL_DIR}/bin/go" ]] && \
+	   [[ "$(_ws_go_meets_minimum "${_WS_GO_INSTALL_DIR}/bin/go")" == "yes" ]]; then
+		_WS_GO_BIN="${_WS_GO_INSTALL_DIR}/bin/go"
+		export PATH="${_WS_GO_INSTALL_DIR}/bin:${PATH}"
+		return 0
+	fi
+
+	# (3) Fresh install — branch on OS
+	local goarch
+	case "$(uname -m)" in
+		x86_64)         goarch="amd64" ;;
+		aarch64|arm64)  goarch="arm64" ;;
+		*)
+			_ws_ui_warn "Unsupported architecture for automatic Go install: $(uname -m)"
+			return 1
+			;;
+	esac
+
+	# Alpine ships musl-built Go via apk — official go.dev tarballs are glibc-linked
+	# and won't run on musl. Use the package manager exclusively for Alpine.
+	if [[ "${OS}" == "alpine" ]]; then
+		_ws_ui_info "Installing Go from Alpine package repository..."
+		if ! apk add --no-cache go >/dev/null 2>&1; then
+			_ws_ui_warn "apk add go failed — agent build will be skipped"
+			return 1
+		fi
+		if [[ "$(_ws_go_meets_minimum "$(command -v go)")" != "yes" ]]; then
+			_ws_ui_warn "apk's Go version is below ${_WS_GO_MIN_MAJOR}.${_WS_GO_MIN_MINOR} — upgrade Alpine to a newer release"
+			apk del go >/dev/null 2>&1 || true
+			return 1
+		fi
+		_WS_GO_BIN=$(command -v go)
+		mkdir -p "$(dirname "${_WS_GO_INSTALL_MARKER}")" 2>/dev/null || true
+		: > "${_WS_GO_INSTALL_MARKER}"
+		echo "alpine-apk" > "${_WS_GO_INSTALL_MARKER}"
+		return 0
+	fi
+
+	# Everything else: download official tarball from go.dev
+	if ! command -v curl >/dev/null 2>&1; then
+		_ws_ui_warn "curl not available — cannot download Go toolchain"
+		return 1
+	fi
+	if ! command -v tar >/dev/null 2>&1; then
+		_ws_ui_warn "tar not available — cannot extract Go toolchain"
+		return 1
+	fi
+
+	local tarball="go${_WS_GO_PIN_VERSION}.linux-${goarch}.tar.gz"
+	local url="https://go.dev/dl/${tarball}"
+	local tmpdir
+	tmpdir=$(mktemp -d)
+	# shellcheck disable=SC2064
+	trap "rm -rf '${tmpdir}'" EXIT
+
+	_ws_ui_info "Downloading Go ${_WS_GO_PIN_VERSION} for linux-${goarch} from go.dev..."
+	if ! curl -fsSL --max-time 600 --retry 3 -o "${tmpdir}/${tarball}" "${url}"; then
+		_ws_ui_warn "Failed to download Go from ${url}"
+		return 1
+	fi
+
+	# Wipe any previous /usr/local/go (residue from a failed install). Leaves
+	# user data alone — only the toolchain root.
+	rm -rf "${_WS_GO_INSTALL_DIR}"
+	if ! tar -C /usr/local -xzf "${tmpdir}/${tarball}"; then
+		_ws_ui_warn "Failed to extract Go tarball"
+		rm -rf "${_WS_GO_INSTALL_DIR}"
+		return 1
+	fi
+
+	# Persist PATH for future shells (manual rebuild path)
+	cat > "${_WS_GO_PROFILE_SCRIPT}" <<'EOF'
+# WireShield — Go toolchain for agent binary builds (auto-installed)
+export PATH="/usr/local/go/bin:$PATH"
+EOF
+	chmod 0644 "${_WS_GO_PROFILE_SCRIPT}"
+
+	# Mark install for the uninstaller
+	mkdir -p "$(dirname "${_WS_GO_INSTALL_MARKER}")" 2>/dev/null || true
+	echo "go.dev-tarball ${_WS_GO_PIN_VERSION} linux-${goarch}" > "${_WS_GO_INSTALL_MARKER}"
+
+	export PATH="${_WS_GO_INSTALL_DIR}/bin:${PATH}"
+	_WS_GO_BIN="${_WS_GO_INSTALL_DIR}/bin/go"
+
+	if [[ "$(_ws_go_meets_minimum "${_WS_GO_BIN}")" != "yes" ]]; then
+		_ws_ui_warn "Installed Go does not report a usable version"
+		return 1
+	fi
+	return 0
+}
+
 function _ws_build_agent() {
-	# Build and publish wireshield-agent binaries to AGENT_BINARY_DIR so the
-	# /api/agents/binary/* endpoints are immediately ready to serve. Non-fatal:
-	# a missing or too-old Go toolchain just prints a warning with manual steps.
+	# Build and publish wireshield-agent binaries to AGENT_BINARY_DIR. Auto-installs
+	# Go 1.22+ if not already present. Non-fatal at every step — any failure
+	# prints a warning with the manual recovery command and lets the main install
+	# complete normally.
 	local SCRIPT_DIR
 	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 	local AGENT_DIR="${SCRIPT_DIR}/agent"
@@ -565,33 +706,38 @@ function _ws_build_agent() {
 
 	_ws_ui_section "Agent Binary Build"
 
+	if [[ -n "${WS_SKIP_AGENT_BUILD:-}" ]]; then
+		_ws_ui_warn "WS_SKIP_AGENT_BUILD is set — skipping agent build"
+		return 0
+	fi
+
 	if [[ ! -d "${AGENT_DIR}" ]]; then
 		_ws_ui_warn "agent/ source directory not found — skipping agent build"
 		_ws_ui_info  "Build manually: make -C agent dist && sudo make -C agent install"
 		return 0
 	fi
 
-	if ! command -v go >/dev/null 2>&1; then
-		_ws_ui_warn "Go toolchain not found — skipping agent build"
-		_ws_ui_info  "Install Go 1.22+, then run:"
+	if ! _ws_ensure_go; then
+		_ws_ui_warn "Could not provision Go toolchain — agent build skipped"
+		_ws_ui_info  "Install Go 1.22+ manually, then run:"
 		_ws_ui_info  "  make -C agent dist && sudo make -C agent install AGENT_BINARY_DIR=${AGENT_BINARY_DIR}"
 		return 0
 	fi
 
 	local GO_VERSION
-	GO_VERSION=$(go version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
-	local GO_MAJOR GO_MINOR
-	GO_MAJOR=$(echo "${GO_VERSION}" | cut -d. -f1)
-	GO_MINOR=$(echo "${GO_VERSION}" | cut -d. -f2)
-	if [[ "${GO_MAJOR}" -lt 1 ]] || { [[ "${GO_MAJOR}" -eq 1 ]] && [[ "${GO_MINOR}" -lt 22 ]]; }; then
-		_ws_ui_warn "Go ${GO_VERSION} found but 1.22+ is required — skipping agent build"
-		_ws_ui_info  "Upgrade Go, then run:"
-		_ws_ui_info  "  make -C agent dist && sudo make -C agent install AGENT_BINARY_DIR=${AGENT_BINARY_DIR}"
-		return 0
-	fi
+	GO_VERSION=$("${_WS_GO_BIN}" version 2>/dev/null | grep -oE 'go[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+	_ws_ui_info "Building wireshield-agent for linux-amd64 and linux-arm64 (${GO_VERSION})..."
 
-	_ws_ui_info "Building wireshield-agent for linux-amd64 and linux-arm64 (Go ${GO_VERSION})..."
-	if ! make -C "${AGENT_DIR}" dist >/dev/null 2>&1; then
+	# Keep the Go module + build cache out of $HOME so it gets cleaned up with
+	# the rest of WireShield state on uninstall.
+	local AGENT_BUILD_CACHE="/etc/wireshield/.gocache"
+	mkdir -p "${AGENT_BUILD_CACHE}/mod" "${AGENT_BUILD_CACHE}/build"
+
+	if ! GOPATH="${AGENT_BUILD_CACHE}" \
+	     GOMODCACHE="${AGENT_BUILD_CACHE}/mod" \
+	     GOCACHE="${AGENT_BUILD_CACHE}/build" \
+	     PATH="$(dirname "${_WS_GO_BIN}"):${PATH}" \
+	     make -C "${AGENT_DIR}" dist >/dev/null 2>&1; then
 		_ws_ui_warn "Agent build failed"
 		_ws_ui_info  "Retry manually: make -C agent dist"
 		return 0
@@ -1572,6 +1718,7 @@ function uninstallWg() {
 	echo -e "  ${GRAY}•${NC} Pre-built agent binaries (/etc/wireshield/agent-binaries/)"
 	echo -e "  ${GRAY}•${NC} Agent enrollment tokens, heartbeat history, and ACL grants"
 	echo -e "  ${GRAY}•${NC} Agent ACL iptables chain (WS_AGENT_ACL)"
+	echo -e "  ${GRAY}•${NC} Go toolchain at /usr/local/go (only if installed by WireShield; you'll be asked)"
 	echo ""
 	_ws_ui_warn "Back up /etc/wireguard and /etc/wireshield first if needed."
 	_ws_ui_warn "Enrolled agents on remote servers must be torn down separately:"
@@ -1587,6 +1734,18 @@ function uninstallWg() {
 			echo ""
 			read -rp "$(echo -ne "  Also delete Let's Encrypt certificates? ${GRAY}[y/N]${NC} > ")" -e REMOVE_LE_CERTS
 			REMOVE_LE_CERTS=${REMOVE_LE_CERTS:-N}
+		fi
+
+		# Ask about removing the Go toolchain — only prompt if WireShield's
+		# install marker is present so we never touch a Go install the user
+		# put there themselves.
+		local REMOVE_GO=N
+		local GO_INSTALL_KIND=""
+		if [[ -f /etc/wireshield/.go-installed-by-wireshield ]]; then
+			GO_INSTALL_KIND=$(head -1 /etc/wireshield/.go-installed-by-wireshield 2>/dev/null || echo "")
+			echo ""
+			read -rp "$(echo -ne "  Remove Go toolchain (auto-installed by WireShield for agent builds)? ${GRAY}[Y/n]${NC} > ")" -e REMOVE_GO
+			REMOVE_GO=${REMOVE_GO:-Y}
 		fi
 
 		# Collect client names before removing /etc/wireguard
@@ -1773,7 +1932,34 @@ function uninstallWg() {
 			systemctl daemon-reload 2>/dev/null || true
 		fi
 
-		# Remove 2FA directory (database, certificates, configs, console assets)
+		# Remove Go toolchain if WireShield installed it AND the operator
+		# confirmed removal. The marker file's first line tells us how it
+		# was installed (apk vs. go.dev tarball) so we can clean up the
+		# right way.
+		if [[ "${REMOVE_GO}" == "y" || "${REMOVE_GO}" == "Y" ]]; then
+			_ws_ui_info "Removing Go toolchain (installed by WireShield)..."
+			case "${GO_INSTALL_KIND}" in
+				alpine-apk)
+					if command -v apk >/dev/null 2>&1; then
+						apk del go 2>/dev/null || true
+					fi
+					;;
+				go.dev-tarball*)
+					rm -rf /usr/local/go 2>/dev/null || true
+					rm -f /etc/profile.d/wireshield-go.sh 2>/dev/null || true
+					;;
+				*)
+					# Unknown marker — best-effort cleanup of both possible install types
+					rm -rf /usr/local/go 2>/dev/null || true
+					rm -f /etc/profile.d/wireshield-go.sh 2>/dev/null || true
+					;;
+			esac
+		elif [[ -f /etc/wireshield/.go-installed-by-wireshield ]]; then
+			_ws_ui_info "Keeping Go toolchain at /usr/local/go (operator opted out of removal)"
+		fi
+
+		# Remove 2FA directory (database, certificates, configs, console assets,
+		# agent binaries, agent build cache, and the Go install marker).
 		_ws_ui_info "Removing 2FA configuration, database, and console data..."
 		rm -rf /etc/wireshield 2>/dev/null || true
 

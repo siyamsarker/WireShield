@@ -542,14 +542,28 @@ Follow these four steps to connect a remote Linux server to your WireShield VPN 
 
 #### Step 1 — publish agent binaries on the VPN server (one-time setup)
 
-**If you installed WireShield with `sudo ./wireshield.sh`, this step is done automatically** — the installer detects Go, cross-compiles both architectures, and publishes the binaries to `/etc/wireshield/agent-binaries/` as the final step of installation. Skip to Step 2.
+**Done automatically by `sudo ./wireshield.sh`.** The installer:
 
-If Go was not available during install, or you need to rebuild after a code update, run this manually on the VPN server (requires **Go 1.22+**):
+1. Detects whether Go 1.22+ is already on the server and uses it if so
+2. Otherwise downloads the official Go 1.22 tarball from go.dev (or `apk add go` on Alpine)
+3. Cross-compiles `wireshield-agent` for `linux-amd64` and `linux-arm64`
+4. Publishes the binaries + SHA-256 sidecars to `/etc/wireshield/agent-binaries/`
+5. Marks `/etc/wireshield/.go-installed-by-wireshield` so the uninstaller knows to clean Go up
+
+The whole step adds ~30 seconds to a fresh install. **Skip to Step 2.**
+
+To rebuild manually (e.g. after pulling new agent code):
 
 ```bash
 cd WireShield
 make -C agent dist
 sudo make -C agent install AGENT_BINARY_DIR=/etc/wireshield/agent-binaries
+```
+
+To skip the agent build entirely during install (useful for headless environments without internet access to go.dev):
+
+```bash
+WS_SKIP_AGENT_BUILD=1 sudo ./wireshield.sh
 ```
 
 This populates `/etc/wireshield/agent-binaries/` with:
