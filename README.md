@@ -13,7 +13,7 @@
 
 WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authentication at the connection layer. Every client must verify through a captive portal before any traffic is allowed through the tunnel. A built-in agent system lets remote Linux servers register as WireGuard peers — authenticated VPN clients can then route traffic to private LANs on those servers with no extra client-side configuration.
 
-[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Usage](#usage) &bull; [Agents](#agents) &bull; [Contributing](#contributing)
+[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Configuration](#configuration) &bull; [Usage](#usage) &bull; [Agents](#agents) &bull; [Troubleshooting](#troubleshooting) &bull; [Contributing](#contributing)
 
 </div>
 
@@ -364,6 +364,36 @@ WS_AGENT_BINARY_DIR=/opt/wireshield/agent-binaries
 
 ---
 
+## SSL/TLS
+
+The installer configures TLS during setup based on your choice (Let's Encrypt, self-signed, or disabled). Use the commands below for ongoing certificate operations.
+
+### Let's Encrypt
+
+Auto-renewal is configured via systemd timer during installation.
+
+```bash
+sudo systemctl status wireshield-2fa-renew.timer  # Check timer
+sudo certbot renew --dry-run                       # Test renewal
+sudo certbot certificates                          # View cert details
+```
+
+### Self-Signed
+
+```bash
+# Check expiry
+sudo openssl x509 -in /etc/wireshield/2fa/cert.pem -noout -dates
+
+# Regenerate (365 days)
+sudo openssl req -x509 -newkey rsa:4096 \
+  -keyout /etc/wireshield/2fa/key.pem \
+  -out /etc/wireshield/2fa/cert.pem \
+  -days 365 -nodes -subj "/CN=<your-ip>"
+sudo systemctl restart wireshield.service
+```
+
+---
+
 ## Usage
 
 ### Client Management
@@ -422,14 +452,15 @@ The console provides:
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| Installer & CLI | Bash | Server setup, client management, firewall config |
-| 2FA Service | Python, FastAPI | Captive portal, TOTP, session management |
-| Database | SQLite | Users, sessions, audit logs, activity, bandwidth |
-| Firewall | iptables, ipset | Zero-trust access control |
-| VPN | WireGuard | Encrypted tunnel |
+| Installer & CLI | Bash | Server setup, client management, firewall config, agent binary build |
+| 2FA Service | Python, FastAPI | Captive portal, TOTP, session management, admin console API |
+| Admin Console | Vanilla JavaScript, Chart.js | Web UI for users, sessions, agents, bandwidth, activity logs |
+| Database | SQLite | Users, sessions, audit logs, activity, bandwidth, agents, heartbeats, ACL grants |
+| Firewall | iptables, ipset | Zero-trust access control + per-user agent allowlist enforcement |
+| VPN | WireGuard | Encrypted tunnel for both VPN clients and agent peers |
 | DNS Sniffer | scapy | IP-to-domain resolution for activity logs |
-| Monitors | Background threads | Handshake tracking, ipset sync, HTTP redirect |
-| Agents | WireGuard peer + Bash daemon | Reverse-connection gateways that expose remote LANs to VPN clients |
+| Monitors | Background threads | Handshake tracking, ipset sync, HTTP redirect, agent ACL sync, watchdog |
+| Agent daemon | Go (static binary) | Remote-LAN gateway: outbound WireGuard peer + heartbeat + self-update |
 
 ### Background Services
 
@@ -769,34 +800,6 @@ Operator subcommands on the agent host:
 ### Legacy installer compatibility
 
 `/api/agents/install` still serves the original Bash installer and its heartbeat-timer approach so existing one-liners keep working. New agents enrolled from the admin console get the Go-daemon flow automatically.
-
----
-
-## SSL/TLS
-
-### Let's Encrypt
-
-Auto-renewal is configured via systemd timer during installation.
-
-```bash
-sudo systemctl status wireshield-2fa-renew.timer  # Check timer
-sudo certbot renew --dry-run                       # Test renewal
-sudo certbot certificates                          # View cert details
-```
-
-### Self-Signed
-
-```bash
-# Check expiry
-sudo openssl x509 -in /etc/wireshield/2fa/cert.pem -noout -dates
-
-# Regenerate (365 days)
-sudo openssl req -x509 -newkey rsa:4096 \
-  -keyout /etc/wireshield/2fa/key.pem \
-  -out /etc/wireshield/2fa/cert.pem \
-  -days 365 -nodes -subj "/CN=<your-ip>"
-sudo systemctl restart wireshield.service
-```
 
 ---
 
@@ -1145,9 +1148,10 @@ WireShield/
     │   │   ├── tasks.py          # Background monitors + interface watchdog
     │   │   └── sniffer.py        # DNS + TLS SNI packet capture (auto-recovering)
     │   └── routers/
-    │       ├── auth.py           # 2FA endpoints
-    │       ├── console.py        # Admin console endpoints
-    │       └── health.py         # Health check
+    │       ├── auth.py           # 2FA captive portal endpoints
+    │       ├── console.py        # Admin console endpoints (users, agents, metrics, ACL)
+    │       ├── agents.py         # Agent public API (enroll, heartbeat, binary, version)
+    │       └── health.py         # Diagnostic /health endpoint
     ├── templates/                # Jinja2 HTML templates
     │   ├── base.html
     │   ├── console.html
