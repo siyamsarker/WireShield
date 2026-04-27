@@ -1264,10 +1264,10 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 	# Initialize 2FA service
 	_ws_install_2fa_service
 
-	# Create the first client now; you can add more later from the menu
+	# Create the first client now; you can add more later from the menu.
+	# Skip the trailing "add more clients" hint here — the final installation
+	# summary banner has the consolidated next-steps block.
 	newClient
-	echo -e "${GREEN}If you want to add more clients, you simply need to run this script another time!${NC}"
-
 
 	# Check if WireGuard is running
 	if [[ ${OS} == 'alpine' ]]; then
@@ -1301,6 +1301,90 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 
 	# Build and publish agent binaries so the Agents tab is immediately usable.
 	_ws_build_agent
+
+	# Final installation summary — gives the operator a single, unambiguous
+	# "you're done" signal with subsystem health and concrete next steps.
+	_ws_print_install_summary "${WG_RUNNING}"
+}
+
+function _ws_print_install_summary() {
+	# Render the closing installation banner. Reads global state (SERVER_PUB_IP,
+	# SERVER_WG_NIC, etc.) so it must be called only at the end of installWireGuard.
+	local wg_running="${1:-1}"
+	local wg_mark tfa_mark agent_mark overall_color overall_label
+
+	# WireGuard interface status (passed in from the caller's check)
+	if [[ "${wg_running}" -eq 0 ]]; then
+		wg_mark="${GREEN}✓${NC}"
+	else
+		wg_mark="${RED}✗${NC}"
+	fi
+
+	# 2FA portal + admin console — probe the local /health endpoint
+	if curl -sk --max-time 3 "https://127.0.0.1:443/health" 2>/dev/null | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+		tfa_mark="${GREEN}✓${NC}"
+	else
+		tfa_mark="${RED}✗${NC}"
+	fi
+
+	# Agent binaries — either both arches present or skipped/failed
+	if [[ -f /etc/wireshield/agent-binaries/wireshield-agent_linux_amd64 ]] && \
+	   [[ -f /etc/wireshield/agent-binaries/wireshield-agent_linux_arm64 ]]; then
+		agent_mark="${GREEN}✓${NC}"
+	else
+		agent_mark="${ORANGE}!${NC}"
+	fi
+
+	# Overall verdict — failure if either of the two critical subsystems is down.
+	# Agent build is non-fatal so it doesn't downgrade the overall status.
+	if [[ "${wg_running}" -eq 0 ]] && \
+	   curl -sk --max-time 3 "https://127.0.0.1:443/health" 2>/dev/null | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+		overall_color="${BGREEN}"
+		overall_label="✓  Installation Complete"
+	else
+		overall_color="${BRED}"
+		overall_label="✗  Installation Finished With Errors"
+	fi
+
+	local pad_label="${overall_label}"
+	# Center the label inside a 54-character box. ANSI codes don't count toward width.
+	local box_inner=54
+	local visible_len=${#pad_label}
+	local total_pad=$(( box_inner - visible_len ))
+	(( total_pad < 2 )) && total_pad=2
+	local left_pad=$(( total_pad / 2 ))
+	local right_pad=$(( total_pad - left_pad ))
+	local left right
+	left=$(printf '%*s' "${left_pad}" '')
+	right=$(printf '%*s' "${right_pad}" '')
+
+	echo ""
+	echo -e "  ${overall_color}╭──────────────────────────────────────────────────────╮${NC}"
+	echo -e "  ${overall_color}│${NC}                                                      ${overall_color}│${NC}"
+	echo -e "  ${overall_color}│${NC}${left}${WHITE}${pad_label}${NC}${right}${overall_color}│${NC}"
+	echo -e "  ${overall_color}│${NC}                                                      ${overall_color}│${NC}"
+	echo -e "  ${overall_color}╰──────────────────────────────────────────────────────╯${NC}"
+	echo ""
+	echo -e "  ${WHITE}Subsystem status${NC}"
+	echo -e "    ${wg_mark}  WireGuard interface (${SERVER_WG_NIC} on UDP/${SERVER_PORT})"
+	echo -e "    ${tfa_mark}  2FA captive portal + admin console"
+	echo -e "    ${agent_mark}  Agent binaries published (${ORANGE}!${NC} = skipped, see logs above)"
+	echo ""
+	echo -e "  ${WHITE}Next steps${NC}"
+	echo -e "    ${GRAY}1.${NC} Connect a VPN client using the QR code or the .conf file shown above."
+	echo -e "    ${GRAY}2.${NC} Open the captive portal in a browser: ${CYAN}https://${SERVER_PUB_IP}/${NC}"
+	echo -e "       Complete TOTP enrolment and the 2FA challenge."
+	echo -e "    ${GRAY}3.${NC} Grant admin console access to your client (option ${WHITE}12${NC} from this menu)."
+	echo -e "    ${GRAY}4.${NC} Open the admin console: ${CYAN}https://${SERVER_PUB_IP}/console${NC}"
+	echo -e "    ${GRAY}5.${NC} Register agents from the admin console → ${WHITE}Agents${NC} tab."
+	echo ""
+	echo -e "  ${WHITE}Operations${NC}"
+	echo -e "    ${GRAY}•${NC} Health snapshot:   ${CYAN}curl -sk https://${SERVER_PUB_IP}/health | jq${NC}"
+	echo -e "    ${GRAY}•${NC} Service logs:      ${CYAN}journalctl -u wireshield.service -f${NC}"
+	echo -e "    ${GRAY}•${NC} Add more clients:  ${CYAN}sudo ./wireshield.sh${NC} → ${WHITE}1${NC} (Create Client)"
+	echo ""
+	_ws_ui_divider
+	echo ""
 }
 
 function newClient() {
@@ -1444,12 +1528,17 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 	# Enable 2FA for this client
 	_ws_enable_2fa_for_client "${CLIENT_NAME}" "${CLIENT_WG_IPV4}" "${CLIENT_WG_IPV6}"
 
-	# Generate QR code if qrencode is installed (handy for mobile clients)
+	# Generate QR code if qrencode is installed (handy for mobile clients).
+	# Use error correction level L (lowest) so the resulting QR matrix is the
+	# smallest possible for a typical WireGuard config — mobile WireGuard
+	# clients don't require any redundancy, the QR is shown on a clean
+	# terminal with no scratches/glare to recover from. Cuts ~6 rows off
+	# the terminal output vs. level M.
 	if command -v qrencode &>/dev/null; then
 		echo ""
-		echo -e "  ${WHITE}QR Code${NC}"
+		echo -e "  ${WHITE}QR Code${NC} ${DIM}(scan with the WireGuard mobile app)${NC}"
 		echo ""
-		qrencode -t ansiutf8 -l M -m 0 -s 1 <"${CLIENT_CONFIG}"
+		qrencode -t ansiutf8 -l L -m 0 <"${CLIENT_CONFIG}"
 		echo ""
 	fi
 
