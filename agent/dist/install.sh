@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# WireShield Agent installer (Phase 2 — Go binary)
+# WireShield Agent installer (Go binary)
 #
 # Usage:
 #   curl -sSL https://VPN_HOST/api/agents/install-go | \

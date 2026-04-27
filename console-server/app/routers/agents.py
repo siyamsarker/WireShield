@@ -234,7 +234,7 @@ WG_IFACE="wg-agent0"
 HEARTBEAT_SCRIPT="/usr/local/sbin/wireshield-agent-heartbeat"
 HEARTBEAT_SERVICE="/etc/systemd/system/wireshield-agent-heartbeat.service"
 HEARTBEAT_TIMER="/etc/systemd/system/wireshield-agent-heartbeat.timer"
-AGENT_VERSION="phase1-bash-0.1.0"
+AGENT_VERSION="bash-0.1.0"
 
 # ── Pretty output ──────────────────────────────────────────────────────────
 _step() { printf "\n\033[1;34m==>\033[0m %s\n" "$*"; }
