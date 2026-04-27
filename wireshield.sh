@@ -1565,12 +1565,17 @@ function uninstallWg() {
 	echo ""
 	echo -e "  ${BRED}This will permanently remove:${NC}"
 	echo ""
-	echo -e "  ${GRAY}•${NC} WireGuard and all VPN configurations"
-	echo -e "  ${GRAY}•${NC} 2FA service, database, and certificates"
+	echo -e "  ${GRAY}•${NC} WireGuard and all VPN configurations (including agent peers)"
+	echo -e "  ${GRAY}•${NC} 2FA service, admin console, database, and certificates"
 	echo -e "  ${GRAY}•${NC} SSL certificates and auto-renewal timers"
-	echo -e "  ${GRAY}•${NC} All client configurations"
+	echo -e "  ${GRAY}•${NC} All VPN client configurations"
+	echo -e "  ${GRAY}•${NC} Pre-built agent binaries (/etc/wireshield/agent-binaries/)"
+	echo -e "  ${GRAY}•${NC} Agent enrollment tokens, heartbeat history, and ACL grants"
+	echo -e "  ${GRAY}•${NC} Agent ACL iptables chain (WS_AGENT_ACL)"
 	echo ""
 	_ws_ui_warn "Back up /etc/wireguard and /etc/wireshield first if needed."
+	_ws_ui_warn "Enrolled agents on remote servers must be torn down separately:"
+	_ws_ui_warn "  Run 'wireshield-agent revoke' on each agent host for local cleanup."
 	echo ""
 	read -rp "$(echo -ne "  Proceed with removal? ${GRAY}[y/N]${NC} > ")" -e REMOVE
 	REMOVE=${REMOVE:-N}
@@ -1680,6 +1685,16 @@ function uninstallWg() {
 		ip6tables -t nat -X WS_2FA_REDIRECT6 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v4 2>/dev/null || true
 		ipset destroy ws_2fa_allowed_v6 2>/dev/null || true
+
+		# Remove agent ACL chain (WS_AGENT_ACL) created at runtime by the
+		# admin console for per-user agent allowlist enforcement. Chain is
+		# jumped-to from FORWARD position 1 — see tasks._ensure_agent_acl_chain.
+		_ws_ui_info "Removing agent ACL firewall chain..."
+		while iptables -C FORWARD -j WS_AGENT_ACL 2>/dev/null; do
+			iptables -D FORWARD -j WS_AGENT_ACL 2>/dev/null || break
+		done
+		iptables -F WS_AGENT_ACL 2>/dev/null || true
+		iptables -X WS_AGENT_ACL 2>/dev/null || true
 
 		# Remove runtime-inserted iptables rules that aren't tied to
 		# wg-quick's PostDown: the global ESTABLISHED,RELATED FORWARD
@@ -1820,9 +1835,10 @@ function uninstallWg() {
 			echo ""
 			_ws_ui_divider
 			echo ""
-			_ws_ui_success "WireGuard interface removed"
-			_ws_ui_success "2FA service stopped and removed"
-			_ws_ui_success "Firewall rules, ipsets, and NAT entries cleaned"
+			_ws_ui_success "WireGuard interface removed (VPN clients + agent peers)"
+			_ws_ui_success "2FA service and admin console stopped and removed"
+			_ws_ui_success "Firewall rules, ipsets, NAT entries, and WS_AGENT_ACL chain cleaned"
+			_ws_ui_success "Agent binaries, tokens, heartbeats, and ACL grants removed"
 			_ws_ui_success "SSL certificates and renewal timers removed"
 			_ws_ui_success "Client configurations deleted"
 			_ws_ui_success "Systemd units cleared and daemon reloaded"
