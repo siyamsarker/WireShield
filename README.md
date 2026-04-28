@@ -536,11 +536,7 @@ The console provides:
 
 Agents are statically-linked Go daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
 
-### Quickstart: connect an agent
-
-Follow these four steps to connect a remote Linux server to your WireShield VPN as an agent.
-
-#### Step 1 — publish agent binaries on the VPN server (one-time setup)
+### Step 1 — Publish agent binaries on the VPN server (one-time setup)
 
 **Done automatically by `sudo ./wireshield.sh`.** The installer:
 
@@ -578,7 +574,7 @@ version.json
 
 > **No Go available?** Use the [legacy Bash installer](#legacy-installer-compatibility) instead — it requires no build step and works on any enrolled agent.
 
-#### Step 2 — register the agent in the admin console
+### Step 2 — Register the agent in the admin console
 
 1. Open `https://<server-ip>/console` in your browser and complete 2FA.
 2. Click **Agents** in the left sidebar.
@@ -591,7 +587,7 @@ version.json
 
 The console displays a one-time install command. **Copy it immediately** — it will not be shown again. If it expires (1-hour TTL), use the **Reissue token** button on the pending agent row.
 
-#### Step 3 — run the install command on the remote server
+### Step 3 — Run the install command on the remote server
 
 SSH into the remote Linux server as root and paste the install command from Step 2. It looks like:
 
@@ -610,7 +606,7 @@ The bootstrap script automatically:
 
 The entire process takes under 60 seconds on a standard server.
 
-#### Step 4 — verify the connection
+### Step 4 — Verify the connection
 
 **On the remote agent host:**
 
