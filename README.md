@@ -522,7 +522,7 @@ The console provides:
 |--------|------|-------------|
 | `POST` | `/api/agents/enroll` | Exchange a single-use token for a WG peer config (public/keyless endpoint, rate-limited) |
 | `POST` | `/api/agents/heartbeat` | Periodic liveness + bandwidth report (auth: WG tunnel source IP) |
-| `GET` | `/api/agents/revocation-check` | Agent polls this to self-disable when revoked (auth: WG tunnel source IP) |
+| `GET` | `/api/agents/revocation-check` | Agent polls this to self-disable when revoked (auth: bearer token) |
 | `GET` | `/api/agents/install` | **Legacy** Bash installer (kept for backward compatibility) |
 | `GET` | `/api/agents/install-go` | Bash bootstrap that downloads the Go binary |
 | `GET` | `/api/agents/binary/{arch}` | Pre-built agent binary (`linux-amd64`, `linux-arm64`) |
@@ -636,6 +636,43 @@ VPN clients can now route traffic to the advertised CIDRs through the agent. No 
 
 ---
 
+### Uninstalling an agent
+
+A full agent removal is a two-step process: local teardown on the agent host, then server-side revocation in the admin console.
+
+**Step 1 — run `uninstall` on the agent host (as root):**
+
+```bash
+sudo wireshield-agent uninstall
+```
+
+This single command performs a complete local teardown in order:
+
+| Step | What happens |
+|------|--------------|
+| 1 | Stops and disables `wireshield-agent.service` (the heartbeat daemon) |
+| 2 | Stops and disables `wg-quick@wg-agent0` and removes `/etc/wireguard/wg-agent0.conf` |
+| 3 | Deletes `/etc/wireshield-agent/` (config.json + private.key) |
+| 4 | Removes `/etc/systemd/system/wireshield-agent.service` |
+| 5 | Runs `systemctl daemon-reload` |
+| 6 | Removes `/usr/local/bin/wireshield-agent` |
+
+Every step is idempotent — running `uninstall` on an already-uninstalled host is safe.
+
+To keep the binary on disk (e.g. for immediate re-enrollment):
+
+```bash
+sudo wireshield-agent uninstall --keep-binary
+```
+
+**Step 2 — revoke in the admin console:**
+
+Open `/console` → **Agents** → click **Delete** on the agent row. This removes the WireGuard peer from `wg0.conf`, marks the DB row as revoked, and stops the server accepting heartbeats from that enrollment. Without this step the agent's WireGuard slot and IP remain reserved on the server.
+
+> **Order matters:** run `uninstall` on the host *before* or *after* console revocation — both orders work. If you revoke from the console first, the agent daemon will detect the revocation on its next poll and shut down on its own. If you `uninstall` first, no heartbeats will arrive so the server simply sees the agent go offline; the console revocation then cleans up the server side.
+
+---
+
 ### Managing agents from the console
 
 The admin dashboard ships an **Agents** tab (sidebar, under "Users & Access") with a no-CLI-required workflow:
@@ -646,7 +683,7 @@ The admin dashboard ships an **Agents** tab (sidebar, under "Users & Access") wi
 | **Update CIDRs** (enrolled rows) | Inline textarea PATCHes the agent and live-applies via `wg syncconf` — no client disconnect. |
 | **Manage Access** (enrolled rows) | Toggle per-agent restriction + maintain a per-user allowlist. Default OFF (every VPN user can reach). When ON, only allowlisted client IDs can route to the agent's CIDRs; enforced by an `iptables` chain rebuilt every 30 s and on every grant/revoke. |
 | **Reissue token** (pending rows) | Generates a new single-use token and re-shows the install command. |
-| **Revoke** | Removes the WG peer immediately and stops accepting heartbeats. The agent self-disables on its next revocation-check poll. |
+| **Revoke / Delete** | Removes the WG peer immediately and stops accepting heartbeats. The agent daemon self-disables on its next revocation-check poll. Also run `sudo wireshield-agent uninstall` on the agent host for a full local teardown. |
 | **Details** | Read-only drawer with all 19 agent fields plus a 24-hour traffic sparkline (RX/TX deltas) and an uptime % derived from heartbeat coverage. |
 
 The **Overview** tab shows an "Agents" stat card alongside Users/Sessions/Failed/Bandwidth: enrolled count + online indicator + pending count.

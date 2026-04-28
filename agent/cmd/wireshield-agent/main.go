@@ -2,12 +2,13 @@
 // joins the WireShield VPN as a special WireGuard peer exposing a LAN.
 //
 // Subcommands:
-//   enroll   — exchange a single-use token for a WG peer config and persist it
-//   run      — long-running daemon: heartbeat + revocation polling
-//   status   — print current enrollment + WG interface state
-//   revoke   — local cleanup (remove config + bring down WG interface)
-//   update   — one-shot self-upgrade against the server's published manifest
-//   version  — print the agent version and exit
+//   enroll    — exchange a single-use token for a WG peer config and persist it
+//   run       — long-running daemon: heartbeat + revocation polling
+//   status    — print current enrollment + WG interface state
+//   revoke    — local cleanup (remove config + bring down WG interface)
+//   uninstall — full teardown: stop daemon, remove WG tunnel, delete binary + service
+//   update    — one-shot self-upgrade against the server's published manifest
+//   version   — print the agent version and exit
 //
 // The binary is intended to be invoked by systemd (for `run`) and by the
 // bootstrap install.sh (for `enroll`). Everything is idempotent — running
@@ -47,6 +48,8 @@ func main() {
 		exit(runStatus(args))
 	case "revoke":
 		exit(runRevoke(args))
+	case "uninstall":
+		exit(runUninstall(args))
 	case "update":
 		exit(runUpdate(args))
 	case "version", "-v", "--version":
@@ -77,13 +80,14 @@ usage:
   wireshield-agent <command> [flags]
 
 commands:
-  enroll    register this host with the VPN server (one-time)
-  run       long-running heartbeat + revocation daemon (used by systemd)
-  status    print local enrollment + WG interface state
-  revoke    remove local agent config and tear down the WG interface
-  update    one-shot self-upgrade against the server's published manifest
-  version   print version
-  help      show this message
+  enroll      register this host with the VPN server (one-time)
+  run         long-running heartbeat + revocation daemon (used by systemd)
+  status      print local enrollment + WG interface state
+  revoke      remove local agent config and tear down the WG interface
+  uninstall   full teardown: stop daemon, remove tunnel, delete binary + service
+  update      one-shot self-upgrade against the server's published manifest
+  version     print version
+  help        show this message
 
 environment:
   WIRESHIELD_AGENT_DIR        config dir (default /etc/wireshield-agent)

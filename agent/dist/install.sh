@@ -117,6 +117,6 @@ if ! systemctl enable --now wireshield-agent.service; then
 fi
 
 info "✓ agent installed and running"
-info "  journal:  journalctl -u wireshield-agent -f"
-info "  status:   wireshield-agent status"
-info "  revoke:   wireshield-agent revoke   # local teardown only"
+info "  journal:    journalctl -u wireshield-agent -f"
+info "  status:     wireshield-agent status"
+info "  uninstall:  sudo wireshield-agent uninstall   # full removal from this host"

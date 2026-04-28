@@ -52,3 +52,28 @@ func DisableAndStop(iface string) error {
 	}
 	return nil
 }
+
+// StopAndDisableUnit stops and disables any named systemd unit (not just
+// wg-quick@ template units). Used by uninstall to tear down the agent daemon
+// service before removing its unit file.
+func StopAndDisableUnit(unit string) error {
+	if err := systemctl("disable", "--now", unit); err != nil {
+		if errors.Is(err, errNoSystemctl) {
+			return fmt.Errorf("systemd not detected; stop %s manually", unit)
+		}
+		return err
+	}
+	return nil
+}
+
+// DaemonReload runs `systemctl daemon-reload` so systemd forgets a removed
+// unit file. Called after uninstall removes the service file.
+func DaemonReload() error {
+	if err := systemctl("daemon-reload"); err != nil {
+		if errors.Is(err, errNoSystemctl) {
+			return nil // not a systemd host; nothing to reload
+		}
+		return err
+	}
+	return nil
+}
