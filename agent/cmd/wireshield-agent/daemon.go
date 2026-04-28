@@ -51,7 +51,7 @@ func runDaemon(args []string) error {
 		return fmt.Errorf("load config (is the agent enrolled?): %w", err)
 	}
 
-	httpc, err := client.New(cfg.ServerURL, Version, cfg.TLSInsecure)
+	httpc, err := client.New(cfg.ServerURL, Version, cfg.HeartbeatSecret, cfg.TLSInsecure)
 	if err != nil {
 		return err
 	}

@@ -74,7 +74,7 @@ func runEnroll(args []string) error {
 
 	advertised := splitCSV(*cidrs)
 
-	httpc, err := client.New(*server, Version, *tlsInsecure)
+	httpc, err := client.New(*server, Version, "", *tlsInsecure)
 	if err != nil {
 		return err
 	}
@@ -134,6 +134,7 @@ func runEnroll(args []string) error {
 		WGInterface:     config.DefaultWGIface,
 		WGConfPath:      wgConfPath,
 		TLSInsecure:     *tlsInsecure,
+		HeartbeatSecret: resp.HeartbeatSecret,
 	}
 	if err := config.Save(p, cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)

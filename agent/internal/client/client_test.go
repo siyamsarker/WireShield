@@ -12,7 +12,7 @@ import (
 
 func TestNewRejectsInvalidURL(t *testing.T) {
 	for _, u := range []string{"", "vpn.example.com", "ftp://vpn"} {
-		if _, err := New(u, "test", false); err == nil {
+		if _, err := New(u, "test", "", false); err == nil {
 			t.Fatalf("New(%q) returned nil error", u)
 		}
 	}
@@ -44,7 +44,7 @@ func TestEnrollHappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(srv.URL, "1.0.0", false)
+	c, err := New(srv.URL, "1.0.0", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestEnroll401IsNonRetryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New(srv.URL, "t", false)
+	c, _ := New(srv.URL, "t", "", false)
 	_, err := c.Enroll(context.Background(), &EnrollRequest{Token: "x", PublicKey: "y"})
 	if err == nil {
 		t.Fatal("expected error on 401")
@@ -84,7 +84,7 @@ func TestHeartbeat5xxIsRetryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New(srv.URL, "t", false)
+	c, _ := New(srv.URL, "t", "", false)
 	err := c.Heartbeat(context.Background(), &HeartbeatRequest{})
 	if err == nil {
 		t.Fatal("expected error on 502")
@@ -101,7 +101,7 @@ func TestRevocationCheckDecodes(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, _ := New(srv.URL, "t", false)
+	c, _ := New(srv.URL, "t", "", false)
 	resp, err := c.RevocationCheck(context.Background())
 	if err != nil {
 		t.Fatal(err)

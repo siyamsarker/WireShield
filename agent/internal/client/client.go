@@ -26,15 +26,18 @@ const (
 
 // Client is safe for concurrent use; all state is in the embedded *http.Client.
 type Client struct {
-	serverURL string
-	version   string
-	http      *http.Client
+	serverURL       string
+	version         string
+	heartbeatSecret string
+	http            *http.Client
 }
 
-// New builds a client against baseURL. If tlsInsecure is true the client
-// skips TLS verification — this is only for lab/bootstrap use and is opt-in
-// via the agent config.
-func New(baseURL, version string, tlsInsecure bool) (*Client, error) {
+// New builds a client against baseURL. heartbeatSecret is the bearer token
+// used for heartbeat and revocation-check requests; pass an empty string
+// before enrollment (Enroll does not require a bearer token).
+// If tlsInsecure is true the client skips TLS verification — this is only
+// for lab/bootstrap use and is opt-in via the agent config.
+func New(baseURL, version, heartbeatSecret string, tlsInsecure bool) (*Client, error) {
 	u, err := url.Parse(strings.TrimRight(baseURL, "/"))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("invalid server URL: %q", baseURL)
@@ -49,8 +52,9 @@ func New(baseURL, version string, tlsInsecure bool) (*Client, error) {
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 	return &Client{
-		serverURL: u.String(),
-		version:   version,
+		serverURL:       u.String(),
+		version:         version,
+		heartbeatSecret: heartbeatSecret,
 		http: &http.Client{
 			Transport: tr,
 			Timeout:   defaultTimeout,
@@ -99,16 +103,17 @@ type EnrollRequest struct {
 // apply locally to bring up its tunnel. Field tags mirror the JSON keys
 // returned by console-server routers/agents.py /api/agents/enroll.
 type EnrollResponse struct {
-	Success         bool     `json:"success"`
-	AgentID         int64    `json:"agent_id"`
-	AgentName       string   `json:"name"`
-	WGIPv4          string   `json:"wg_ipv4"`
-	PresharedKey    string   `json:"preshared_key"`
-	ServerPublicKey string   `json:"server_public_key"`
-	ServerEndpoint  string   `json:"endpoint"`
-	AgentAllowedIPs string   `json:"agent_allowed_ips"`
-	AdvertisedCIDRs []string `json:"advertised_cidrs"`
-	Config          string   `json:"config"`
+	Success          bool     `json:"success"`
+	AgentID          int64    `json:"agent_id"`
+	AgentName        string   `json:"name"`
+	WGIPv4           string   `json:"wg_ipv4"`
+	PresharedKey     string   `json:"preshared_key"`
+	ServerPublicKey  string   `json:"server_public_key"`
+	ServerEndpoint   string   `json:"endpoint"`
+	AgentAllowedIPs  string   `json:"agent_allowed_ips"`
+	AdvertisedCIDRs  []string `json:"advertised_cidrs"`
+	Config           string   `json:"config"`
+	HeartbeatSecret  string   `json:"heartbeat_secret"`
 }
 
 // HeartbeatRequest mirrors AgentHeartbeatRequest on the server.
@@ -152,17 +157,17 @@ func (c *Client) Enroll(ctx context.Context, req *EnrollRequest) (*EnrollRespons
 	return &resp, nil
 }
 
-// Heartbeat is called on a ticker by the daemon. Authentication is implicit
-// via the WG tunnel source IP; there is no bearer token.
+// Heartbeat is called on a ticker by the daemon. Authentication uses
+// Authorization: Bearer <heartbeat_secret> issued at enrollment.
 func (c *Client) Heartbeat(ctx context.Context, req *HeartbeatRequest) error {
-	return c.doJSON(ctx, http.MethodPost, "/api/agents/heartbeat", req, nil)
+	return c.doJSONWithAuth(ctx, http.MethodPost, "/api/agents/heartbeat", req, nil)
 }
 
 // RevocationCheck polls whether the agent has been revoked. On a true
 // response the daemon should stop its WG tunnel and exit.
 func (c *Client) RevocationCheck(ctx context.Context) (*RevocationResponse, error) {
 	var resp RevocationResponse
-	if err := c.doJSON(ctx, http.MethodGet, "/api/agents/revocation-check", nil, &resp); err != nil {
+	if err := c.doJSONWithAuth(ctx, http.MethodGet, "/api/agents/revocation-check", nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -242,6 +247,52 @@ func (c *Client) doJSON(ctx context.Context, method, path string, in, out any) e
 	httpReq.Header.Set("Accept", "application/json")
 	if in != nil {
 		httpReq.Header.Set("Content-Type", "application/json")
+	}
+
+	httpResp, err := c.http.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer httpResp.Body.Close()
+
+	rawBody, _ := io.ReadAll(io.LimitReader(httpResp.Body, 64*1024))
+	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
+		return &HTTPError{
+			StatusCode: httpResp.StatusCode,
+			Body:       strings.TrimSpace(string(rawBody)),
+			Endpoint:   method + " " + path,
+		}
+	}
+	if out != nil && len(rawBody) > 0 {
+		if err := json.Unmarshal(rawBody, out); err != nil {
+			return fmt.Errorf("decode %s response: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// doJSONWithAuth is like doJSON but adds Authorization: Bearer <heartbeat_secret>.
+// Used for endpoints that require per-agent authentication.
+func (c *Client) doJSONWithAuth(ctx context.Context, method, path string, in, out any) error {
+	var body io.Reader
+	if in != nil {
+		b, err := json.Marshal(in)
+		if err != nil {
+			return fmt.Errorf("marshal %s body: %w", path, err)
+		}
+		body = bytes.NewReader(b)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, method, c.serverURL+path, body)
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("User-Agent", userAgentPrefix+c.version)
+	httpReq.Header.Set("Accept", "application/json")
+	if in != nil {
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
+	if c.heartbeatSecret != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.heartbeatSecret)
 	}
 
 	httpResp, err := c.http.Do(httpReq)

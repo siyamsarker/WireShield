@@ -28,15 +28,16 @@ const (
 // the WG private key (that lives in a separate 0600 file for defence in depth —
 // a misconfigured backup of config.json alone cannot leak the tunnel key).
 type Config struct {
-	ServerURL       string   `json:"server_url"`
-	AgentID         int64    `json:"agent_id"`
-	AgentName       string   `json:"agent_name"`
-	PublicKey       string   `json:"public_key"`
-	WGIPv4          string   `json:"wg_ipv4"`
-	AdvertisedCIDRs []string `json:"advertised_cidrs"`
-	WGInterface     string   `json:"wg_interface"`
-	WGConfPath      string   `json:"wg_conf_path"`
-	TLSInsecure     bool     `json:"tls_insecure,omitempty"`
+	ServerURL        string   `json:"server_url"`
+	AgentID          int64    `json:"agent_id"`
+	AgentName        string   `json:"agent_name"`
+	PublicKey        string   `json:"public_key"`
+	WGIPv4           string   `json:"wg_ipv4"`
+	AdvertisedCIDRs  []string `json:"advertised_cidrs"`
+	WGInterface      string   `json:"wg_interface"`
+	WGConfPath       string   `json:"wg_conf_path"`
+	TLSInsecure      bool     `json:"tls_insecure,omitempty"`
+	HeartbeatSecret  string   `json:"heartbeat_secret,omitempty"`
 }
 
 // Paths returns absolute paths for the files under Dir.

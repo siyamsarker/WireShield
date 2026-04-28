@@ -240,6 +240,14 @@ def init_db():
     except Exception:
         pass
 
+    # Migration: bearer-token auth for heartbeat/revocation-check endpoints.
+    # Replaces source-IP auth so the agent doesn't need to tunnel HTTP through
+    # the WG interface. NULL on old rows — those agents must re-enroll.
+    try:
+        c.execute("ALTER TABLE agents ADD COLUMN heartbeat_secret_hash TEXT")
+    except Exception:
+        pass
+
     # Join table: which user (client_id) is permitted to reach an
     # agent's advertised CIDRs. Only consulted when agents.is_restricted=1.
     c.execute('''

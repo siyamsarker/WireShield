@@ -42,7 +42,7 @@ func runUpdate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load config (is the agent enrolled?): %w", err)
 	}
-	httpc, err := client.New(cfg.ServerURL, Version, cfg.TLSInsecure)
+	httpc, err := client.New(cfg.ServerURL, Version, cfg.HeartbeatSecret, cfg.TLSInsecure)
 	if err != nil {
 		return err
 	}

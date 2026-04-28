@@ -543,15 +543,21 @@ def enroll_agent(raw_token: str, public_key: str, hostname: Optional[str],
         # Allocate an IP
         wg_ipv4 = allocate_agent_ipv4()
 
+        # Issue a long-lived bearer token for heartbeat/revocation-check auth.
+        # We store only the SHA-256 hash; the raw secret is returned once and
+        # persisted by the agent in its config.json.
+        heartbeat_secret = secrets.token_urlsafe(32)
+        heartbeat_secret_hash = hashlib.sha256(heartbeat_secret.encode()).hexdigest()
+
         # Persist
         c.execute(
             "UPDATE agents SET "
             "  public_key = ?, wg_ipv4 = ?, hostname = ?, lan_interface = ?, "
-            "  advertised_cidrs = ?, agent_version = ?, status = 'enrolled', "
-            "  enrolled_at = CURRENT_TIMESTAMP "
+            "  advertised_cidrs = ?, agent_version = ?, heartbeat_secret_hash = ?, "
+            "  status = 'enrolled', enrolled_at = CURRENT_TIMESTAMP "
             "WHERE id = ?",
             (public_key, wg_ipv4, hostname, lan_interface,
-             json.dumps(final_cidrs), agent_version, agent_id),
+             json.dumps(final_cidrs), agent_version, heartbeat_secret_hash, agent_id),
         )
         conn.commit()
     finally:
@@ -603,6 +609,7 @@ def enroll_agent(raw_token: str, public_key: str, hostname: Optional[str],
         "agent_allowed_ips": agent_allowed_ips,
         "advertised_cidrs": final_cidrs,
         "config": agent_config,
+        "heartbeat_secret": heartbeat_secret,
     }
 
 
@@ -664,16 +671,17 @@ def update_agent_cidrs(agent_id: int, new_cidrs: List[str]) -> bool:
     return True
 
 
-def record_heartbeat(source_ip: str, agent_version: Optional[str],
+def record_heartbeat(auth_token: str, source_ip: str, agent_version: Optional[str],
                      rx_bytes: Optional[int], tx_bytes: Optional[int]) -> Optional[int]:
-    """Record a heartbeat from an agent authenticated by WG source IP.
+    """Record a heartbeat authenticated by bearer token.
     Returns the agent_id on success, None if no enrolled agent matches."""
+    token_hash = hashlib.sha256(auth_token.encode()).hexdigest()
     conn = get_db()
     try:
         c = conn.cursor()
         c.execute(
-            "SELECT id FROM agents WHERE wg_ipv4 = ? AND status = 'enrolled'",
-            (source_ip,),
+            "SELECT id FROM agents WHERE heartbeat_secret_hash = ? AND status = 'enrolled'",
+            (token_hash,),
         )
         row = c.fetchone()
         if not row:

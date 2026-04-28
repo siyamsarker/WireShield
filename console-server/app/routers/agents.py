@@ -14,14 +14,14 @@ Auth model
   install     : public (but the script is useless without a valid TOKEN env).
   enroll      : authenticated by the one-time enrollment token itself
                 + server-side HMAC signing of tokens. Rate-limited.
-  heartbeat   : authenticated by the caller's WireGuard source IP matching
-                the agent's assigned wg_ipv4. This endpoint is ONLY
-                reachable through the WG tunnel; public internet callers
-                can never match a legitimate source IP.
-  revocation  : same as heartbeat — WG source IP auth.
+  heartbeat   : authenticated by Authorization: Bearer <heartbeat_secret>
+                issued at enrollment and stored as a SHA-256 hash in the DB.
+                Works regardless of routing path — no WG tunnel required.
+  revocation  : same as heartbeat — bearer token auth.
 
 All writes land in audit_log via the shared helper.
 """
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -119,6 +119,7 @@ async def enroll_endpoint(
         "agent_allowed_ips": result["agent_allowed_ips"],
         "advertised_cidrs": result["advertised_cidrs"],
         "config": result["config"],
+        "heartbeat_secret": result["heartbeat_secret"],
     }
 
 
@@ -127,18 +128,22 @@ async def enroll_endpoint(
 # ============================================================================
 
 def _authenticated_agent_id(request: Request) -> int:
-    """Resolve the agent_id whose wg_ipv4 matches the caller's source IP.
-    Raises 403 if no match or if the agent is revoked. ONLY reachable via
-    the WG tunnel — spoofing this from the internet is not possible
-    because packets with a WG subnet source IP won't reach the FastAPI
-    process unless they arrived through the decrypted tunnel."""
-    source_ip = request.client.host if request and request.client else "unknown"
+    """Resolve agent_id by bearer token from the Authorization header.
+    The token is a high-entropy secret issued at enrollment; we store only
+    its SHA-256 hash so a DB leak does not expose the secret."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Agent authentication failed")
+    raw_token = auth[len("Bearer "):]
+    if not raw_token:
+        raise HTTPException(status_code=403, detail="Agent authentication failed")
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     conn = get_db()
     try:
         c = conn.cursor()
         c.execute(
-            "SELECT id, status FROM agents WHERE wg_ipv4 = ?",
-            (source_ip,),
+            "SELECT id, status FROM agents WHERE heartbeat_secret_hash = ?",
+            (token_hash,),
         )
         row = c.fetchone()
     finally:
@@ -152,13 +157,15 @@ def _authenticated_agent_id(request: Request) -> int:
 
 @router.post("/api/agents/heartbeat", tags=["agent"])
 async def heartbeat_endpoint(body: AgentHeartbeatRequest, request: Request):
-    """Record a heartbeat. Auth = request source IP equals the agent's wg_ipv4."""
+    """Record a heartbeat. Auth = Authorization: Bearer <heartbeat_secret>."""
     from app.core.agents import record_heartbeat
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Agent authentication failed")
+    raw_token = auth[len("Bearer "):]
     source_ip = request.client.host if request and request.client else "unknown"
-
-    # Fast reject: if the source isn't even in the WG subnet, don't bother
-    # hitting the DB. (Cheap defence-in-depth against malformed probes.)
     agent_id = record_heartbeat(
+        auth_token=raw_token,
         source_ip=source_ip,
         agent_version=body.agent_version,
         rx_bytes=body.rx_bytes,
@@ -174,15 +181,18 @@ async def heartbeat_endpoint(body: AgentHeartbeatRequest, request: Request):
 async def revocation_check_endpoint(request: Request):
     """Let the agent daemon poll for its own revocation status. Returns
     `revoked: true` if an admin has revoked the agent — on receiving this
-    the daemon should self-uninstall. If the source IP doesn't match any
-    known agent, 403 (agent should also self-uninstall in that case)."""
-    source_ip = request.client.host if request and request.client else "unknown"
+    the daemon should self-uninstall. Auth = Authorization: Bearer <heartbeat_secret>."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Agent authentication failed")
+    raw_token = auth[len("Bearer "):]
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     conn = get_db()
     try:
         c = conn.cursor()
         c.execute(
-            "SELECT status FROM agents WHERE wg_ipv4 = ?",
-            (source_ip,),
+            "SELECT status FROM agents WHERE heartbeat_secret_hash = ?",
+            (token_hash,),
         )
         row = c.fetchone()
     finally:
