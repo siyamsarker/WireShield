@@ -375,4 +375,19 @@ document.addEventListener('DOMContentLoaded', function() {
     window.addEventListener('hashchange', () => {
         showSection(getSectionFromHash(), null, true);
     });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape') return;
+        const closers = [
+            ['create-user-modal',  () => typeof closeCreateUserModal  === 'function' && closeCreateUserModal()],
+            ['create-agent-modal', () => typeof closeCreateAgentModal === 'function' && closeCreateAgentModal()],
+            ['edit-agent-modal',   () => typeof closeEditAgentModal   === 'function' && closeEditAgentModal()],
+            ['agent-detail-modal', () => typeof closeAgentDetailModal === 'function' && closeAgentDetailModal()],
+            ['agent-access-modal', () => typeof closeAgentAccessModal === 'function' && closeAgentAccessModal()],
+        ];
+        for (const [id, fn] of closers) {
+            const el = document.getElementById(id);
+            if (el && el.style.display !== 'none') { fn(); break; }
+        }
+    });
 });
