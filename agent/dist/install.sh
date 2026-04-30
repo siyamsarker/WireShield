@@ -65,7 +65,7 @@ info "downloading ${DOWNLOAD_URL}"
 TMP_BIN=$(mktemp)
 trap 'rm -f "$TMP_BIN" "${TMP_BIN}.sha256"' EXIT
 
-CURL_OPTS=(-fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-time 120)
+CURL_OPTS=(-fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-time 300)
 if [[ "${AGENT_INSECURE_TLS:-0}" == "1" ]]; then
   CURL_OPTS+=(-k)
 fi
