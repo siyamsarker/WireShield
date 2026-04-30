@@ -323,10 +323,14 @@
         }));
 
         // Token-bearing block: textContent only, never innerHTML.
+        // The scroll wrapper is a separate child so the copy button stays
+        // outside the overflow-x scroll area and never scrolls off-screen.
         const block = _el('div', { cls: 'agent-install-block' });
-        const code = _el('code', { style: 'background:transparent;padding:0;color:inherit;' });
+        const scrollWrap = _el('div', { cls: 'agent-install-scroll' });
+        const code = _el('code', {});
         code.textContent = data.install_command || '';
-        block.appendChild(code);
+        scrollWrap.appendChild(code);
+        block.appendChild(scrollWrap);
 
         const copyBtn = _el('button', {
             cls: 'agent-install-copy',
