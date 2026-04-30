@@ -129,18 +129,17 @@ func Run(ctx context.Context, c ManifestFetcher, opts Options) (Result, error) {
 	}
 	defer os.Remove(tmpPath)
 
-	if entry.SHA256 != "" {
-		got, err := sha256OfFile(tmpPath)
-		if err != nil {
-			return res, fmt.Errorf("hash downloaded binary: %w", err)
-		}
-		if !strings.EqualFold(got, entry.SHA256) {
-			return res, fmt.Errorf("%w: got %s, expected %s", ErrChecksumMismatch, got, entry.SHA256)
-		}
-		logx.Debug("updater: checksum verified (%s)", got[:12]+"…")
-	} else {
-		logx.Warn("updater: manifest has no sha256 — proceeding without integrity check")
+	if entry.SHA256 == "" {
+		return res, fmt.Errorf("manifest entry for %s has no sha256 — refusing upgrade without integrity check", opts.Arch)
 	}
+	got, err := sha256OfFile(tmpPath)
+	if err != nil {
+		return res, fmt.Errorf("hash downloaded binary: %w", err)
+	}
+	if !strings.EqualFold(got, entry.SHA256) {
+		return res, fmt.Errorf("%w: got %s, expected %s", ErrChecksumMismatch, got, entry.SHA256)
+	}
+	logx.Debug("updater: checksum verified (%s)", got[:12]+"…")
 
 	if err := atomicReplace(tmpPath, opts.BinaryPath); err != nil {
 		return res, fmt.Errorf("replace %s: %w", opts.BinaryPath, err)

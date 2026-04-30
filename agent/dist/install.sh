@@ -10,6 +10,7 @@
 #   AGENT_CIDRS=10.50.0.0/24,...   agent-declared LAN CIDRs
 #   AGENT_VERSION=1.0.0            specific release to pin (defaults: latest)
 #   AGENT_INSECURE_TLS=1           skip TLS verification on enroll call
+#   SKIP_CHECKSUM=1                bypass binary sha256 check (lab use only — NOT recommended)
 #
 # Exit codes:
 #   0  success
@@ -73,30 +74,74 @@ if ! curl "${CURL_OPTS[@]}" -o "$TMP_BIN" "$DOWNLOAD_URL"; then
   die "failed to download agent binary from $DOWNLOAD_URL" 2
 fi
 
-# Optional checksum verification — server exposes the sha256 alongside the binary.
-if curl "${CURL_OPTS[@]}" -o "${TMP_BIN}.sha256" "${DOWNLOAD_URL}.sha256" 2>/dev/null; then
+# Checksum verification — required unless operator sets SKIP_CHECKSUM=1.
+if [[ "${SKIP_CHECKSUM:-0}" == "1" ]]; then
+  info "WARNING: SKIP_CHECKSUM=1 set — binary integrity NOT verified. Use only in isolated lab environments."
+else
+  if ! curl "${CURL_OPTS[@]}" -o "${TMP_BIN}.sha256" "${DOWNLOAD_URL}.sha256"; then
+    die "failed to fetch binary checksum from ${DOWNLOAD_URL}.sha256 — cannot verify integrity. Set SKIP_CHECKSUM=1 to bypass (not recommended)." 2
+  fi
   EXPECTED=$(awk '{print $1}' "${TMP_BIN}.sha256")
+  if [[ -z "$EXPECTED" ]]; then
+    die "binary checksum file is empty — server may not have published hashes yet. Set SKIP_CHECKSUM=1 to bypass (not recommended)." 2
+  fi
   ACTUAL=$(sha256sum "$TMP_BIN" | awk '{print $1}')
   if [[ "$EXPECTED" != "$ACTUAL" ]]; then
     die "binary checksum mismatch (expected $EXPECTED, got $ACTUAL)" 2
   fi
   info "binary checksum verified"
-else
-  info "note: no sha256 published for this binary; skipping integrity check"
 fi
 
 install -m 0755 -D "$TMP_BIN" /usr/local/bin/wireshield-agent
 info "installed /usr/local/bin/wireshield-agent ($(/usr/local/bin/wireshield-agent version))"
 
-# Drop systemd unit. The unit file is fetched from the same server so we
-# stay in sync with whichever agent version the operator pulled.
-UNIT_URL="${SERVER}/api/agents/unit"
-if curl "${CURL_OPTS[@]}" -o /etc/systemd/system/wireshield-agent.service "$UNIT_URL"; then
-  info "installed /etc/systemd/system/wireshield-agent.service"
-else
-  die "failed to download systemd unit from $UNIT_URL" 2
-fi
+# Drop systemd unit — embedded here so it requires no additional network
+# fetch and cannot be tampered with by a MITM after the script is downloaded.
+info "installing /etc/systemd/system/wireshield-agent.service"
+cat > /etc/systemd/system/wireshield-agent.service << 'UNIT_EOF'
+[Unit]
+Description=WireShield Agent — heartbeat + revocation daemon
+Documentation=https://github.com/siyamsarker/wireshield
+After=network-online.target wg-quick@wg-agent0.service
+Wants=network-online.target
+Requires=wg-quick@wg-agent0.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wireshield-agent run
+RestartPreventExitStatus=2
+Restart=on-failure
+RestartSec=10s
+StartLimitBurst=6
+StartLimitIntervalSec=300
+
+User=root
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ReadOnlyPaths=/etc/wireshield-agent
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+UNIT_EOF
 chmod 0644 /etc/systemd/system/wireshield-agent.service
+info "installed /etc/systemd/system/wireshield-agent.service"
 
 systemctl daemon-reload
 

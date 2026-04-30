@@ -97,13 +97,19 @@ func TestExistsReturnsTrueOnlyWhenBothPresent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if Exists(p) {
-		t.Fatal("Exists() true when private key is missing")
+		t.Fatal("Exists() true when private key and secret are missing")
 	}
 	if err := os.WriteFile(filepath.Join(dir, "private.key"), []byte("k"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if Exists(p) {
+		t.Fatal("Exists() true when heartbeat.secret is missing")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "heartbeat.secret"), []byte("s"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if !Exists(p) {
-		t.Fatal("Exists() false when both files present")
+		t.Fatal("Exists() false when all three files present")
 	}
 }
 

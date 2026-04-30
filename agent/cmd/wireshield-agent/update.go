@@ -42,7 +42,11 @@ func runUpdate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load config (is the agent enrolled?): %w", err)
 	}
-	httpc, err := client.New(cfg.ServerURL, Version, cfg.HeartbeatSecret, cfg.TLSInsecure)
+	heartbeatSecret, err := config.LoadHeartbeatSecret(p)
+	if err != nil {
+		return fmt.Errorf("load heartbeat secret: %w", err)
+	}
+	httpc, err := client.New(cfg.ServerURL, Version, heartbeatSecret, cfg.TLSInsecure)
 	if err != nil {
 		return err
 	}

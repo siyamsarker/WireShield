@@ -6,6 +6,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -69,6 +70,11 @@ var ErrRevoked = errors.New("agent revoked by server")
 // systemd unit (with Restart=on-failure) reloads onto the new binary.
 var ErrUpgraded = errors.New("agent binary upgraded")
 
+// maxConsecutiveNonRetryable is the number of consecutive 4xx heartbeat
+// rejections before the daemon exits. This prevents a daemon with a
+// server-invalidated token from running indefinitely as a live WG peer.
+const maxConsecutiveNonRetryable = 10
+
 // Run drives the heartbeat loop until ctx is cancelled or ErrRevoked
 // fires. The function is blocking; the caller (cmd/main) handles signal
 // plumbing.
@@ -102,7 +108,10 @@ func Run(ctx context.Context, c HeartbeatClient, r TransferReader, opts Options)
 		logx.Info("runner: auto-update enabled (interval=%s)", opts.AutoUpdateInterval)
 	}
 
-	var consecutiveHBFailures int
+	var (
+		consecutiveHBFailures     int
+		consecutiveNonRetryableHB int
+	)
 
 	for {
 		select {
@@ -126,18 +135,23 @@ func Run(ctx context.Context, c HeartbeatClient, r TransferReader, opts Options)
 				consecutiveHBFailures++
 				delay := backoff(consecutiveHBFailures, opts.HeartbeatInterval, opts.MaxBackoff)
 				if client.Retryable(err) {
+					consecutiveNonRetryableHB = 0
 					logx.Warn("heartbeat failed (attempt %d, retry in %s): %v",
 						consecutiveHBFailures, delay, err)
 				} else {
-					// 4xx is not retryable — but we keep the loop running
-					// since an operator may be mid-revoke. Back off to the
-					// normal cadence so we don't spam.
-					logx.Error("heartbeat rejected (not retryable): %v", err)
+					consecutiveNonRetryableHB++
+					if consecutiveNonRetryableHB >= maxConsecutiveNonRetryable {
+						return fmt.Errorf("heartbeat: %d consecutive auth rejections — exiting for operator investigation (last: %w)",
+							consecutiveNonRetryableHB, err)
+					}
+					logx.Error("heartbeat rejected (not retryable, %d/%d): %v",
+						consecutiveNonRetryableHB, maxConsecutiveNonRetryable, err)
 					delay = opts.HeartbeatInterval
 				}
 				hbTimer.Reset(delay)
 			} else {
 				consecutiveHBFailures = 0
+				consecutiveNonRetryableHB = 0
 				hbTimer.Reset(opts.HeartbeatInterval)
 			}
 

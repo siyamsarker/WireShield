@@ -22,6 +22,9 @@ import (
 const (
 	userAgentPrefix = "wireshield-agent/"
 	defaultTimeout  = 15 * time.Second
+	// maxBinaryBytes is the maximum binary size we will accept from the server.
+	// Guards against a compromised or misconfigured server filling the disk.
+	maxBinaryBytes  = 150 * 1024 * 1024 // 150 MB
 )
 
 // Client is safe for concurrent use; all state is in the embedded *http.Client.
@@ -218,10 +221,22 @@ func (c *Client) DownloadBinary(ctx context.Context, path string) (tmpPath strin
 		return "", err
 	}
 	tmpPath = tmp.Name()
-	if _, err := io.Copy(tmp, httpResp.Body); err != nil {
+	// Reject oversized responses early using Content-Length.
+	if cl := httpResp.ContentLength; cl > maxBinaryBytes {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("binary Content-Length %d exceeds limit %d", cl, maxBinaryBytes)
+	}
+	n, err := io.Copy(tmp, io.LimitReader(httpResp.Body, maxBinaryBytes+1))
+	if err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
 		return "", err
+	}
+	if n > maxBinaryBytes {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("binary exceeds maximum allowed size of %d bytes", maxBinaryBytes)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)

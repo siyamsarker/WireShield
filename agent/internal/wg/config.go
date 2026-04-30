@@ -42,10 +42,34 @@ type AgentConfigInput struct {
 	AdvertisedCIDRs  []string
 }
 
+// sanitizeConfigField strips CR/LF characters to prevent WireGuard config
+// injection via server-supplied field values (e.g. a crafted ServerPublicKey
+// containing newlines could inject arbitrary directives run as root by wg-quick).
+func sanitizeConfigField(v string) string {
+	r := strings.NewReplacer("\n", "", "\r", "")
+	return r.Replace(v)
+}
+
 func (in *AgentConfigInput) validate() error {
 	if in == nil {
 		return errors.New("nil AgentConfigInput")
 	}
+	// Sanitize all server-supplied string fields before writing to disk.
+	in.PrivateKey = sanitizeConfigField(in.PrivateKey)
+	in.WGIPv4 = sanitizeConfigField(in.WGIPv4)
+	in.ServerPublicKey = sanitizeConfigField(in.ServerPublicKey)
+	in.PresharedKey = sanitizeConfigField(in.PresharedKey)
+	in.ServerEndpoint = sanitizeConfigField(in.ServerEndpoint)
+	in.AgentAllowedIPs = sanitizeConfigField(in.AgentAllowedIPs)
+	in.LANInterface = sanitizeConfigField(in.LANInterface)
+	// Validate LANInterface only contains safe characters for shell/config use.
+	for _, ch := range in.LANInterface {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.') {
+			return fmt.Errorf("LANInterface %q contains unsafe characters", in.LANInterface)
+		}
+	}
+
 	missing := []string{}
 	if strings.TrimSpace(in.PrivateKey) == "" {
 		missing = append(missing, "PrivateKey")

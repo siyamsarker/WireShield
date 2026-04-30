@@ -105,6 +105,9 @@ func TestEnrollRejectsDoubleWithoutForce(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "private.key"), []byte("k"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "heartbeat.secret"), []byte("s"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	err := runEnroll([]string{"--token", "x", "--server", "http://localhost:1"})
 	if err == nil || !strings.Contains(err.Error(), "already enrolled") {
 		t.Fatalf("expected 'already enrolled' error, got %v", err)

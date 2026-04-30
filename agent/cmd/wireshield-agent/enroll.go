@@ -52,8 +52,14 @@ func runEnroll(args []string) error {
 	}
 
 	p := paths()
-	if config.Exists(p) && !*force {
-		return fmt.Errorf("enroll: already enrolled (config at %s); re-run with --force to overwrite", p.Dir)
+	if config.Exists(p) {
+		if !*force {
+			return fmt.Errorf("enroll: already enrolled (config at %s); re-run with --force to overwrite", p.Dir)
+		}
+		logx.Info("--force: tearing down existing enrollment before re-enrolling…")
+		if err := runRevoke([]string{}); err != nil {
+			logx.Warn("pre-force revoke: %v (continuing anyway)", err)
+		}
 	}
 
 	// Keypair is generated locally; the private key never leaves this host.
@@ -134,10 +140,12 @@ func runEnroll(args []string) error {
 		WGInterface:     config.DefaultWGIface,
 		WGConfPath:      wgConfPath,
 		TLSInsecure:     *tlsInsecure,
-		HeartbeatSecret: resp.HeartbeatSecret,
 	}
 	if err := config.Save(p, cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
+	}
+	if err := config.SaveHeartbeatSecret(p, resp.HeartbeatSecret); err != nil {
+		return fmt.Errorf("save heartbeat secret: %w", err)
 	}
 
 	logx.Info("enrolled: agent_id=%d name=%s wg_ipv4=%s", resp.AgentID, resp.AgentName, resp.WGIPv4)

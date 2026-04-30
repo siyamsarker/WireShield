@@ -1,9 +1,11 @@
 package wg
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
+	"time"
 )
 
 // systemctl is a thin helper; the agent only ever needs enable/start/stop/disable
@@ -18,7 +20,9 @@ func systemctl(args ...string) error {
 	if err != nil {
 		return errNoSystemctl
 	}
-	cmd := exec.Command(path, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("systemctl %v: %w: %s", args, err, string(out))
 	}
