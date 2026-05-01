@@ -89,6 +89,21 @@ def init_db():
         )
     ''')
 
+    # TOTP used-codes table: prevents replay of a recently accepted 6-digit code
+    # within its ~90-second validity window (valid_window=1 ⇒ ±1×30s).
+    # UNIQUE(client_id, code) makes the INSERT atomic so two concurrent
+    # requests with the same intercepted code race to one winner and one
+    # IntegrityError — no gap between check and mark.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS totp_used_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id TEXT NOT NULL,
+            code TEXT NOT NULL,
+            used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(client_id, code)
+        )
+    ''')
+
     # Activity Log metrics table: tracks cleanup/retention stats
     c.execute('''
         CREATE TABLE IF NOT EXISTS activity_log_metrics (
@@ -274,6 +289,10 @@ def init_db():
         pass
     try:
         c.execute("CREATE INDEX IF NOT EXISTS idx_agent_heartbeats_agent_time ON agent_heartbeats(agent_id, received_at)")
+    except Exception:
+        pass
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_totp_used_codes ON totp_used_codes(client_id, used_at)")
     except Exception:
         pass
     conn.commit()

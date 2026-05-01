@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import secrets
+import sqlite3
 import logging
 import asyncio
 import time
@@ -133,3 +134,97 @@ def _extract_ips_from_allowed_field(field: str) -> set[str]:
             chunk = chunk.split('/', 1)[0]
         ips.add(chunk)
     return ips
+
+
+# ============================================================================
+# TOTP Replay Prevention
+# ============================================================================
+
+# TOTP codes are valid for ±1 window (30 s each) = up to 90 s total.
+_TOTP_REPLAY_WINDOW_SECONDS = 90
+
+
+def check_and_mark_totp_code(client_id: str, code: str) -> bool:
+    """Return True if `code` is being used for the first time (safe to accept).
+    Return False if the same code was already accepted within the replay window.
+
+    The INSERT with UNIQUE(client_id, code) is atomic: two concurrent requests
+    carrying the same intercepted code will race — exactly one succeeds and the
+    other gets IntegrityError, so there is no TOCTOU window between check and mark.
+
+    Stale entries (older than the replay window) are pruned inline on each call
+    so the table stays small without a separate background job.
+
+    Call this AFTER pyotp.TOTP.verify() succeeds — only accepted codes are stored,
+    so a user who miskeys the same digit sequence twice in a row is not locked out.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Prune expired entries for this client to keep the table bounded.
+        c.execute(
+            "DELETE FROM totp_used_codes WHERE client_id = ? AND used_at < datetime('now', ?)",
+            (client_id, f"-{_TOTP_REPLAY_WINDOW_SECONDS} seconds"),
+        )
+        # Atomically mark this code as used.  If the row already exists the
+        # UNIQUE constraint fires and we catch IntegrityError below.
+        c.execute(
+            "INSERT INTO totp_used_codes (client_id, code) VALUES (?, ?)",
+            (client_id, code),
+        )
+        conn.commit()
+        return True  # First use — not a replay
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False  # Already used within the validity window — replay
+    finally:
+        conn.close()
+
+
+# ============================================================================
+# Client IP Verification (prevents client_id forgery / account takeover)
+# ============================================================================
+
+def verify_client_ip(client_id: str, ip_address: str) -> bool:
+    """Return True when ip_address is legitimately associated with client_id.
+
+    Two-pass check:
+      1. If the connecting IP already belongs to a *different* client in the
+         users table, reject immediately — this is a clear forgery attempt.
+      2. If the requested client_id has a registered WG IP, it must match the
+         connecting IP.  If no IP is registered yet (edge case: manual DB entry
+         or legacy path in setup_start), we allow so first-time setup is not
+         broken.
+
+    Returns False only when the IP clearly belongs to someone else, or when
+    a mismatch is detected on a client that already has an IP registered.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Pass 1: does this IP already belong to a DIFFERENT client?
+        c.execute(
+            "SELECT client_id FROM users "
+            "WHERE (wg_ipv4 = ? OR wg_ipv6 = ?) AND client_id != ?",
+            (ip_address, ip_address, client_id),
+        )
+        if c.fetchone() is not None:
+            return False  # IP owned by someone else — reject
+
+        # Pass 2: does this client have a registered IP that differs?
+        c.execute(
+            "SELECT wg_ipv4, wg_ipv6 FROM users WHERE client_id = ?",
+            (client_id,),
+        )
+        row = c.fetchone()
+        if row is None:
+            # Unknown client_id — allow (setup_start auto-creates users)
+            return True
+        registered_v4 = (row["wg_ipv4"] or "").strip()
+        registered_v6 = (row["wg_ipv6"] or "").strip()
+        if not registered_v4 and not registered_v6:
+            # No IP on file yet — allow (first-time setup edge case)
+            return True
+        return ip_address in (registered_v4, registered_v6)
+    finally:
+        conn.close()

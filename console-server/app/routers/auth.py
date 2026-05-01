@@ -12,7 +12,8 @@ from fastapi.templating import Jinja2Templates
 from app.core.database import get_db
 from app.core.security import (
     audit_log, rate_limiter, generate_session_token, hash_session_token,
-    verify_session_token, allow_client_by_id
+    verify_session_token, allow_client_by_id,
+    check_and_mark_totp_code, verify_client_ip,
 )
 from app.core.config import SESSION_TIMEOUT_MINUTES
 from app.templates import (
@@ -111,11 +112,19 @@ async def setup_start(
 ):
     """Start 2FA setup: generate TOTP secret and QR code."""
     ip_address = request.client.host if request and request.client else "unknown"
-    
+
+    # Reject requests where the submitted client_id does not match the
+    # connecting WireGuard IP.  This closes the account-takeover path where
+    # any VPN peer could overwrite another user's TOTP secret by POSTing a
+    # different client_id (Bug #2 — client_id forgery).
+    if not verify_client_ip(client_id, ip_address):
+        audit_log(client_id, "2FA_SETUP_START", "ip_mismatch", ip_address)
+        raise HTTPException(status_code=403, detail="Client ID does not match your VPN address")
+
     try:
         conn = get_db()
         c = conn.cursor()
-        
+
         # Check if user exists and whether already configured
         c.execute("SELECT id, totp_secret, enabled FROM users WHERE client_id = ?", (client_id,))
         user = c.fetchone()
@@ -176,24 +185,36 @@ async def setup_verify(
 ):
     """Verify TOTP code and complete 2FA setup."""
     ip_address = request.client.host if request and request.client else "unknown"
-    
+
+    # IP check — same protection as setup_start.
+    if not verify_client_ip(client_id, ip_address):
+        audit_log(client_id, "2FA_SETUP_VERIFY", "ip_mismatch", ip_address)
+        raise HTTPException(status_code=403, detail="Client ID does not match your VPN address")
+
     try:
         conn = get_db()
         c = conn.cursor()
-        
+
         c.execute("SELECT totp_secret FROM users WHERE client_id = ?", (client_id,))
         user = c.fetchone()
-        
+
         if not user or not user["totp_secret"]:
             audit_log(client_id, "2FA_SETUP_VERIFY", "user_not_found", ip_address)
             raise HTTPException(status_code=404, detail="User not found")
-        
+
         # Verify TOTP code (allow ±1 time window for clock skew)
         totp = pyotp.TOTP(user["totp_secret"])
         if not totp.verify(code, valid_window=1):
             audit_log(client_id, "2FA_SETUP_VERIFY", "invalid_code", ip_address)
             raise HTTPException(status_code=401, detail="Invalid code")
-        
+
+        # Reject replay of a code already accepted within the ~90 s validity window
+        # (Bug #1 — TOTP replay).  Called after pyotp.verify so that a mis-typed
+        # wrong code doesn't permanently block that digit sequence.
+        if not check_and_mark_totp_code(client_id, code):
+            audit_log(client_id, "2FA_SETUP_VERIFY", "replay_detected", ip_address)
+            raise HTTPException(status_code=401, detail="Invalid code")
+
         # Invalidate all previous sessions for this client (re-authentication required)
         c.execute("DELETE FROM sessions WHERE client_id = ?", (client_id,))
         
@@ -244,31 +265,48 @@ async def verify_code(
 ):
     """Verify TOTP code on reconnection."""
     ip_address = request.client.host if request and request.client else "unknown"
-    
+
+    # Reject if the connecting IP does not match the user's registered WG address
+    # (Bug #2 — session hijack via client_id + TOTP secret from a foreign IP).
+    if not verify_client_ip(client_id, ip_address):
+        audit_log(client_id, "2FA_VERIFY", "ip_mismatch", ip_address)
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
     try:
         conn = get_db()
         c = conn.cursor()
-        
-        c.execute("SELECT totp_secret, enabled FROM users WHERE client_id = ?", (client_id,))
+
+        c.execute(
+            "SELECT totp_secret, enabled, wg_ipv4, wg_ipv6 FROM users WHERE client_id = ?",
+            (client_id,),
+        )
         user = c.fetchone()
-        
+
         if not user or not user["enabled"] or not user["totp_secret"]:
             audit_log(client_id, "2FA_VERIFY", "user_not_initialized", ip_address)
             raise HTTPException(status_code=403, detail="2FA not configured")
-        
+
         # Verify TOTP code
         totp = pyotp.TOTP(user["totp_secret"])
         if not totp.verify(code, valid_window=1):
             audit_log(client_id, "2FA_VERIFY", "invalid_code", ip_address)
             raise HTTPException(status_code=401, detail="Invalid code")
-        
+
+        # Reject replay of a recently accepted code (Bug #1 — TOTP replay).
+        if not check_and_mark_totp_code(client_id, code):
+            audit_log(client_id, "2FA_VERIFY", "replay_detected", ip_address)
+            raise HTTPException(status_code=401, detail="Invalid code")
+
         # Invalidate all previous sessions for this client (only current verification is valid)
         c.execute("DELETE FROM sessions WHERE client_id = ?", (client_id,))
-        
-        # Persist client's WG IP (v4/v6) for ipset allowlist
-        if ":" in ip_address:
+
+        # Persist client's WG IP only when not yet registered (prevents overwrite
+        # of a legitimate IP by an attacker who somehow passed the IP check above).
+        registered_v4 = (user["wg_ipv4"] or "").strip()
+        registered_v6 = (user["wg_ipv6"] or "").strip()
+        if ":" in ip_address and not registered_v6:
             c.execute("UPDATE users SET wg_ipv6 = ? WHERE client_id = ?", (ip_address, client_id))
-        else:
+        elif ":" not in ip_address and not registered_v4:
             c.execute("UPDATE users SET wg_ipv4 = ? WHERE client_id = ?", (ip_address, client_id))
         
         # Create session token
