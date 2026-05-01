@@ -117,10 +117,11 @@ async def get_users(
     client_id: str = Depends(_check_console_access)
 ):
     try:
+        limit = max(1, min(limit, 200))
         offset = (page - 1) * limit
         conn = get_db()
         c = conn.cursor()
-        
+
         # Subquery to get active session start time (non-expired sessions only)
         query = """
             SELECT u.*, 
@@ -192,10 +193,11 @@ async def get_audit_logs(
     client_id: str = Depends(_check_console_access)
 ):
     try:
+        limit = max(1, min(limit, 200))
         offset = (page - 1) * limit
         conn = get_db()
         c = conn.cursor()
-        
+
         query = "SELECT * FROM audit_log"
         conditions = []
         params = []
@@ -302,6 +304,7 @@ async def get_activity_logs(
             c.execute(count_query)
         total = c.fetchone()[0]
 
+        limit = max(1, min(limit, 200))
         query += " ORDER BY a.timestamp DESC LIMIT ? OFFSET ?"
         offset = (page - 1) * limit
         params_with_paging = params + [limit, offset]
@@ -694,10 +697,13 @@ async def create_user(
 @router.get("/api/console/users/{user_client_id}/config")
 async def download_user_config(
     user_client_id: str,
+    request: Request,
     client_id: str = Depends(_check_console_access),
 ):
     """Download the client's WireGuard .conf file as an attachment."""
     from app.core.wireguard import get_client_config, validate_client_name
+
+    ip_address = request.client.host if request and request.client else "unknown"
 
     try:
         validate_client_name(user_client_id)
@@ -710,6 +716,8 @@ async def download_user_config(
             status_code=404,
             detail="Client .conf file not found on server",
         )
+
+    audit_log(client_id, "CONFIG_DOWNLOAD", f"target={user_client_id}", ip_address)
 
     filename = f"{user_client_id}.conf"
     return Response(
@@ -725,6 +733,7 @@ async def download_user_config(
 @router.get("/api/console/users/{user_client_id}/qrcode")
 async def user_config_qrcode(
     user_client_id: str,
+    request: Request,
     client_id: str = Depends(_check_console_access),
 ):
     """Return a base64 PNG QR code of the client's WireGuard config."""
@@ -732,6 +741,8 @@ async def user_config_qrcode(
     from io import BytesIO
     import qrcode
     from app.core.wireguard import get_client_config, validate_client_name
+
+    ip_address = request.client.host if request and request.client else "unknown"
 
     try:
         validate_client_name(user_client_id)
@@ -741,6 +752,8 @@ async def user_config_qrcode(
     config_text = get_client_config(user_client_id)
     if not config_text:
         raise HTTPException(status_code=404, detail="Client .conf file not found on server")
+
+    audit_log(client_id, "QRCODE_DOWNLOAD", f"target={user_client_id}", ip_address)
 
     qr = qrcode.QRCode(
         version=None,

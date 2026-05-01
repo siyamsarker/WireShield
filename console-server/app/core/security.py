@@ -6,7 +6,7 @@ import logging
 import asyncio
 import time
 import subprocess
-from collections import defaultdict, deque
+from collections import deque
 from typing import Optional
 from fastapi import Request, HTTPException
 
@@ -46,24 +46,53 @@ def audit_log(client_id: Optional[str], action: str, status: str, ip_address: st
 # Rate Limiting (simple sliding window by client IP + path)
 # ============================================================================
 class RateLimiter:
-    """Minimal in-memory rate limiter to throttle abusive bursts."""
+    """Sliding-window in-memory rate limiter, per (client IP, path).
+
+    Every unique (IP, path) pair creates an entry in _hits.  Without
+    eviction those entries accumulate forever — one per unique client per
+    rate-limited endpoint — causing unbounded memory growth under sustained
+    traffic from many clients.
+
+    Fix: a periodic sweep (every _SWEEP_INTERVAL calls) deletes any key
+    whose most recent hit is older than the sliding window.  If a client
+    has been silent for longer than window_seconds its bucket is guaranteed
+    to be empty, so removing the key is safe and free.  The sweep is O(n)
+    in the number of live keys but runs infrequently (amortised O(1)/call).
+    """
+
+    _SWEEP_INTERVAL = 500  # evict stale keys every N __call__ invocations
 
     def __init__(self, max_requests: int, window_seconds: int):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self._hits = defaultdict(deque)
+        self._hits: dict = {}       # key -> deque[float] of hit timestamps
         self._lock = asyncio.Lock()
+        self._call_count = 0
 
     async def __call__(self, request: Request):
         # Combine client IP and path so limits are per-endpoint per-client.
         client_ip = request.client.host if request and request.client else "unknown"
         key = f"{client_ip}:{request.url.path if request else 'unknown'}"
         now = time.time()
+        cutoff = now - self.window_seconds
 
         async with self._lock:
+            self._call_count += 1
+
+            # Periodic sweep: delete keys whose most recent hit is outside
+            # the window — they hold no active hits and will never fire a
+            # 429.  Runs every _SWEEP_INTERVAL calls to amortise the cost.
+            if self._call_count % self._SWEEP_INTERVAL == 0:
+                stale = [k for k, v in self._hits.items() if not v or v[-1] < cutoff]
+                for k in stale:
+                    del self._hits[k]
+
+            # Get or create this caller's bucket.
+            if key not in self._hits:
+                self._hits[key] = deque()
             bucket = self._hits[key]
+
             # Drop entries outside the window.
-            cutoff = now - self.window_seconds
             while bucket and bucket[0] < cutoff:
                 bucket.popleft()
 
