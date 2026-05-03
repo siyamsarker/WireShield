@@ -33,7 +33,7 @@ The interactive installer handles everything: WireGuard setup, firewall rules, S
 
 ## How It Works
 
-### VPN + 2FA flow
+### VPN + 2FA Flow
 
 Every VPN client must pass a TOTP challenge through the captive portal before any traffic is forwarded through the tunnel.
 
@@ -70,7 +70,7 @@ Every VPN client must pass a TOTP challenge through the captive portal before an
 └──────────────────────────────────────────────────┘
 ```
 
-### Agent network extension
+### Agent Network Extension
 
 Agents are Go daemons deployed on remote Linux servers. Each agent dials outbound into the WireShield VPN as a WireGuard peer and advertises its local LAN CIDRs. The server adds those CIDRs to the agent's `AllowedIPs`, so any authenticated VPN client can reach them without any client-side changes.
 
@@ -138,7 +138,7 @@ Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forward
 - **Bandwidth insights** with per-client daily upload/download tracking
 - **Audit trail** for all security events (2FA setup, verification, failures)
 
-### Operations
+### Operational Features
 - **One-command installation** with interactive CLI wizard
 - **9+ Linux distributions** supported (Ubuntu, Debian, Fedora, CentOS, Alma, Rocky, Oracle, Arch, Alpine)
 - **Systemd integration** with hardened service configuration
@@ -430,7 +430,7 @@ The menu is organized into categories: **Client Management**, **Server Operation
 4. Returning: enter the current 6-digit code from your authenticator app
 5. Access granted. Session valid for 24 hours
 
-### Admin Console
+### Using the Admin Console
 
 Access the web console at `https://<server-ip>/console`. Two conditions must both hold:
 
@@ -448,7 +448,7 @@ The console provides:
 
 ## Architecture
 
-### Components
+### System Components
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
@@ -546,21 +546,21 @@ VPN Client (user laptop)          WireShield Server             Agent Host      
         │◄──────────────────────────────►│                            │                       │
         │                                │                            │                       │
         │  2. curl http://192.168.169.5  │                            │                       │
-        │──────────────────────────────►│                            │                       │
+        │──────────────────────────────► │                            │                       │
         │                                │ wg0 peer AllowedIPs for    │                       │
         │                                │ agent includes             │                       │
         │                                │ 192.168.169.0/24 →         │                       │
         │                                │ kernel routes packet to    │                       │
         │                                │ agent peer (10.66.66.200)  │                       │
-        │                                │──────────────────────────►│                       │
+        │                                │──────────────────────────► │                       │
         │                                │  3. WireGuard tunnel       │                       │
-        │                                │     (agent's wg-agent0)    │ ip_forward=1           │
-        │                                │                            │ FORWARD ACCEPT         │
-        │                                │                            │ MASQUERADE             │
+        │                                │     (agent's wg-agent0)    │ ip_forward=1          │
+        │                                │                            │ FORWARD ACCEPT        │
+        │                                │                            │ MASQUERADE            │
         │                                │                            │──────────────────────►│
-        │                                │                            │  4. Forwarded packet   │
-        │                                │                            │     src: agent LAN IP  │
-        │◄──────────────────────────────────────────────────────────────────────────────────────
+        │                                │                            │  4. Forwarded packet  │
+        │                                │                            │     src: agent LAN IP │
+        │◄─────────────────────────────────────────────────────────────────────────────────────
         │                   5. Response travels the same path in reverse
 ```
 
@@ -626,7 +626,7 @@ version.json
 
 > **No Go available?** Use the [legacy Bash installer](#legacy-installer-compatibility) instead — it requires no build step and works on any enrolled agent.
 
-### Step 2 — Register the agent in the admin console
+### Step 2 — Register the Agent in the Admin Console
 
 1. Open `https://<server-ip>/console` in your browser and complete 2FA.
 2. Click **Agents** in the left sidebar.
@@ -639,7 +639,7 @@ version.json
 
 The console displays a one-time install command. **Copy it immediately** — it will not be shown again. If it expires (1-hour TTL), use the **Reissue token** button on the pending agent row.
 
-### Step 3 — Run the install command on the remote server
+### Step 3 — Run the Install Command on the Remote Server
 
 SSH into the remote Linux server as root and paste the install command from Step 2. It looks like:
 
@@ -658,7 +658,7 @@ The bootstrap script automatically:
 
 The entire process takes under 60 seconds on a standard server.
 
-### Step 4 — Verify the connection
+### Step 4 — Verify the Connection
 
 **On the remote agent host:**
 
@@ -688,7 +688,7 @@ VPN clients can now route traffic to the advertised CIDRs through the agent. No 
 
 ---
 
-### Uninstalling an agent
+### Uninstalling an Agent
 
 A full agent removal is a two-step process: local teardown on the agent host, then server-side revocation in the admin console.
 
@@ -725,7 +725,7 @@ Open `/console` → **Agents** → click **Delete** on the agent row. This remov
 
 ---
 
-### Managing agents from the console
+### Managing Agents from the Console
 
 The admin dashboard ships an **Agents** tab (sidebar, under "Users & Access") with a no-CLI-required workflow:
 
@@ -740,7 +740,7 @@ The admin dashboard ships an **Agents** tab (sidebar, under "Users & Access") wi
 
 The **Overview** tab shows an "Agents" stat card alongside Users/Sessions/Failed/Bandwidth: enrolled count + online indicator + pending count.
 
-### Auto-update flow
+### Auto-Update Flow
 
 Agents can self-upgrade against a server-published version manifest. Off by default — enable with `--auto-update` on the systemd unit:
 
@@ -779,7 +779,7 @@ wireshield-agent update --dry-run # check only, do not touch /usr/local/bin
 
 A SHA-256 mismatch *never* replaces the binary — the daemon logs and continues with the old image.
 
-### End-to-end cURL walkthrough
+### End-to-End cURL Walkthrough
 
 Replace `VPN_HOST`, `COOKIE`, and the agent ID as appropriate. The admin requests require an active 2FA session cookie from `/console`.
 
@@ -841,7 +841,7 @@ curl -sS -X DELETE https://VPN_HOST/api/console/agents/1 \
 
 The WG peer block is removed, the DB row is marked `revoked`, and the next `/api/agents/revocation-check` poll causes the agent to self-disable its local `wg-agent0` unit.
 
-### Security model
+### Security Model
 
 | Control | Mechanism |
 |---------|-----------|
@@ -851,7 +851,7 @@ The WG peer block is removed, the DB row is marked `revoked`, and the next `/api
 | Replay / enumeration | Rate-limited public endpoints; generic `401 Invalid or expired enrollment token` for all token-related failures |
 | Config hygiene | Atomic `wg0.conf` writes (`tmp + os.replace`); idempotent peer-add/remove; hourly purge of stale tokens + old heartbeats |
 
-### Agent-side layout
+### Agent-Side Layout
 
 | Path | Purpose |
 |------|---------|
@@ -861,7 +861,7 @@ The WG peer block is removed, the DB row is marked `revoked`, and the next `/api
 | `/etc/wireguard/wg-agent0.conf` | WG interface config with `PostUp` MASQUERADE for the advertised LAN (mode 0600) |
 | `/etc/systemd/system/wireshield-agent.service` | systemd unit running the heartbeat daemon as a hardened long-lived process |
 
-### Go agent build + deployment
+### Go Agent Build + Deployment
 
 The agent is a single statically-linked Go binary. Build it on any host with Go 1.22+:
 
@@ -896,7 +896,7 @@ Operator subcommands on the agent host:
 | `wireshield-agent revoke` | Local teardown: stop `wg-quick@wg-agent0`, remove config, delete keys |
 | `wireshield-agent version` | Print the agent version |
 
-### Legacy installer compatibility
+### Legacy Installer Compatibility
 
 `/api/agents/install` still serves the original Bash installer and its heartbeat-timer approach so existing one-liners keep working. New agents enrolled from the admin console get the Go-daemon flow automatically.
 
@@ -1291,7 +1291,7 @@ Contributions are welcome. To get started:
 4. Push to the branch: `git push origin feature/your-feature`
 5. Open a Pull Request
 
-### Guidelines
+### Contribution Guidelines
 
 - Follow the existing code style and conventions
 - Add tests for new features
