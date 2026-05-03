@@ -909,6 +909,28 @@ def _agent_housekeeping_loop():
         time.sleep(interval)
 
 
+def _wg_peer_reconcile_loop():
+    """Every 60 s: compare enrolled agents in DB against running wg0 peers.
+    Re-adds any missing peers and rewrites stale AllowedIPs, then calls
+    wg_syncconf. This heals drift caused by:
+      - wg_syncconf failing silently at enrollment time
+      - wg0 restarted independently of the console server
+      - CIDR update whose syncconf failed
+    The startup lifespan handler runs one pass before this loop fires,
+    so the first sleep here gives that pass a head-start."""
+    interval = 60
+    time.sleep(interval)
+    while True:
+        try:
+            from app.core.agents import reconcile_wg_peers
+            synced = reconcile_wg_peers()
+            if synced:
+                logger.info(f"WG peer reconcile loop: healed {synced} peer(s)")
+        except Exception as exc:
+            logger.error(f"WG peer reconcile loop error: {exc}")
+        time.sleep(interval)
+
+
 def start_background_tasks():
     threading.Thread(target=_sync_ipsets_from_sessions, daemon=True).start()
     threading.Thread(target=_monitor_wireguard_sessions, daemon=True).start()
@@ -920,3 +942,4 @@ def start_background_tasks():
     threading.Thread(target=_watchdog_loop, daemon=True).start()
     threading.Thread(target=_agent_housekeeping_loop, daemon=True).start()
     threading.Thread(target=_sync_agent_acl_loop, daemon=True).start()
+    threading.Thread(target=_wg_peer_reconcile_loop, daemon=True).start()

@@ -25,6 +25,18 @@ warnings.filterwarnings("ignore", category=UserWarning, module="passlib")
 async def lifespan(app: FastAPI):
     """Lifecycle events: startup and shutdown."""
     init_db()
+
+    # Reconcile enrolled agents against the running wg0 peer table before
+    # background tasks start. Heals drift from a failed wg_syncconf during
+    # enrollment or a wg0 restart that happened while the console was down.
+    try:
+        from app.core.agents import reconcile_wg_peers
+        synced = reconcile_wg_peers()
+        if synced:
+            logger.info(f"Startup reconcile: applied {synced} missing/stale wg0 peer(s)")
+    except Exception as exc:
+        logger.error(f"Startup WireGuard reconciliation failed: {exc}")
+
     start_background_tasks()
     
     # Start DNS Sniffer for domain logging

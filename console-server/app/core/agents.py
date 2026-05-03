@@ -343,9 +343,13 @@ def _build_agent_peer_block(name: str, pubkey: str, psk: str,
 
 def append_agent_peer(name: str, pubkey: str, psk: str,
                       wg_ipv4: str, advertised_cidrs: List[str]) -> None:
-    """Append an agent's [Peer] block to wg0.conf (caller ensures no duplicate)."""
+    """Write an agent's [Peer] block to wg0.conf. Removes any pre-existing
+    block for this name first so the operation is fully idempotent."""
     params = _load_wg_params()
     conf_path = _server_conf_path(params)
+    # Remove stale block before writing — prevents duplicate peer entries on
+    # re-enrollment with the same agent name.
+    remove_agent_peer(name)
     block = _build_agent_peer_block(name, pubkey, psk, wg_ipv4, advertised_cidrs)
     with open(conf_path, "a") as f:
         f.write(block)
@@ -426,7 +430,8 @@ def replace_agent_peer_allowed_ips(name: str, pubkey: str,
 
 def wg_syncconf() -> None:
     """Live-apply wg0.conf without bouncing the interface.
-    Equivalent: wg syncconf <iface> <(wg-quick strip <iface>)"""
+    Equivalent: wg syncconf <iface> <(wg-quick strip <iface>)
+    Raises RuntimeError on failure so callers can detect and log the problem."""
     params = _load_wg_params()
     iface = _iface(params)
     try:
@@ -440,9 +445,105 @@ def wg_syncconf() -> None:
         )
         logger.info(f"wg syncconf applied to {iface}")
     except subprocess.CalledProcessError as e:
-        logger.warning(f"wg syncconf failed: {e.stderr!r}")
+        raise RuntimeError(f"wg syncconf failed: {e.stderr!r}") from e
     except FileNotFoundError:
         logger.debug("wg/wg-quick not available (likely dev env)")
+
+
+def reconcile_wg_peers() -> int:
+    """Compare every enrolled agent in the DB against the running wg0 state.
+
+    Two failure modes are healed:
+      1. Peer missing entirely — happens when wg_syncconf failed at enrollment
+         or wg0 was restarted independently of the console server.
+      2. AllowedIPs incomplete — happens when wg_syncconf failed during a
+         CIDR update (e.g. update_agent_cidrs called but syncconf crashed).
+
+    Returns the number of peers that were re-synced.
+    Safe to call at startup and from a background loop.
+    """
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "SELECT name, public_key, preshared_key, wg_ipv4, advertised_cidrs "
+            "FROM agents WHERE status = 'enrolled' "
+            "AND public_key IS NOT NULL AND wg_ipv4 IS NOT NULL"
+        )
+        enrolled = [dict(row) for row in c.fetchall()]
+    finally:
+        conn.close()
+
+    if not enrolled:
+        return 0
+
+    params = _load_wg_params()
+    iface = _iface(params)
+
+    # Parse running peer state: {pubkey: set_of_allowed_ips}
+    try:
+        result = subprocess.run(
+            ["wg", "show", iface, "allowed-ips"],
+            capture_output=True, text=True, check=True,
+        )
+        active: Dict[str, set] = {}
+        for line in result.stdout.strip().splitlines():
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                pubkey, ips_raw = parts
+                active[pubkey] = set(ips_raw.split())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        active = {}
+
+    needs_sync = False
+    synced = 0
+
+    for agent in enrolled:
+        try:
+            cidrs = json.loads(agent["advertised_cidrs"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            cidrs = []
+
+        expected = {f"{agent['wg_ipv4']}/32"} | set(cidrs)
+        live_ips = active.get(agent["public_key"])
+
+        if live_ips is None:
+            # Peer not in running wg0 at all — re-add from DB state.
+            logger.warning(
+                f"reconcile: agent {agent['name']!r} ({agent['wg_ipv4']}) "
+                f"missing from running {iface} — re-adding"
+            )
+            try:
+                append_agent_peer(
+                    agent["name"], agent["public_key"], agent["preshared_key"],
+                    agent["wg_ipv4"], cidrs,
+                )
+                needs_sync = True
+                synced += 1
+            except Exception as exc:
+                logger.error(f"reconcile: failed to re-add {agent['name']!r}: {exc}")
+
+        elif not expected.issubset(live_ips):
+            # Peer present but AllowedIPs are stale (CIDR update not yet applied).
+            logger.warning(
+                f"reconcile: agent {agent['name']!r} AllowedIPs mismatch "
+                f"expected={sorted(expected)} live={sorted(live_ips)} — rewriting"
+            )
+            ok = replace_agent_peer_allowed_ips(
+                agent["name"], agent["public_key"], agent["wg_ipv4"], cidrs
+            )
+            if ok:
+                needs_sync = True
+                synced += 1
+
+    if needs_sync:
+        try:
+            wg_syncconf()
+            logger.info(f"reconcile_wg_peers: synced {synced} peer(s) to running {iface}")
+        except RuntimeError as exc:
+            logger.error(f"reconcile_wg_peers: wg_syncconf failed after re-add: {exc}")
+
+    return synced
 
 
 # ============================================================================
@@ -565,13 +666,25 @@ def enroll_agent(raw_token: str, public_key: str, hostname: Optional[str],
     finally:
         conn.close()
 
-    # Append to wg0.conf + live-sync
+    # Write peer block to wg0.conf + live-sync running wg0.
+    # append_agent_peer is idempotent (removes stale block first).
+    # If wg_syncconf fails the peer is already in wg0.conf — the startup
+    # reconciler and background loop will heal the running interface.
     try:
         append_agent_peer(agent["name"], public_key, agent["preshared_key"],
                           wg_ipv4, final_cidrs)
-        wg_syncconf()
     except Exception as e:
-        logger.error(f"WG config update failed for agent {agent['name']}: {e}")
+        logger.error(f"Failed to write wg0.conf peer block for agent {agent['name']!r}: {e}")
+        raise RuntimeError("Server failed to write WireGuard peer config") from e
+    try:
+        wg_syncconf()
+    except RuntimeError as e:
+        # Peer is persisted in wg0.conf; the reconciler will sync it to the
+        # running interface within 60 s. Log as error so ops can investigate.
+        logger.error(
+            f"wg_syncconf failed after enrolling agent {agent['name']!r} — "
+            f"peer written to conf, reconciler will apply it: {e}"
+        )
         # Leave status='enrolled' so the admin can see the partial state;
         # they can retry via the console or manually reconcile.
 

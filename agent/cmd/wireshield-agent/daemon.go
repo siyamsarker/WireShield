@@ -85,6 +85,14 @@ func runDaemon(args []string) error {
 		if effectiveLAN == "" {
 			effectiveLAN = cfg.LANInterface
 		}
+		// Don't overwrite known-good CIDRs with an empty response.
+		// An empty list from the server means the agent row has no CIDR data
+		// (old enrollment, transient DB issue) — keep what we have rather than
+		// rebuilding wg-agent0.conf without PostUp FORWARD rules.
+		if len(cidrs) == 0 && len(cfg.AdvertisedCIDRs) > 0 {
+			logx.Warn("heartbeat: server returned empty CIDRs; retaining existing %v", cfg.AdvertisedCIDRs)
+			return
+		}
 		if cidrSlicesEqual(cidrs, cfg.AdvertisedCIDRs) && effectiveLAN == cfg.LANInterface {
 			return
 		}
