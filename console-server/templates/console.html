@@ -413,12 +413,13 @@
                         <div class="form-group">
                             <label class="form-label">
                                 Advertised LAN CIDRs
-                                <span style="color:var(--text-muted);font-weight:400;">(optional, one per line)</span>
+                                <span style="color:var(--danger,#ef4444);font-weight:500;font-size:11px;">*required</span>
+                                <span style="color:var(--text-muted);font-weight:400;">(one per line)</span>
                             </label>
                             <textarea id="new-agent-cidrs" class="filter-input" style="width:100%;padding:9px 12px;min-height:78px;font-family:'Roboto Mono',monospace;font-size:12px;"
                                 placeholder="10.50.0.0/24&#10;192.168.20.0/24"></textarea>
                             <span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block;">
-                                When set, these take precedence over whatever the agent declares at enrollment (anti-escalation).
+                                These take precedence over whatever the agent declares at enrollment (anti-escalation). At least one CIDR is required.
                             </span>
                         </div>
                     </div>
