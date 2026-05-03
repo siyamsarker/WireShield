@@ -536,6 +536,58 @@ The console provides:
 
 Agents are statically-linked Go daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
 
+### How traffic flows: User → WireShield → Agent → Local LAN
+
+```
+VPN Client (user laptop)          WireShield Server             Agent Host              Local LAN
+192.168.1.x / 10.66.66.50         47.x.x.x (public)            10.66.66.200            192.168.169.0/24
+        │                                │                            │                       │
+        │  1. WireGuard tunnel           │                            │                       │
+        │◄──────────────────────────────►│                            │                       │
+        │                                │                            │                       │
+        │  2. curl http://192.168.169.5  │                            │                       │
+        │──────────────────────────────►│                            │                       │
+        │                                │ wg0 peer AllowedIPs for    │                       │
+        │                                │ agent includes             │                       │
+        │                                │ 192.168.169.0/24 →         │                       │
+        │                                │ kernel routes packet to    │                       │
+        │                                │ agent peer (10.66.66.200)  │                       │
+        │                                │──────────────────────────►│                       │
+        │                                │  3. WireGuard tunnel       │                       │
+        │                                │     (agent's wg-agent0)    │ ip_forward=1           │
+        │                                │                            │ FORWARD ACCEPT         │
+        │                                │                            │ MASQUERADE             │
+        │                                │                            │──────────────────────►│
+        │                                │                            │  4. Forwarded packet   │
+        │                                │                            │     src: agent LAN IP  │
+        │◄──────────────────────────────────────────────────────────────────────────────────────
+        │                   5. Response travels the same path in reverse
+```
+
+**What each component does:**
+
+| Component | Role |
+|---|---|
+| **WireShield server** | Terminates the client tunnel. Routes packets destined for an agent's advertised CIDRs to that agent's WireGuard peer (via kernel routing — the agent's peer entry has `AllowedIPs = <wg-ip>/32, <LAN-CIDRs>`). |
+| **Agent (wg-agent0)** | Maintains a persistent outbound WireGuard tunnel to the server. Accepts packets from the VPN subnet, forwards them to the LAN via `ip_forward=1`, and masquerades the source with iptables POSTROUTING so LAN hosts reply to the agent's LAN IP. |
+| **VPN client** | Sends all traffic through the WireGuard tunnel (`AllowedIPs = 0.0.0.0/0`). No special routes or configuration needed — the server handles all routing decisions. |
+
+**iptables rules on the agent host** (written to `/etc/wireguard/wg-agent0.conf` as `PostUp`/`PreDown`):
+
+```
+PostUp = sysctl -w net.ipv4.ip_forward=1
+PostUp = iptables -A FORWARD -i wg-agent0 -j ACCEPT
+PostUp = iptables -A FORWARD -o wg-agent0 -j ACCEPT
+PostUp = iptables -t nat -A POSTROUTING -s 10.66.66.0/24 -o eth0 -j MASQUERADE
+PreDown = iptables -D FORWARD -i wg-agent0 -j ACCEPT
+PreDown = iptables -D FORWARD -o wg-agent0 -j ACCEPT
+PreDown = iptables -t nat -D POSTROUTING -s 10.66.66.0/24 -o eth0 -j MASQUERADE
+```
+
+**CIDR auto-sync:** When an admin updates an agent's advertised CIDRs via the console, the change is applied server-side immediately (wg0.conf peer `AllowedIPs` updated + `wg syncconf`). On the next heartbeat (within 30 seconds), the agent daemon receives the new CIDRs, calls `iptables` to apply them live, and rewrites `/etc/wireguard/wg-agent0.conf` so they persist after a reboot — no manual intervention required.
+
+**Advertised LAN CIDRs are required** when registering an agent. They cannot be left empty because without them the server has no CIDRs to route to the agent, the agent writes no iptables rules, and LAN access is silently broken.
+
 ### Step 1 — Publish agent binaries on the VPN server (one-time setup)
 
 **Done automatically by `sudo ./wireshield.sh`.** The installer:

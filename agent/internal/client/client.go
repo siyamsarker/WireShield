@@ -126,6 +126,16 @@ type HeartbeatRequest struct {
 	TXBytes      int64  `json:"tx_bytes,omitempty"`
 }
 
+// HeartbeatResponse is the server's reply to a heartbeat. It includes the
+// current advertised_cidrs and lan_interface so the agent can detect config
+// drift and self-reconcile without manual intervention.
+type HeartbeatResponse struct {
+	Success         bool     `json:"success"`
+	AgentID         int64    `json:"agent_id"`
+	AdvertisedCIDRs []string `json:"advertised_cidrs,omitempty"`
+	LANInterface    string   `json:"lan_interface,omitempty"`
+}
+
 // RevocationResponse matches /api/agents/revocation-check.
 type RevocationResponse struct {
 	Revoked bool   `json:"revoked"`
@@ -162,8 +172,14 @@ func (c *Client) Enroll(ctx context.Context, req *EnrollRequest) (*EnrollRespons
 
 // Heartbeat is called on a ticker by the daemon. Authentication uses
 // Authorization: Bearer <heartbeat_secret> issued at enrollment.
-func (c *Client) Heartbeat(ctx context.Context, req *HeartbeatRequest) error {
-	return c.doJSONWithAuth(ctx, http.MethodPost, "/api/agents/heartbeat", req, nil)
+// The response includes the server's current advertised_cidrs so the agent
+// can detect and apply CIDR changes without manual re-enrollment.
+func (c *Client) Heartbeat(ctx context.Context, req *HeartbeatRequest) (*HeartbeatResponse, error) {
+	var resp HeartbeatResponse
+	if err := c.doJSONWithAuth(ctx, http.MethodPost, "/api/agents/heartbeat", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // RevocationCheck polls whether the agent has been revoked. On a true

@@ -140,6 +140,11 @@ func runEnroll(args []string) error {
 		WGInterface:     config.DefaultWGIface,
 		WGConfPath:      wgConfPath,
 		TLSInsecure:     *tlsInsecure,
+		ServerPublicKey: resp.ServerPublicKey,
+		PresharedKey:    resp.PresharedKey,
+		ServerEndpoint:  resp.ServerEndpoint,
+		AgentAllowedIPs: resp.AgentAllowedIPs,
+		LANInterface:    lan,
 	}
 	if err := config.Save(p, cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)

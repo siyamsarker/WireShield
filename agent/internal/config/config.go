@@ -39,6 +39,13 @@ type Config struct {
 	WGInterface     string   `json:"wg_interface"`
 	WGConfPath      string   `json:"wg_conf_path"`
 	TLSInsecure     bool     `json:"tls_insecure,omitempty"`
+	// Fields needed to rebuild wg-agent0.conf when advertised CIDRs change.
+	// Stored at enrollment; updated by the daemon on CIDR reconciliation.
+	ServerPublicKey string `json:"server_public_key,omitempty"`
+	PresharedKey    string `json:"preshared_key,omitempty"`
+	ServerEndpoint  string `json:"server_endpoint,omitempty"`
+	AgentAllowedIPs string `json:"agent_allowed_ips,omitempty"`
+	LANInterface    string `json:"lan_interface,omitempty"`
 }
 
 // Paths returns absolute paths for the files under Dir.

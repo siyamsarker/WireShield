@@ -164,17 +164,22 @@ async def heartbeat_endpoint(body: AgentHeartbeatRequest, request: Request):
         raise HTTPException(status_code=403, detail="Agent authentication failed")
     raw_token = auth[len("Bearer "):]
     source_ip = request.client.host if request and request.client else "unknown"
-    agent_id = record_heartbeat(
+    result = record_heartbeat(
         auth_token=raw_token,
         source_ip=source_ip,
         agent_version=body.agent_version,
         rx_bytes=body.rx_bytes,
         tx_bytes=body.tx_bytes,
     )
-    if agent_id is None:
+    if result is None:
         raise HTTPException(status_code=403, detail="Agent authentication failed")
 
-    return {"success": True, "agent_id": agent_id}
+    return {
+        "success": True,
+        "agent_id": result["agent_id"],
+        "advertised_cidrs": result["advertised_cidrs"],
+        "lan_interface": result["lan_interface"],
+    }
 
 
 @router.get("/api/agents/revocation-check", tags=["agent"])

@@ -378,9 +378,13 @@
             .map(s => s.trim())
             .filter(Boolean);
 
-        const body = { name };
+        if (advertised_cidrs.length === 0) {
+            _showCreateAgentError('Advertised LAN CIDRs is required. Enter at least one CIDR (e.g. 192.168.1.0/24).');
+            return;
+        }
+
+        const body = { name, advertised_cidrs };
         if (description) body.description = description;
-        if (advertised_cidrs.length > 0) body.advertised_cidrs = advertised_cidrs;
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Generating…';

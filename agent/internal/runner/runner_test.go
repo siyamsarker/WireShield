@@ -23,11 +23,14 @@ type fakeClient struct {
 	revocationErr   error
 }
 
-func (f *fakeClient) Heartbeat(ctx context.Context, req *client.HeartbeatRequest) error {
+func (f *fakeClient) Heartbeat(ctx context.Context, req *client.HeartbeatRequest) (*client.HeartbeatResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.heartbeats = append(f.heartbeats, *req)
-	return f.heartbeatErr
+	if f.heartbeatErr != nil {
+		return nil, f.heartbeatErr
+	}
+	return &client.HeartbeatResponse{Success: true}, nil
 }
 
 func (f *fakeClient) RevocationCheck(ctx context.Context) (*client.RevocationResponse, error) {

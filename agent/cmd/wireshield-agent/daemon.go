@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
 	"syscall"
 	"time"
 
@@ -79,6 +80,49 @@ func runDaemon(args []string) error {
 		}
 	}
 
+	opts.OnCIDRChange = func(cidrs []string, lanIface string) {
+		effectiveLAN := lanIface
+		if effectiveLAN == "" {
+			effectiveLAN = cfg.LANInterface
+		}
+		if cidrSlicesEqual(cidrs, cfg.AdvertisedCIDRs) && effectiveLAN == cfg.LANInterface {
+			return
+		}
+		logx.Info("CIDR update from server: %v → %v (lan=%s)", cfg.AdvertisedCIDRs, cidrs, effectiveLAN)
+
+		// Apply iptables rules immediately so traffic flows without a restart.
+		if effectiveLAN != "" && len(cidrs) > 0 {
+			wg.ReconcileForwarding(cfg.WGInterface, cfg.AgentAllowedIPs, effectiveLAN)
+		}
+
+		// Rebuild and persist wg-agent0.conf so PostUp rules survive reboots.
+		if cfg.ServerPublicKey != "" && cfg.AgentAllowedIPs != "" {
+			if privKey, err := config.LoadPrivateKey(p); err == nil {
+				cfgBody, err := wg.BuildAgentConfig(&wg.AgentConfigInput{
+					PrivateKey:      privKey,
+					WGIPv4:          cfg.WGIPv4,
+					ServerPublicKey: cfg.ServerPublicKey,
+					PresharedKey:    cfg.PresharedKey,
+					ServerEndpoint:  cfg.ServerEndpoint,
+					AgentAllowedIPs: cfg.AgentAllowedIPs,
+					LANInterface:    effectiveLAN,
+					AdvertisedCIDRs: cidrs,
+				})
+				if err == nil {
+					if werr := wg.WriteConfigAtomic(cfg.WGConfPath, cfgBody); werr != nil {
+						logx.Warn("CIDR reconcile: update wg conf: %v", werr)
+					}
+				}
+			}
+		}
+
+		cfg.AdvertisedCIDRs = cidrs
+		cfg.LANInterface = effectiveLAN
+		if serr := config.Save(p, cfg); serr != nil {
+			logx.Warn("CIDR reconcile: save config: %v", serr)
+		}
+	}
+
 	ctx, cancel := signalContext()
 	defer cancel()
 
@@ -128,4 +172,22 @@ func (w *wgReader) Read() (int64, int64, error) {
 		return 0, 0, err
 	}
 	return stats.RXBytes, stats.TXBytes, nil
+}
+
+// cidrSlicesEqual returns true if a and b contain the same elements
+// (order-independent). Used to detect CIDR drift from the server heartbeat.
+func cidrSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	ac := append([]string(nil), a...)
+	bc := append([]string(nil), b...)
+	sort.Strings(ac)
+	sort.Strings(bc)
+	for i := range ac {
+		if ac[i] != bc[i] {
+			return false
+		}
+	}
+	return true
 }

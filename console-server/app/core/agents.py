@@ -458,6 +458,8 @@ def create_agent(name: str, description: Optional[str],
     """
     validate_agent_name(name)
     cidrs = validate_cidrs(advertised_cidrs)
+    if not cidrs:
+        raise ValueError("advertised_cidrs is required — specify at least one LAN CIDR (e.g. 192.168.1.0/24)")
     psk = _generate_psk()
 
     conn = get_db()
@@ -672,21 +674,27 @@ def update_agent_cidrs(agent_id: int, new_cidrs: List[str]) -> bool:
 
 
 def record_heartbeat(auth_token: str, source_ip: str, agent_version: Optional[str],
-                     rx_bytes: Optional[int], tx_bytes: Optional[int]) -> Optional[int]:
+                     rx_bytes: Optional[int], tx_bytes: Optional[int]) -> Optional[Dict[str, Any]]:
     """Record a heartbeat authenticated by bearer token.
-    Returns the agent_id on success, None if no enrolled agent matches."""
+    Returns a dict with agent_id, advertised_cidrs, lan_interface on success,
+    None if no enrolled agent matches."""
     token_hash = hashlib.sha256(auth_token.encode()).hexdigest()
     conn = get_db()
     try:
         c = conn.cursor()
         c.execute(
-            "SELECT id FROM agents WHERE heartbeat_secret_hash = ? AND status = 'enrolled'",
+            "SELECT id, advertised_cidrs, lan_interface FROM agents "
+            "WHERE heartbeat_secret_hash = ? AND status = 'enrolled'",
             (token_hash,),
         )
         row = c.fetchone()
         if not row:
             return None
         agent_id = int(row["id"])
+        try:
+            cidrs = json.loads(row["advertised_cidrs"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            cidrs = []
 
         c.execute(
             "UPDATE agents SET "
@@ -702,7 +710,11 @@ def record_heartbeat(auth_token: str, source_ip: str, agent_version: Optional[st
             (agent_id, agent_version, rx_bytes, tx_bytes),
         )
         conn.commit()
-        return agent_id
+        return {
+            "agent_id": agent_id,
+            "advertised_cidrs": cidrs,
+            "lan_interface": row["lan_interface"] or "",
+        }
     finally:
         conn.close()
 

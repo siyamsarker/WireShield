@@ -31,6 +31,7 @@ type Options struct {
 	MaxBackoff         time.Duration // clamp for network-error retry backoff
 	AgentVersion       string
 	AutoUpdateInterval time.Duration
+	OnCIDRChange        func(cidrs []string, lanIface string) // called on each successful heartbeat; nil = disabled
 	UpdateCheck        func(ctx context.Context) (upgraded bool, err error)
 }
 
@@ -55,7 +56,7 @@ type TransferReader interface {
 // HeartbeatClient is the subset of *client.Client that runner needs. Keeps
 // the interface small so tests can stub it.
 type HeartbeatClient interface {
-	Heartbeat(ctx context.Context, req *client.HeartbeatRequest) error
+	Heartbeat(ctx context.Context, req *client.HeartbeatRequest) (*client.HeartbeatResponse, error)
 	RevocationCheck(ctx context.Context) (*client.RevocationResponse, error)
 }
 
@@ -131,7 +132,8 @@ func Run(ctx context.Context, c HeartbeatClient, r TransferReader, opts Options)
 			updateTimer.Reset(opts.AutoUpdateInterval)
 
 		case <-hbTimer.C:
-			if err := sendHeartbeat(ctx, c, r, opts.AgentVersion); err != nil {
+			hbResp, err := sendHeartbeat(ctx, c, r, opts.AgentVersion)
+			if err != nil {
 				consecutiveHBFailures++
 				delay := backoff(consecutiveHBFailures, opts.HeartbeatInterval, opts.MaxBackoff)
 				if client.Retryable(err) {
@@ -152,6 +154,9 @@ func Run(ctx context.Context, c HeartbeatClient, r TransferReader, opts Options)
 			} else {
 				consecutiveHBFailures = 0
 				consecutiveNonRetryableHB = 0
+				if opts.OnCIDRChange != nil && hbResp != nil {
+					opts.OnCIDRChange(hbResp.AdvertisedCIDRs, hbResp.LANInterface)
+				}
 				hbTimer.Reset(opts.HeartbeatInterval)
 			}
 
@@ -170,7 +175,7 @@ func Run(ctx context.Context, c HeartbeatClient, r TransferReader, opts Options)
 	}
 }
 
-func sendHeartbeat(ctx context.Context, c HeartbeatClient, r TransferReader, version string) error {
+func sendHeartbeat(ctx context.Context, c HeartbeatClient, r TransferReader, version string) (*client.HeartbeatResponse, error) {
 	req := &client.HeartbeatRequest{AgentVersion: version}
 	if r != nil {
 		rx, tx, err := r.Read()

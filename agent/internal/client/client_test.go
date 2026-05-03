@@ -85,7 +85,7 @@ func TestHeartbeat5xxIsRetryable(t *testing.T) {
 	defer srv.Close()
 
 	c, _ := New(srv.URL, "t", "", false)
-	err := c.Heartbeat(context.Background(), &HeartbeatRequest{})
+	_, err := c.Heartbeat(context.Background(), &HeartbeatRequest{})
 	if err == nil {
 		t.Fatal("expected error on 502")
 	}
