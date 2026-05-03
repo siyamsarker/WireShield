@@ -106,10 +106,14 @@ func BuildAgentConfig(in *AgentConfigInput) (string, error) {
 
 	if in.LANInterface != "" && len(in.AdvertisedCIDRs) > 0 {
 		b.WriteString("PostUp = sysctl -w net.ipv4.ip_forward=1\n")
+		b.WriteString("PostUp = iptables -A FORWARD -i %i -j ACCEPT\n")
+		b.WriteString("PostUp = iptables -A FORWARD -o %i -j ACCEPT\n")
 		fmt.Fprintf(&b,
 			"PostUp = iptables -t nat -A POSTROUTING -s %s -o %s -j MASQUERADE\n",
 			in.AgentAllowedIPs, in.LANInterface,
 		)
+		b.WriteString("PreDown = iptables -D FORWARD -i %i -j ACCEPT\n")
+		b.WriteString("PreDown = iptables -D FORWARD -o %i -j ACCEPT\n")
 		fmt.Fprintf(&b,
 			"PreDown = iptables -t nat -D POSTROUTING -s %s -o %s -j MASQUERADE\n",
 			in.AgentAllowedIPs, in.LANInterface,
