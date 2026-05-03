@@ -390,4 +390,34 @@ document.addEventListener('DOMContentLoaded', function() {
             if (el && el.style.display !== 'none') { fn(); break; }
         }
     });
+
+    // ── WireGuard sidebar status (dynamic) ───────────────────────────────
+    (function initWgStatus() {
+        const row  = document.getElementById('wg-status-row');
+        const text = document.getElementById('wg-status-text');
+        if (!row || !text) return;
+
+        function applyState(status) {
+            row.classList.remove('wg-down', 'wg-unknown');
+            if (status === 'up') {
+                text.textContent = 'WireGuard Active';
+            } else if (status === 'down') {
+                row.classList.add('wg-down');
+                text.textContent = 'WireGuard Down';
+            } else {
+                row.classList.add('wg-unknown');
+                text.textContent = status === 'missing' ? 'WireGuard Missing' : 'WireGuard Error';
+            }
+        }
+
+        function poll() {
+            fetch('/api/health', { credentials: 'same-origin' })
+                .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                .then(d => applyState((d.wireguard || {}).status || 'error'))
+                .catch(() => applyState('error'));
+        }
+
+        poll();
+        setInterval(poll, 30000);
+    })();
 });

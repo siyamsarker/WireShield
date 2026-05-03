@@ -239,6 +239,30 @@ nav {
     letter-spacing: 0.01em;
 }
 
+/* WireGuard status — down */
+#wg-status-row.wg-down {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.18);
+}
+#wg-status-row.wg-down #wg-status-dot {
+    background: #ef4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
+    animation: none;
+}
+#wg-status-row.wg-down #wg-status-text { color: #f87171; }
+
+/* WireGuard status — unknown / error */
+#wg-status-row.wg-unknown {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.18);
+}
+#wg-status-row.wg-unknown #wg-status-dot {
+    background: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+    animation: none;
+}
+#wg-status-row.wg-unknown #wg-status-text { color: #fbbf24; }
+
 /* ── Main content ────────────────────────────────────────────── */
 main {
     flex: 1;
