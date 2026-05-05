@@ -411,7 +411,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         function poll() {
-            fetch('/api/health', { credentials: 'same-origin' })
+            fetch('/health', { credentials: 'same-origin' })
                 .then(r => r.ok ? r.json() : Promise.reject(r.status))
                 .then(d => applyState((d.wireguard || {}).status || 'error'))
                 .catch(() => applyState('error'));
