@@ -428,26 +428,46 @@ def replace_agent_peer_allowed_ips(name: str, pubkey: str,
     return rewrote
 
 
+def _strip_wg_conf(conf_path: str) -> bytes:
+    """Strip wg-quick-specific directives from a WireGuard conf file and
+    return the clean bytes suitable for piping into `wg syncconf`.
+
+    Using Python instead of `wg-quick strip` avoids a dependency on wg-quick
+    being available/working in the subprocess environment and eliminates the
+    most common reason wg_syncconf fails on production systems."""
+    WG_QUICK_KEYS = {
+        "postup", "preup", "postdown", "predown",
+        "dns", "table", "mtu", "saveconfig",
+    }
+    out: List[str] = []
+    with open(conf_path, "r") as f:
+        for line in f:
+            key = line.split("=", 1)[0].strip().lower()
+            if key not in WG_QUICK_KEYS:
+                out.append(line)
+    return "".join(out).encode()
+
+
 def wg_syncconf() -> None:
-    """Live-apply wg0.conf without bouncing the interface.
-    Equivalent: wg syncconf <iface> <(wg-quick strip <iface>)
-    Raises RuntimeError on failure so callers can detect and log the problem."""
+    """Live-apply wg0.conf to the running WireGuard interface without
+    bouncing it. Uses Python-based directive stripping instead of
+    `wg-quick strip` so it works even when wg-quick is unavailable.
+    Raises RuntimeError on failure so callers can detect and log it."""
     params = _load_wg_params()
     iface = _iface(params)
+    conf_path = _server_conf_path(params)
     try:
-        strip = subprocess.run(
-            ["wg-quick", "strip", iface], capture_output=True, check=True,
-        )
+        stripped = _strip_wg_conf(conf_path)
         subprocess.run(
             ["wg", "syncconf", iface],
-            input=strip.stdout, check=True,
+            input=stripped, check=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         )
         logger.info(f"wg syncconf applied to {iface}")
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"wg syncconf failed: {e.stderr!r}") from e
     except FileNotFoundError:
-        logger.debug("wg/wg-quick not available (likely dev env)")
+        logger.debug("wg not available (likely dev env)")
 
 
 def reconcile_wg_peers() -> int:
@@ -752,7 +772,13 @@ def revoke_agent(agent_id: int) -> bool:
 
     removed = remove_agent_peer(name)
     if removed:
-        wg_syncconf()
+        try:
+            wg_syncconf()
+        except RuntimeError as exc:
+            logger.error(
+                f"revoke_agent: wg_syncconf failed for agent "
+                f"id={agent_id} — peer removed from conf, reconciler will sync: {exc}"
+            )
     logger.info(f"Revoked agent id={agent_id} name={name!r} (peer removed={removed})")
     return True
 
@@ -781,7 +807,15 @@ def update_agent_cidrs(agent_id: int, new_cidrs: List[str]) -> bool:
         agent["name"], agent["public_key"], agent["wg_ipv4"], cidrs
     )
     if ok:
-        wg_syncconf()
+        try:
+            wg_syncconf()
+        except RuntimeError as exc:
+            # wg0.conf is already correct; the reconciler will sync the
+            # running interface within 60 s. Log as error for ops visibility.
+            logger.error(
+                f"update_agent_cidrs: wg_syncconf failed for agent "
+                f"id={agent_id} — conf updated, reconciler will apply: {exc}"
+            )
     logger.info(f"Updated agent id={agent_id} CIDRs to {cidrs}")
     return True
 
