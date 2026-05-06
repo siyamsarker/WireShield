@@ -159,13 +159,18 @@ func runDaemon(args []string) error {
 }
 
 // signalContext returns a context that is cancelled on SIGTERM or SIGINT.
+// The goroutine keeps draining signals so that an impatient operator (or
+// systemd's TimeoutStopSec) sending a second SIGTERM does not fall through
+// to Go's default handler, which would kill the process before the runner
+// can flush state.
 func signalContext() (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
-	sig := make(chan os.Signal, 1)
+	sig := make(chan os.Signal, 2)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
-		<-sig
-		cancel()
+		for range sig {
+			cancel()
+		}
 	}()
 	return ctx, cancel
 }

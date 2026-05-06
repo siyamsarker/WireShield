@@ -222,9 +222,12 @@ func sha256OfFile(path string) (string, error) {
 // rename so an in-flight read on the running binary is unaffected
 // (Linux unlinks-on-close).
 func atomicReplace(srcTmp, dest string) error {
-	srcInfo, err := os.Stat(srcTmp)
-	if err != nil {
-		return err
+	// Preserve the existing binary's mode (0755 in the systemd-installed
+	// layout). srcTmp comes from os.CreateTemp which is 0600 — using its
+	// mode would strip the execute bit and brick the next systemd start.
+	mode := os.FileMode(0o755)
+	if destInfo, err := os.Stat(dest); err == nil {
+		mode = destInfo.Mode().Perm()
 	}
 	destDir := filepath.Dir(dest)
 	stage, err := os.CreateTemp(destDir, ".wireshield-agent-stage-*")
@@ -241,7 +244,7 @@ func atomicReplace(srcTmp, dest string) error {
 			os.Remove(stagePath)
 			return err
 		}
-		if err := os.Chmod(stagePath, srcInfo.Mode().Perm()); err != nil {
+		if err := os.Chmod(stagePath, mode); err != nil {
 			os.Remove(stagePath)
 			return err
 		}
@@ -257,7 +260,7 @@ func atomicReplace(srcTmp, dest string) error {
 	if err := os.Rename(srcTmp, dest); err != nil {
 		return err
 	}
-	return os.Chmod(dest, srcInfo.Mode().Perm())
+	return os.Chmod(dest, mode)
 }
 
 func copyFile(src, dst string) error {

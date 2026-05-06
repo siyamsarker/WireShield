@@ -308,7 +308,7 @@ function loadRecentEvents(events) {
 
     function statusPill(s) {
         const cls = getStatusClass(s);
-        return `<span class="status-pill ${cls}">${s}</span>`;
+        return `<span class="status-pill ${_usersEscape(cls)}">${_usersEscape(s)}</span>`;
     }
 
     function fmtTime(ts) {
@@ -321,11 +321,11 @@ function loadRecentEvents(events) {
 
     tbody.innerHTML = events.map(ev => `
         <tr>
-            <td style="color:var(--text-muted);font-size:12px;">${fmtTime(ev.timestamp)}</td>
-            <td style="font-weight:600;">${ev.client_id || 'System'}</td>
-            <td><span class="action-chip">${ev.action}</span></td>
+            <td style="color:var(--text-muted);font-size:12px;">${_usersEscape(fmtTime(ev.timestamp))}</td>
+            <td style="font-weight:600;">${_usersEscape(ev.client_id || 'System')}</td>
+            <td><span class="action-chip">${_usersEscape(ev.action)}</span></td>
             <td>${statusPill(ev.outcome || ev.status)}</td>
-            <td><span class="ip-text">${ev.ip_address}</span></td>
+            <td><span class="ip-text">${_usersEscape(ev.ip_address)}</span></td>
         </tr>
     `).join('');
 }

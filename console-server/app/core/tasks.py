@@ -55,26 +55,56 @@ def _ensure_wg_interface() -> str:
     return params.get("SERVER_WG_NIC") or "wg0"
 
 def _sync_ipsets_from_sessions():
-    """Periodically remove clients without any active session from ipsets."""
+    """Periodically remove clients without any active session from ipsets.
+
+    Diffs against the actual ipset membership (`ipset list -q`) before
+    issuing deletes — without this each cycle forks N×2 `ipset del` calls
+    for users that were never in the set, costing seconds of CPU at fleet
+    scale and contending for ipset's internal lock.
+    """
+    def _ipset_members(name: str) -> set:
+        try:
+            out = subprocess.run(
+                ["ipset", "list", "-q", name],
+                capture_output=True, text=True, timeout=10,
+            )
+            if out.returncode != 0:
+                return set()
+            members = set()
+            in_members = False
+            for line in out.stdout.splitlines():
+                if line.startswith("Members:"):
+                    in_members = True
+                    continue
+                if in_members:
+                    addr = line.strip().split()[0] if line.strip() else ""
+                    if addr:
+                        members.add(addr)
+            return members
+        except Exception:
+            return set()
+
     while True:
         try:
             conn = get_db()
             c = conn.cursor()
-            # Active clients: with any non-expired session
             c.execute("SELECT DISTINCT client_id FROM sessions WHERE expires_at > datetime('now')")
             active = set(row[0] for row in c.fetchall())
-            # All users
             c.execute("SELECT client_id, wg_ipv4, wg_ipv6 FROM users")
             users = c.fetchall()
             conn.close()
             ensure_ipsets()
-            # Remove non-active clients from ipsets
+
+            members_v4 = _ipset_members("ws_2fa_allowed_v4")
+            members_v6 = _ipset_members("ws_2fa_allowed_v6")
+
             for client_id, v4, v6 in users:
-                if client_id not in active:
-                    if v4:
-                        _ipset(["ipset", "del", "ws_2fa_allowed_v4", v4])
-                    if v6:
-                        _ipset(["ipset", "del", "ws_2fa_allowed_v6", v6])
+                if client_id in active:
+                    continue
+                if v4 and v4 in members_v4:
+                    _ipset(["ipset", "del", "ws_2fa_allowed_v4", v4])
+                if v6 and v6 in members_v6:
+                    _ipset(["ipset", "del", "ws_2fa_allowed_v6", v6])
         except Exception as e:
             logger.debug(f"ipset sync error: {e}")
         finally:
@@ -349,7 +379,11 @@ def _ingest_activity_logs():
 
             cmd = [journalctl, "-k", "-n", "5000", "--output=short-iso", "--no-pager"]
             if last_ts:
-                cmd.extend(["--since", last_ts])
+                # last_ts is stored UTC ("YYYY-MM-DD HH:MM:SS"). journalctl
+                # interprets bare timestamps as system-local, so on a non-UTC
+                # host the window is wrong and we either re-ingest or skip
+                # log lines. Pin the window to UTC explicitly.
+                cmd.extend(["--since", f"{last_ts} UTC"])
 
             proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
             lines = proc.stdout.strip().splitlines() if proc.stdout else []

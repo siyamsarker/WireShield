@@ -350,22 +350,40 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
         # --- 2FA Statistics (Last 24 hours) ---
         yesterday = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
         
+        # auth.py emits action='2FA_VERIFY' / '2FA_SETUP_VERIFY' with status='success'
+        # for happy path, and 'invalid_code' / 'replay_detected' / 'ip_mismatch' /
+        # 'user_not_initialized' / 'user_not_found' / 'error_*' for failures.
+        # The previous query (action='TOTP_VERIFY', status='failed') matched zero rows.
         c.execute("""
-            SELECT COUNT(*) FROM audit_log 
-            WHERE action = 'TOTP_VERIFY' AND status = 'success' AND timestamp >= ?
+            SELECT COUNT(*) FROM audit_log
+            WHERE action IN ('2FA_VERIFY', '2FA_SETUP_VERIFY')
+              AND status = 'success' AND timestamp >= ?
         """, (yesterday,))
         successful_2fa = c.fetchone()[0]
-        
+
         c.execute("""
-            SELECT COUNT(*) FROM audit_log 
-            WHERE action = 'TOTP_VERIFY' AND status = 'failed' AND timestamp >= ?
+            SELECT COUNT(*) FROM audit_log
+            WHERE action IN ('2FA_VERIFY', '2FA_SETUP_VERIFY')
+              AND status NOT IN ('success', 'qr_generated')
+              AND timestamp >= ?
         """, (yesterday,))
         failed_2fa = c.fetchone()[0]
         
         # --- Security Alerts (Failed attempts in last 24h) ---
+        # Captures real failure markers: explicit denials, invalid/replayed
+        # 2FA codes, IP-mismatch attempts, expired sessions, and any error_*.
         c.execute("""
-            SELECT COUNT(*) FROM audit_log 
-            WHERE status IN ('failed', 'denied') AND timestamp >= ?
+            SELECT COUNT(*) FROM audit_log
+            WHERE timestamp >= ?
+              AND (
+                  status IN (
+                      'denied', 'denied_no_session', 'invalid_code',
+                      'replay_detected', 'ip_mismatch', 'invalid_or_expired',
+                      'user_not_found', 'user_not_initialized'
+                  )
+                  OR status LIKE 'error_%'
+                  OR status LIKE 'rejected:%'
+              )
         """, (yesterday,))
         failed_attempts_24h = c.fetchone()[0]
         

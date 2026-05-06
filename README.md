@@ -6,14 +6,16 @@
 
 **Zero-trust WireGuard VPN with pre-connection two-factor authentication**
 
+[![Version](https://img.shields.io/badge/Version-3.0.0-2ea44f.svg)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776ab.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688.svg)](https://fastapi.tiangolo.com/)
+[![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev/)
 
 WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authentication at the connection layer. Every client must verify through a captive portal before any traffic is allowed through the tunnel. A built-in agent system lets remote Linux servers register as WireGuard peers — authenticated VPN clients can then route traffic to private LANs on those servers with no extra client-side configuration.
 
-[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Configuration](#configuration) &bull; [Usage](#usage) &bull; [Agents](#agents) &bull; [Troubleshooting](#troubleshooting) &bull; [Contributing](#contributing)
+[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Architecture](#architecture) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Configuration](#configuration) &bull; [Usage](#usage) &bull; [Agents](#agents) &bull; [Security Model](#security-model) &bull; [Troubleshooting](#troubleshooting) &bull; [Uninstall](#uninstall) &bull; [Contributing](#contributing)
 
 </div>
 
@@ -274,9 +276,10 @@ Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client ca
 ├── auth.db                   # SQLite database (users, sessions, agents, heartbeats, audit)
 ├── cert.pem                  # SSL certificate
 ├── key.pem                   # SSL private key
-├── app/                      # FastAPI application
-├── templates/                # Jinja2 HTML templates
+├── app/                      # FastAPI application (routers, core, templates module)
 ├── static/                   # CSS, JS, fonts
+├── run.py                    # ASGI entrypoint
+├── requirements.txt          # Python dependencies (installed into .venv on install)
 └── .venv/                    # Python virtual environment
 
 /etc/wireshield/clients/       # Generated VPN client .conf files (mode 0700/0600)
@@ -290,8 +293,9 @@ Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client ca
 └── version.json                        # Auto-update manifest
 
 /etc/systemd/system/
-├── wireshield.service        # 2FA + admin console service unit
-└── wireshield-2fa-renew.timer  # Let's Encrypt renewal timer (if applicable)
+├── wireshield.service             # 2FA + admin console service unit
+├── wireshield-2fa-renew.service   # Let's Encrypt renewal worker (if applicable)
+└── wireshield-2fa-renew.timer     # Let's Encrypt renewal timer (if applicable)
 ```
 
 ---
@@ -781,13 +785,12 @@ A SHA-256 mismatch *never* replaces the binary — the daemon logs and continues
 
 ### End-to-End cURL Walkthrough
 
-Replace `VPN_HOST`, `COOKIE`, and the agent ID as appropriate. The admin requests require an active 2FA session cookie from `/console`.
+Replace `VPN_HOST` and the agent ID as appropriate. The admin endpoints under `/api/console/*` authenticate by **source IP**: the request must originate from the WireGuard tunnel IP of a user with `console_access=1` and a live 2FA session. There is no cookie or bearer header — bring the tunnel up first, complete 2FA at `/`, then run these commands from the same host.
 
-**1. Admin registers a new agent**
+**1. Admin registers a new agent** (run from the WG-connected admin host)
 
 ```bash
 curl -sS -X POST https://VPN_HOST/api/console/agents \
-  -H "Cookie: session=$COOKIE" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "branch-office-01",
@@ -803,7 +806,7 @@ Response (token is returned **once**):
   "agent": { "id": 1, "name": "branch-office-01", "status": "pending", ... },
   "enrollment_token": "RgV9...truncated...Ks",
   "expires_at": "2026-04-23T17:36:00Z",
-  "install_command": "curl -sSL https://VPN_HOST/api/agents/install | TOKEN=RgV9...Ks WIRESHIELD_SERVER=https://VPN_HOST bash"
+  "install_command": "curl -ksSL https://VPN_HOST/api/agents/install-go | sudo TOKEN=RgV9...Ks WIRESHIELD_SERVER=https://VPN_HOST bash"
 }
 ```
 
@@ -825,7 +828,6 @@ Authentication is implicit: this call only succeeds through the WireGuard tunnel
 
 ```bash
 curl -sS -X PATCH https://VPN_HOST/api/console/agents/1 \
-  -H "Cookie: session=$COOKIE" \
   -H "Content-Type: application/json" \
   -d '{"advertised_cidrs":["10.50.0.0/24","10.50.1.0/24"]}'
 ```
@@ -835,8 +837,7 @@ The server rewrites the peer's `AllowedIPs` in `wg0.conf` and live-reloads WireG
 **5. Admin revokes an agent**
 
 ```bash
-curl -sS -X DELETE https://VPN_HOST/api/console/agents/1 \
-  -H "Cookie: session=$COOKIE"
+curl -sS -X DELETE https://VPN_HOST/api/console/agents/1
 ```
 
 The WG peer block is removed, the DB row is marked `revoked`, and the next `/api/agents/revocation-check` poll causes the agent to self-disable its local `wg-agent0` unit.
@@ -855,7 +856,8 @@ The WG peer block is removed, the DB row is marked `revoked`, and the next `/api
 
 | Path | Purpose |
 |------|---------|
-| `/usr/local/bin/wireshield-agent` | Statically-linked Go binary (subcommands: `enroll`, `run`, `status`, `revoke`, `update`, `version`) |
+| `/usr/local/bin/wireshield-agent` | Statically-linked Go binary (subcommands: `enroll`, `run`, `status`, `revoke`, `uninstall`, `update`, `version`) |
+| `/etc/wireshield-agent/heartbeat.secret` | Bearer secret signed at enrollment (mode 0600) |
 | `/etc/wireshield-agent/private.key` | Agent WG private key (mode 0600) |
 | `/etc/wireshield-agent/config.json` | Agent identity: server URL, agent ID, WG address, advertised CIDRs (mode 0600) |
 | `/etc/wireguard/wg-agent0.conf` | WG interface config with `PostUp` MASQUERADE for the advertised LAN (mode 0600) |
@@ -893,7 +895,9 @@ Operator subcommands on the agent host:
 |---------|--------|
 | `wireshield-agent status` | Print current enrollment + WG interface state |
 | `wireshield-agent run` | Long-running heartbeat daemon (invoked by systemd; rarely run by hand) |
-| `wireshield-agent revoke` | Local teardown: stop `wg-quick@wg-agent0`, remove config, delete keys |
+| `wireshield-agent revoke` | Config-only teardown: stop `wg-quick@wg-agent0`, remove `/etc/wireshield-agent/`, leave the binary in place |
+| `wireshield-agent uninstall` | Full removal: revoke + delete the systemd unit and `/usr/local/bin/wireshield-agent` (use `--keep-binary` to retain the binary) |
+| `wireshield-agent update` | One-shot self-upgrade against the server's `version.json` manifest |
 | `wireshield-agent version` | Print the agent version |
 
 ### Legacy Installer Compatibility
@@ -1167,6 +1171,36 @@ curl -sk https://<your-server>/api/agents/version | jq
 ```
 
 Ensure the operator has run `make -C agent dist && make -C agent install` and that `WS_AGENT_BINARY_DIR` points to the directory containing the built binaries.
+
+---
+
+## Uninstall
+
+### Server (VPN host)
+
+Run the installer with the `uninstall` action — option **13** in the interactive menu — or invoke it non-interactively:
+
+```bash
+sudo ./wireshield.sh uninstall
+```
+
+What it removes:
+
+- WireGuard interface (`wg0`) and `/etc/wireguard/wg0.conf`
+- `/etc/wireshield/` (2FA service, audit DB, client configs, agent binaries)
+- `wireshield.service`, `wireshield-2fa-renew.{service,timer}`
+- `WS_AGENT_ACL` and 2FA iptables chains, `ws_2fa_allowed_v4` / `ws_2fa_allowed_v6` ipsets
+- The `/etc/wireguard/params` parameter file
+
+You will be prompted before destructive steps. Existing VPN clients lose connectivity immediately; re-issue them new configs after a fresh install.
+
+### Agent (remote host)
+
+```bash
+sudo wireshield-agent uninstall
+```
+
+Removes the systemd unit, `/etc/wireshield-agent/`, `/etc/wireguard/wg-agent0.conf`, the WG interface, and the binary at `/usr/local/bin/wireshield-agent`. Pass `--keep-binary` to leave the binary in place. The server-side agent record is **not** automatically marked revoked; revoke it from the admin console afterwards if you want it cleared.
 
 ---
 

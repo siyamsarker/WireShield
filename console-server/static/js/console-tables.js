@@ -503,24 +503,27 @@ function displayAuditLogs(logs) {
 
     tbody.innerHTML = logs.map(log => {
         const statusClass = getStatusClass(log.status);
+        const ts = _usersEscape(new Date(log.timestamp).toLocaleString());
+        const cid = _usersEscape(log.client_id || 'System');
+        const action = _usersEscape(log.action);
+        const status = _usersEscape(log.status);
+        const ip = _usersEscape(log.ip_address);
         return `
             <tr>
                 <td>
-                    <span style="color: var(--text-muted); font-size: 12px;">
-                        ${new Date(log.timestamp).toLocaleString()}
+                    <span style="color: var(--text-muted); font-size: 12px;">${ts}</span>
+                </td>
+                <td>
+                    <span style="font-weight: 600;">${cid}</span>
+                </td>
+                <td>${action}</td>
+                <td>
+                    <span class="status-pill ${_usersEscape(statusClass)}">
+                        ${status}
                     </span>
                 </td>
                 <td>
-                    <span style="font-weight: 600;">${log.client_id || 'System'}</span>
-                </td>
-                <td>${log.action}</td>
-                <td>
-                    <span class="status-pill ${statusClass}">
-                        ${log.status}
-                    </span>
-                </td>
-                <td>
-                    <span style="font-family: monospace; font-size: 12px;">${log.ip_address}</span>
+                    <span style="font-family: monospace; font-size: 12px;">${ip}</span>
                 </td>
             </tr>
         `;
@@ -557,15 +560,17 @@ function displayActivityLogs(logs) {
 
     tbody.innerHTML = logs.map(log => {
         const isInbound = log.direction === 'in';
+        const ts = _usersEscape(new Date(log.timestamp).toLocaleString());
+        const cid = _usersEscape(log.client_id || 'Unknown');
+        const dirText = _usersEscape(log.direction ? log.direction.toUpperCase() : 'N/A');
+        const details = _usersEscape(log.details);
         return `
             <tr>
                 <td>
-                    <span style="color: var(--text-muted); font-size: 12px;">
-                        ${new Date(log.timestamp).toLocaleString()}
-                    </span>
+                    <span style="color: var(--text-muted); font-size: 12px;">${ts}</span>
                 </td>
                 <td>
-                    <span style="font-weight: 600;">${log.client_id || 'Unknown'}</span>
+                    <span style="font-weight: 600;">${cid}</span>
                 </td>
                 <td>
                     <span class="direction-badge ${isInbound ? 'inbound' : 'outbound'}">
@@ -578,11 +583,11 @@ function displayActivityLogs(logs) {
                                 <path d="M5 10l7-7m0 0l7 7m-7-7v18"/>
                             </svg>
                         `}
-                        ${log.direction ? log.direction.toUpperCase() : 'N/A'}
+                        ${dirText}
                     </span>
                 </td>
                 <td>
-                    <span style="font-family: monospace; font-size: 12px;">${log.details}</span>
+                    <span style="font-family: monospace; font-size: 12px;">${details}</span>
                 </td>
             </tr>
         `;
