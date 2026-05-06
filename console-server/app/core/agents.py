@@ -42,6 +42,7 @@ import hashlib
 import hmac
 import logging
 import subprocess
+import tempfile
 import ipaddress
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple
@@ -452,15 +453,28 @@ def wg_syncconf() -> None:
     """Live-apply wg0.conf to the running WireGuard interface without
     bouncing it. Uses Python-based directive stripping instead of
     `wg-quick strip` so it works even when wg-quick is unavailable.
-    Raises RuntimeError on failure so callers can detect and log it."""
+    Raises RuntimeError on failure so callers can detect and log it.
+
+    `wg syncconf` requires a filename argument (it does not read stdin),
+    so the stripped config is written to a private temp file and passed
+    by path."""
     params = _load_wg_params()
     iface = _iface(params)
     conf_path = _server_conf_path(params)
+    tmp_path = None
     try:
         stripped = _strip_wg_conf(conf_path)
+        # mkstemp returns an fd we own; write atomically and close before
+        # invoking wg so it can read with its own privileges.
+        fd, tmp_path = tempfile.mkstemp(prefix="wg-syncconf-", suffix=".conf")
+        try:
+            os.write(fd, stripped)
+        finally:
+            os.close(fd)
+        os.chmod(tmp_path, 0o600)
         subprocess.run(
-            ["wg", "syncconf", iface],
-            input=stripped, check=True,
+            ["wg", "syncconf", iface, tmp_path],
+            check=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         )
         logger.info(f"wg syncconf applied to {iface}")
@@ -468,6 +482,12 @@ def wg_syncconf() -> None:
         raise RuntimeError(f"wg syncconf failed: {e.stderr!r}") from e
     except FileNotFoundError:
         logger.debug("wg not available (likely dev env)")
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 def reconcile_wg_peers() -> int:
