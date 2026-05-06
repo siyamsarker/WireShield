@@ -46,6 +46,25 @@ BGREEN='\033[1;32m'
 BRED='\033[1;31m'
 BYELLOW='\033[1;33m'
 
+# ── Failure observability ────────────────────────────────────────────────────
+# Enabling `set -E` makes any ERR trap inherited by functions / subshells.
+# We do NOT enable `-e` globally here — this script is large, has been
+# validated in production with the current implicit-error semantics, and a
+# blanket fail-fast change would risk regressions in code paths where the
+# next command rescues a non-zero status. Operators or maintainers who
+# want strict mode in a specific phase can `set -e` locally.
+#
+# The ERR trap is always registered so that *if* strict mode is enabled
+# (here or in a function), failures get a stack frame in stderr instead of
+# silently exiting. With `set -e` off, the trap simply never fires.
+set -E
+_ws_err_trap() {
+  local rc=$?
+  echo "[wireshield] ERROR rc=${rc} at ${BASH_SOURCE[1]:-?}:${BASH_LINENO[0]:-?} (${FUNCNAME[1]:-MAIN}): ${BASH_COMMAND}" >&2
+  return ${rc}
+}
+trap _ws_err_trap ERR
+
 # ── UI Helper Functions ──────────────────────────────────────────────────────
 _ws_ui_success() { echo -e "  ${GREEN}✓${NC} $1"; }
 _ws_ui_error()   { echo -e "  ${RED}✗${NC} $1"; }
@@ -770,8 +789,14 @@ function _ws_install_2fa_service() {
 	
 	# Generate a secure random SECRET_KEY for session security
 	SECRET_KEY=$(openssl rand -base64 32 | tr -d '\n')
-	
-	cat > /etc/wireshield/2fa/config.env << EOF
+
+	# Write config.env under a tightened umask so the file with the secret
+	# key is created at 0600 even if the calling shell has a permissive
+	# umask. Then chmod explicitly to be defensive against any inherited
+	#-x bit from filesystem defaults.
+	(
+	  umask 077
+	  cat > /etc/wireshield/2fa/config.env << EOF
 # WireShield 2FA Configuration
 # Generated during installation
 # Use only WS_* prefixed names (systemd EnvironmentFile cannot parse 2FA_* or names starting with numbers)
@@ -790,6 +815,8 @@ WS_2FA_SSL_TYPE=none
 WS_2FA_DOMAIN=
 WS_HOSTNAME_2FA=${SERVER_WG_IPV4}
 EOF
+	)
+	chmod 600 /etc/wireshield/2fa/config.env
 	
 	# Ensure Python3, pip and venv are available (install even if python3 already exists)
 	_ws_ui_info "Ensuring Python3 pip/venv are installed..."
@@ -1133,25 +1160,42 @@ function installWireGuard() {
 	SERVER_PRIV_KEY=$(wg genkey)
 	SERVER_PUB_KEY=$(echo "${SERVER_PRIV_KEY}" | wg pubkey)
 
-	# Persist installation parameters for later operations (add/revoke clients)
-	echo "SERVER_PUB_IP=${SERVER_PUB_IP}
-	SERVER_PUB_NIC=${SERVER_PUB_NIC}
-	SERVER_LOCAL_IPV4=${SERVER_LOCAL_IPV4}
-SERVER_WG_NIC=${SERVER_WG_NIC}
-SERVER_WG_IPV4=${SERVER_WG_IPV4}
-SERVER_WG_IPV6=${SERVER_WG_IPV6}
-SERVER_PORT=${SERVER_PORT}
-SERVER_PRIV_KEY=${SERVER_PRIV_KEY}
-SERVER_PUB_KEY=${SERVER_PUB_KEY}
-CLIENT_DNS_1=${CLIENT_DNS_1}
-CLIENT_DNS_2=${CLIENT_DNS_2}
-ALLOWED_IPS=${ALLOWED_IPS}" >/etc/wireguard/params
+	# Persist installation parameters for later operations (add/revoke clients).
+	# Tighten the umask first so the heredoc inherits 0600 — without this the
+	# params file (which holds SERVER_PRIV_KEY) would be created with the
+	# calling shell's umask and become world-readable. Restore the umask
+	# immediately afterwards so unrelated files keep their normal modes.
+	(
+	  umask 077
+	  cat >/etc/wireguard/params <<- WG_PARAMS_EOF
+		SERVER_PUB_IP=${SERVER_PUB_IP}
+		SERVER_PUB_NIC=${SERVER_PUB_NIC}
+		SERVER_LOCAL_IPV4=${SERVER_LOCAL_IPV4}
+		SERVER_WG_NIC=${SERVER_WG_NIC}
+		SERVER_WG_IPV4=${SERVER_WG_IPV4}
+		SERVER_WG_IPV6=${SERVER_WG_IPV6}
+		SERVER_PORT=${SERVER_PORT}
+		SERVER_PRIV_KEY=${SERVER_PRIV_KEY}
+		SERVER_PUB_KEY=${SERVER_PUB_KEY}
+		CLIENT_DNS_1=${CLIENT_DNS_1}
+		CLIENT_DNS_2=${CLIENT_DNS_2}
+		ALLOWED_IPS=${ALLOWED_IPS}
+	WG_PARAMS_EOF
+	)
+	chmod 600 /etc/wireguard/params
 
-	# Create the server interface configuration file
-	echo "[Interface]
-Address = ${SERVER_WG_IPV4}/24,${SERVER_WG_IPV6}/64
-ListenPort = ${SERVER_PORT}
-PrivateKey = ${SERVER_PRIV_KEY}" >"/etc/wireguard/${SERVER_WG_NIC}.conf"
+	# Create the server interface configuration file (also 0600 — contains
+	# the server private key).
+	(
+	  umask 077
+	  cat >"/etc/wireguard/${SERVER_WG_NIC}.conf" <<- WG_CONF_EOF
+		[Interface]
+		Address = ${SERVER_WG_IPV4}/24,${SERVER_WG_IPV6}/64
+		ListenPort = ${SERVER_PORT}
+		PrivateKey = ${SERVER_PRIV_KEY}
+	WG_CONF_EOF
+	)
+	chmod 600 "/etc/wireguard/${SERVER_WG_NIC}.conf"
 
 	PORTAL_DNAT_TARGET="${SERVER_LOCAL_IPV4:-${SERVER_WG_IPV4}}"
 

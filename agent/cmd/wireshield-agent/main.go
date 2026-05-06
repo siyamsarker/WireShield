@@ -28,6 +28,18 @@ import (
 // The default here is used for dev builds.
 var Version = "dev"
 
+// ReleasePublicKey is the hex-encoded Ed25519 public key the operator
+// uses to sign update manifests. Empty by default — when empty, the
+// updater skips signature verification entirely and relies on SHA-256
+// only (legacy behaviour). To enable signed updates, build with:
+//
+//   go build -ldflags "-X main.ReleasePublicKey=<64-char-hex>" ...
+//
+// Generate the keypair offline (see `tools/wsmanifest --gen-key`) and
+// keep the private half on an air-gapped signing host. The public key
+// is safe to bake into every shipping binary.
+var ReleasePublicKey = ""
+
 func main() {
 	logx.SetLevelFromEnv(os.Getenv("WIRESHIELD_AGENT_LOG_LEVEL"))
 

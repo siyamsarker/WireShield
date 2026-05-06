@@ -130,6 +130,12 @@ func runEnroll(args []string) error {
 		return fmt.Errorf("write %s: %w", wgConfPath, err)
 	}
 
+	// TLSInsecure is intentionally NOT persisted: the bootstrap call may need
+	// it for self-signed servers, but persisting it means the daemon stays
+	// MITM-able forever after a single lab-mode enrollment. Operators who
+	// genuinely need an insecure-TLS daemon must opt in per-run via either
+	// `--tls-insecure` on `wireshield-agent run` / `update` or
+	// `Environment=WIRESHIELD_TLS_INSECURE=1` in the systemd unit.
 	cfg := &config.Config{
 		ServerURL:       httpc.ServerURL(),
 		AgentID:         resp.AgentID,
@@ -139,7 +145,6 @@ func runEnroll(args []string) error {
 		AdvertisedCIDRs: resp.AdvertisedCIDRs,
 		WGInterface:     config.DefaultWGIface,
 		WGConfPath:      wgConfPath,
-		TLSInsecure:     *tlsInsecure,
 		ServerPublicKey: resp.ServerPublicKey,
 		PresharedKey:    resp.PresharedKey,
 		ServerEndpoint:  resp.ServerEndpoint,

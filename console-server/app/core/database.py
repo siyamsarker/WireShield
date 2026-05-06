@@ -10,6 +10,30 @@ def init_db():
     os.makedirs(os.path.dirname(AUTH_DB_PATH), exist_ok=True)
     conn = sqlite3.connect(AUTH_DB_PATH)
     c = conn.cursor()
+
+    # Switch the database file to Write-Ahead Logging once at init.
+    # Multiple background loops + per-request audit writes were serializing
+    # on SQLite's single-writer lock under the default DELETE journal,
+    # producing intermittent BUSY errors that get_db's catch-all swallowed.
+    # WAL lets readers proceed in parallel with the single writer and
+    # collapses the contention window for short writes (audit, heartbeat,
+    # session refresh) by orders of magnitude. The setting is a property
+    # of the file and persists across restarts; running it again is a
+    # cheap no-op.
+    try:
+        mode_row = c.execute("PRAGMA journal_mode=WAL").fetchone()
+        if mode_row and str(mode_row[0]).lower() != "wal":
+            logger.warning(
+                "Failed to enable WAL on %s (journal_mode=%s). The DB may be "
+                "on a filesystem that does not support shared memory; "
+                "performance under load will be reduced.",
+                AUTH_DB_PATH, mode_row[0],
+            )
+        # synchronous=NORMAL is the recommended pairing with WAL: still
+        # crash-safe for committed transactions, ~4x throughput vs FULL.
+        c.execute("PRAGMA synchronous=NORMAL")
+    except Exception as exc:
+        logger.warning("Failed to configure WAL/synchronous: %s", exc)
     
     # Users table: stores 2FA secrets and metadata
     c.execute('''
@@ -227,6 +251,13 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_client ON activity_log(client_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_src ON activity_log(src_ip)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_dst ON activity_log(dst_ip)")
+        # The activity-log retroactive backfill in tasks.py runs:
+        #   UPDATE activity_log SET client_id = ?
+        #   WHERE client_id IS NULL AND (src_ip = ? OR dst_ip = ?)
+        # Without these compound indexes that's a full-scan per user per
+        # cycle — N users × thousands of NULL rows every 5s.
+        c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_null_src ON activity_log(src_ip) WHERE client_id IS NULL")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_null_dst ON activity_log(dst_ip) WHERE client_id IS NULL")
     except Exception:
         pass
     try:
@@ -300,7 +331,20 @@ def init_db():
     logger.info(f"Database initialized at {AUTH_DB_PATH}")
 
 def get_db():
-    """Get database connection."""
-    conn = sqlite3.connect(AUTH_DB_PATH)
+    """Get database connection.
+
+    busy_timeout = 10000ms — under WAL the only contended lock is the
+    write lock between concurrent writers; 10s is generous enough that
+    audit/heartbeat/session writers don't surface BUSY errors during
+    transient backups or vacuum, and short enough that a runaway
+    transaction can't stall a request indefinitely.
+    """
+    conn = sqlite3.connect(AUTH_DB_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+    except Exception:
+        pass
     return conn

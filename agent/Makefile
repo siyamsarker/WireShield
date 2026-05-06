@@ -31,7 +31,19 @@ LDFLAGS      := -s -w -X main.Version=$(VERSION)
 BUILDFLAGS   := -trimpath -buildvcs=false
 GO           ?= go
 
-.PHONY: build test vet clean dist install help
+# Optional Ed25519 release public key embedded into the agent binary.
+# When set, the agent verifies update manifests against this key and refuses
+# to upgrade from an unsigned/forged manifest. Generate the keypair offline
+# with `make gen-release-key` and pass the hex-encoded public half here.
+#
+# Example:
+#   make dist RELEASE_PUBKEY=ab32f1...64charsofhex
+RELEASE_PUBKEY ?=
+ifneq ($(strip $(RELEASE_PUBKEY)),)
+LDFLAGS += -X main.ReleasePublicKey=$(RELEASE_PUBKEY)
+endif
+
+.PHONY: build test vet clean dist install help gen-release-key sign-manifest wsmanifest
 
 help:
 	@awk '/^# / { sub(/^# ?/, ""); print }' $(MAKEFILE_LIST) | head -20
@@ -78,4 +90,30 @@ install:
 	@echo "installed dist tree + unit + installer under $(AGENT_BINARY_DIR)"
 
 clean:
-	rm -rf $(BINARY) dist/bin
+	rm -rf $(BINARY) dist/bin wsmanifest
+
+# Build the operator's manifest signing helper. Run on the (offline)
+# signing host that holds the release private key.
+wsmanifest:
+	$(GO) build $(BUILDFLAGS) -o wsmanifest ./cmd/wsmanifest
+	@echo "built ./wsmanifest"
+
+# Generate an Ed25519 release keypair. Writes the private half to
+# ./release.key (mode 0600) and the public half (hex) to ./release.pub.
+# Run this ONCE per WireShield deployment, store release.key on an
+# air-gapped signing host, and pass the contents of release.pub as
+# RELEASE_PUBKEY to subsequent `make dist`.
+gen-release-key: wsmanifest
+	./wsmanifest --gen-key --out-priv release.key --out-pub release.pub
+	@echo
+	@echo "  Private key (KEEP OFFLINE):  $(PWD)/release.key"
+	@echo "  Public key  (embed in agent): $(PWD)/release.pub"
+	@echo
+	@echo "  To build a signature-verifying agent:"
+	@echo "    make dist RELEASE_PUBKEY=\$$(cat release.pub)"
+
+# Sign a manifest in-place. Reads version.json (or MANIFEST=path) and
+# writes back the same file with a 'signature' field appended.
+sign-manifest: wsmanifest
+	@test -n "$(MANIFEST)" || { echo "usage: make sign-manifest MANIFEST=path/to/version.json [PRIV_KEY=path]" >&2; exit 1; }
+	./wsmanifest --sign --priv $(or $(PRIV_KEY),release.key) --manifest $(MANIFEST)

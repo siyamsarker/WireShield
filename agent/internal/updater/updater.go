@@ -41,6 +41,18 @@ type Options struct {
 	CurrentVersion string // version string the running binary was built with
 	BinaryPath     string // absolute path to /usr/local/bin/wireshield-agent
 	Arch           string // "linux-amd64" or "linux-arm64"; auto-detected if empty
+
+	// ReleasePublicKey is the hex-encoded Ed25519 public key embedded in
+	// the agent binary at build time. When set, every manifest must carry
+	// a valid signature; when empty, signature verification is skipped
+	// (legacy mode — SHA-256 still gates download integrity).
+	ReleasePublicKey string
+
+	// RequireSignedUpdates, when true, refuses upgrades from unsigned
+	// manifests even if ReleasePublicKey is empty. Use this only in
+	// emergencies where you suspect the build embedded the wrong key —
+	// it bricks all auto-updates rather than risking a forged manifest.
+	RequireSignedUpdates bool
 }
 
 // Result describes what the updater decided to do this run.
@@ -93,6 +105,16 @@ func Run(ctx context.Context, c ManifestFetcher, opts Options) (Result, error) {
 		res.Skipped = "manifest reports unknown version"
 		logx.Debug("updater: %s", res.Skipped)
 		return res, nil
+	}
+
+	// Verify the manifest signature BEFORE deciding whether to upgrade.
+	// A forged manifest could lie about CurrentVersion to force the agent
+	// to download a malicious "newer" binary. Verification gates that
+	// decision entirely.
+	requireSigned := opts.RequireSignedUpdates || requireSignedFromEnv()
+	if err := VerifyManifest(opts.ReleasePublicKey, requireSigned, manifest); err != nil {
+		logx.Error("updater: refusing to upgrade — %v", err)
+		return res, fmt.Errorf("verify manifest: %w", err)
 	}
 
 	// Force-upgrade gate: if the manifest declares a min_version newer

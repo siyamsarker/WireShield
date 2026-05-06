@@ -2,8 +2,12 @@ package client
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -91,6 +95,80 @@ func TestHeartbeat5xxIsRetryable(t *testing.T) {
 	}
 	if !Retryable(err) {
 		t.Fatal("502 should be retryable")
+	}
+}
+
+func TestHeartbeatSendsSignatureHeaders(t *testing.T) {
+	const secret = "agent-secret-token"
+	var capturedTs, capturedNonce, capturedSig string
+	var capturedAuth string
+	var capturedBody []byte
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		capturedTs = r.Header.Get("X-Agent-Ts")
+		capturedNonce = r.Header.Get("X-Agent-Nonce")
+		capturedSig = r.Header.Get("X-Agent-Sig")
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"agent_id":1}`))
+	}))
+	defer srv.Close()
+
+	c, _ := New(srv.URL, "t", secret, false)
+	_, err := c.Heartbeat(context.Background(), &HeartbeatRequest{AgentVersion: "x"})
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+
+	if capturedAuth != "Bearer "+secret {
+		t.Errorf("bearer header missing or wrong: %q", capturedAuth)
+	}
+	if capturedTs == "" || capturedNonce == "" || capturedSig == "" {
+		t.Fatalf("missing signature headers: ts=%q nonce=%q sig=%q",
+			capturedTs, capturedNonce, capturedSig)
+	}
+	if got := len(capturedNonce); got != 32 {
+		t.Errorf("nonce should be 32-char hex; got %d (%q)", got, capturedNonce)
+	}
+
+	// Recompute the expected HMAC and verify byte-for-byte. This is the
+	// canonical-form check the server runs, mirrored client-side as a
+	// regression guard.
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("POST"))
+	mac.Write([]byte("\n"))
+	mac.Write([]byte("/api/agents/heartbeat"))
+	mac.Write([]byte("\n"))
+	mac.Write([]byte(capturedTs))
+	mac.Write([]byte("\n"))
+	mac.Write([]byte(capturedNonce))
+	mac.Write([]byte("\n"))
+	mac.Write(capturedBody)
+	want := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(want), []byte(capturedSig)) {
+		t.Errorf("signature mismatch:\n want %s\n got  %s", want, capturedSig)
+	}
+}
+
+func TestRevocationCheckSendsSignatureHeaders(t *testing.T) {
+	const secret = "agent-secret-token"
+	var capturedSig string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedSig = r.Header.Get("X-Agent-Sig")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"revoked":false,"status":"enrolled"}`))
+	}))
+	defer srv.Close()
+
+	c, _ := New(srv.URL, "t", secret, false)
+	if _, err := c.RevocationCheck(context.Background()); err != nil {
+		t.Fatalf("revoke check: %v", err)
+	}
+	if capturedSig == "" {
+		t.Error("revocation check did not send X-Agent-Sig")
 	}
 }
 

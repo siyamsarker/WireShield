@@ -194,7 +194,15 @@ class DNSSniffer:
 
     def _cache_mapping(self, ip, domain):
         try:
-            conn = sqlite3.connect(self._db_path)
+            # Use the same pragma profile as the rest of the app — WAL +
+            # busy_timeout + synchronous=NORMAL — so sniffer writes don't
+            # surface BUSY errors against the audit/heartbeat writers.
+            conn = sqlite3.connect(self._db_path, timeout=10.0)
+            try:
+                conn.execute("PRAGMA busy_timeout=10000")
+                conn.execute("PRAGMA synchronous=NORMAL")
+            except Exception:
+                pass
             c = conn.cursor()
             c.execute("""
                 INSERT OR REPLACE INTO dns_cache (ip_address, domain, timestamp)

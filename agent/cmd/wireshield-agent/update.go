@@ -29,6 +29,7 @@ const ExitCodeUpdated = 75
 func runUpdate(args []string) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	dryRun := fs.Bool("dry-run", false, "check only — never replace the on-disk binary")
+	tlsInsecureFl := fs.Bool("tls-insecure", false, "skip TLS verification (lab use only — prefer Environment=WIRESHIELD_TLS_INSECURE=1)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: wireshield-agent update [flags]\n\n")
 		fs.PrintDefaults()
@@ -46,7 +47,8 @@ func runUpdate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load heartbeat secret: %w", err)
 	}
-	httpc, err := client.New(cfg.ServerURL, Version, heartbeatSecret, cfg.TLSInsecure)
+	tlsInsecure := resolveTLSInsecure(*tlsInsecureFl, cfg.TLSInsecure)
+	httpc, err := client.New(cfg.ServerURL, Version, heartbeatSecret, tlsInsecure)
 	if err != nil {
 		return err
 	}
@@ -68,7 +70,8 @@ func runUpdate(args []string) error {
 	}
 
 	res, err := updater.Run(ctx, httpc, updater.Options{
-		CurrentVersion: Version,
+		CurrentVersion:   Version,
+		ReleasePublicKey: ReleasePublicKey,
 		// BinaryPath defaults to os.Executable() inside updater.Run.
 	})
 	if err != nil {

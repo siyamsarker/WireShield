@@ -7,7 +7,11 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -153,11 +158,18 @@ type VersionArchEntry struct {
 // VersionResponse mirrors /api/agents/version. CurrentVersion may be the
 // literal "unknown" string when the server is in synthesized-fallback
 // mode; the updater package treats that as "do nothing".
+//
+// Signature is an optional hex-encoded Ed25519 signature over a canonical
+// form of the manifest (see updater.CanonicalManifestPayload). Agents
+// built with an embedded release public key REFUSE to upgrade when
+// signature is missing or invalid; agents without an embedded key fall
+// back to SHA-256 integrity only and ignore the field.
 type VersionResponse struct {
 	CurrentVersion string                      `json:"current_version"`
 	ReleasedAt     string                      `json:"released_at,omitempty"`
 	MinVersion     string                      `json:"min_version,omitempty"`
 	Arches         map[string]VersionArchEntry `json:"arches"`
+	Signature      string                      `json:"signature,omitempty"`
 }
 
 // Enroll posts the single-use token + agent public key and returns the WG
@@ -302,18 +314,34 @@ func (c *Client) doJSON(ctx context.Context, method, path string, in, out any) e
 	return nil
 }
 
-// doJSONWithAuth is like doJSON but adds Authorization: Bearer <heartbeat_secret>.
-// Used for endpoints that require per-agent authentication.
+// doJSONWithAuth is like doJSON but adds Authorization: Bearer <heartbeat_secret>
+// plus an HMAC-SHA256 signature in three additional headers:
+//
+//	X-Agent-Ts:    seconds-since-epoch
+//	X-Agent-Nonce: 32-char hex (16 random bytes)
+//	X-Agent-Sig:   hex(HMAC-SHA256(secret, METHOD || "\n" || PATH || "\n"
+//	                                       || ts || "\n" || nonce || "\n"
+//	                                       || body))
+//
+// The signature blocks captured-bearer replay: even if an attacker scrapes
+// the bearer token off a busy network, they cannot mint a new request
+// because the server enforces clock skew (±60s) and a per-agent nonce
+// cache.
 func (c *Client) doJSONWithAuth(ctx context.Context, method, path string, in, out any) error {
-	var body io.Reader
+	var bodyBytes []byte
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
 			return fmt.Errorf("marshal %s body: %w", path, err)
 		}
-		body = bytes.NewReader(b)
+		bodyBytes = b
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, method, c.serverURL+path, body)
+
+	var bodyReader io.Reader
+	if bodyBytes != nil {
+		bodyReader = bytes.NewReader(bodyBytes)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, method, c.serverURL+path, bodyReader)
 	if err != nil {
 		return err
 	}
@@ -324,6 +352,25 @@ func (c *Client) doJSONWithAuth(ctx context.Context, method, path string, in, ou
 	}
 	if c.heartbeatSecret != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.heartbeatSecret)
+		ts := strconv.FormatInt(time.Now().Unix(), 10)
+		nonce, err := randomNonce()
+		if err != nil {
+			return fmt.Errorf("gen nonce: %w", err)
+		}
+		mac := hmac.New(sha256.New, []byte(c.heartbeatSecret))
+		mac.Write([]byte(method))
+		mac.Write([]byte("\n"))
+		mac.Write([]byte(path))
+		mac.Write([]byte("\n"))
+		mac.Write([]byte(ts))
+		mac.Write([]byte("\n"))
+		mac.Write([]byte(nonce))
+		mac.Write([]byte("\n"))
+		mac.Write(bodyBytes) // empty for GET requests
+		sig := hex.EncodeToString(mac.Sum(nil))
+		httpReq.Header.Set("X-Agent-Ts", ts)
+		httpReq.Header.Set("X-Agent-Nonce", nonce)
+		httpReq.Header.Set("X-Agent-Sig", sig)
 	}
 
 	httpResp, err := c.http.Do(httpReq)
@@ -346,6 +393,16 @@ func (c *Client) doJSONWithAuth(ctx context.Context, method, path string, in, ou
 		}
 	}
 	return nil
+}
+
+// randomNonce returns 16 random bytes as 32-char lowercase hex. Matches
+// the shape the server expects in X-Agent-Nonce.
+func randomNonce() (string, error) {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf[:]), nil
 }
 
 // ServerURL returns the normalized base URL (used by callers that need to

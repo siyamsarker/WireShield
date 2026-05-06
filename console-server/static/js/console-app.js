@@ -1,5 +1,20 @@
 // console-app.js — Core state, routing, utilities, auto-refresh, deduplicated helpers
 
+// CSRF token rendered into <meta name="csrf-token"> by the server. Sent on
+// every state-changing request (POST/PATCH/DELETE) so the server can reject
+// cross-origin form-submit / no-cors fetch attacks that ride the admin's
+// source-IP authentication.
+function _csrfToken() {
+    const tag = document.querySelector('meta[name="csrf-token"]');
+    return tag ? tag.getAttribute('content') || '' : '';
+}
+
+// _csrfHeaders returns an object suitable for the `headers` option of
+// `fetch`. Merge with any existing headers via spread: `{ ...other, ..._csrfHeaders() }`.
+function _csrfHeaders() {
+    return { 'X-CSRF-Token': _csrfToken() };
+}
+
 let activityChart, actionsChart, bandwidthChart;
 const autoRefreshState = {
     enabled: false,

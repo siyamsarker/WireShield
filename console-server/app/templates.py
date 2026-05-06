@@ -55,13 +55,14 @@ def get_access_denied_html(request: Optional[Request] = None):
         "request": request
     }, status_code=403)
 
-def get_console_html(request: Optional[Request] = None):
+def get_console_html(request: Optional[Request] = None, csrf_token: str = ""):
     """Render console dashboard using Jinja2 template."""
     if request is None:
         from starlette.requests import Request as StarletteRequest
         from starlette.datastructures import URL
         request = StarletteRequest({"type": "http", "method": "GET", "url": URL("/console")})
-    
+
     return templates.TemplateResponse("console.html", {
-        "request": request
+        "request": request,
+        "csrf_token": csrf_token,
     })

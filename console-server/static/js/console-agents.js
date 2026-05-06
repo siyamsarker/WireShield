@@ -392,7 +392,7 @@
 
         fetch('/api/console/agents', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
             body: JSON.stringify(body),
         })
             .then(async r => {
@@ -453,7 +453,7 @@
 
         fetch(`/api/console/agents/${_editingAgentId}`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
             body: JSON.stringify({ advertised_cidrs }),
         })
             .then(async r => {
@@ -480,7 +480,7 @@
         if (!confirm(`Revoke agent "${name}"?\n\nThis removes the WG peer immediately and the agent's heartbeat will start failing. The local install on the agent host is untouched — the operator must run \`wireshield-agent revoke\` to clean up.`)) {
             return;
         }
-        fetch(`/api/console/agents/${agentId}`, { method: 'DELETE' })
+        fetch(`/api/console/agents/${agentId}`, { method: 'DELETE', headers: _csrfHeaders() })
             .then(async r => {
                 if (!r.ok) {
                     const err = await r.json().catch(() => ({}));
@@ -496,7 +496,7 @@
 
     function rotateAgentToken(agentId) {
         if (!confirm('Generate a new enrollment token for this pending agent? The old token (if still valid) will continue to work until it expires or is consumed.')) return;
-        fetch(`/api/console/agents/${agentId}/rotate-token`, { method: 'POST' })
+        fetch(`/api/console/agents/${agentId}/rotate-token`, { method: 'POST', headers: _csrfHeaders() })
             .then(async r => {
                 if (!r.ok) {
                     const err = await r.json().catch(() => ({}));
@@ -785,7 +785,7 @@
         document.getElementById('agent-access-error').style.display = 'none';
         fetch(`/api/console/agents/${_accessAgentId}`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
             body: JSON.stringify({ is_restricted: isRestricted }),
         })
             .then(async r => {
@@ -814,7 +814,7 @@
         document.getElementById('agent-access-error').style.display = 'none';
         fetch(`/api/console/agents/${_accessAgentId}/access`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
             body: JSON.stringify({ client_id: cid }),
         })
             .then(async r => {
@@ -834,7 +834,7 @@
     function submitAgentAccessRemove(targetClientId) {
         if (!_accessAgentId) return;
         const url = `/api/console/agents/${_accessAgentId}/access/${encodeURIComponent(targetClientId)}`;
-        fetch(url, { method: 'DELETE' })
+        fetch(url, { method: 'DELETE', headers: _csrfHeaders() })
             .then(async r => {
                 if (!r.ok) {
                     const err = await r.json().catch(() => ({}));

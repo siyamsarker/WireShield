@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,6 +38,7 @@ func runDaemon(args []string) error {
 		revocationSec  = fs.Int("revocation", 60, "revocation-check interval seconds")
 		autoUpdate     = fs.Bool("auto-update", false, "enable periodic self-upgrade against the server's published manifest")
 		updateHours    = fs.Int("update-interval", 6, "auto-update check interval (hours, only used with --auto-update)")
+		tlsInsecureFl  = fs.Bool("tls-insecure", false, "skip TLS verification (lab use only — prefer Environment=WIRESHIELD_TLS_INSECURE=1)")
 	)
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: wireshield-agent run [flags]\n\n")
@@ -56,7 +58,8 @@ func runDaemon(args []string) error {
 		return fmt.Errorf("load heartbeat secret (re-enrollment may be needed): %w", err)
 	}
 
-	httpc, err := client.New(cfg.ServerURL, Version, heartbeatSecret, cfg.TLSInsecure)
+	tlsInsecure := resolveTLSInsecure(*tlsInsecureFl, cfg.TLSInsecure)
+	httpc, err := client.New(cfg.ServerURL, Version, heartbeatSecret, tlsInsecure)
 	if err != nil {
 		return err
 	}
@@ -72,7 +75,10 @@ func runDaemon(args []string) error {
 		}
 		opts.AutoUpdateInterval = time.Duration(*updateHours) * time.Hour
 		opts.UpdateCheck = func(uctx context.Context) (bool, error) {
-			res, err := updater.Run(uctx, httpc, updater.Options{CurrentVersion: Version})
+			res, err := updater.Run(uctx, httpc, updater.Options{
+				CurrentVersion:   Version,
+				ReleasePublicKey: ReleasePublicKey,
+			})
 			if err != nil {
 				return false, err
 			}
@@ -185,6 +191,45 @@ func (w *wgReader) Read() (int64, int64, error) {
 		return 0, 0, err
 	}
 	return stats.RXBytes, stats.TXBytes, nil
+}
+
+// resolveTLSInsecure picks the effective TLS-insecure setting using a
+// precedence chain that does NOT require persisting the flag in config.json:
+//
+//	1. --tls-insecure flag on the current invocation (highest precedence).
+//	2. WIRESHIELD_TLS_INSECURE=1 in the environment (set by the systemd unit
+//	   when the operator opted in at install time via AGENT_INSECURE_TLS=1).
+//	3. legacyConfig — the deprecated `tls_insecure` field in config.json,
+//	   honored only for upgrade compatibility. Emits a warning so operators
+//	   migrate to the env-var path; new enrollments no longer write it.
+//
+// Any non-empty truthy form ("1", "true", "yes") accepts the env var. The
+// false default for both flag and env means TLS verification is on unless
+// explicitly opted out per-run.
+func resolveTLSInsecure(flagSet bool, legacyConfig bool) bool {
+	if flagSet {
+		logx.Warn("TLS verification disabled via --tls-insecure (lab use only)")
+		return true
+	}
+	if envBool(os.Getenv("WIRESHIELD_TLS_INSECURE")) {
+		logx.Warn("TLS verification disabled via WIRESHIELD_TLS_INSECURE env (lab use only)")
+		return true
+	}
+	if legacyConfig {
+		logx.Warn("DEPRECATED: tls_insecure persisted in config.json — set Environment=WIRESHIELD_TLS_INSECURE=1 in the systemd unit and re-enroll to clear")
+		return true
+	}
+	return false
+}
+
+// envBool returns true for "1", "true", "yes" (case-insensitive); any other
+// value (including unset/empty) returns false.
+func envBool(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // cidrSlicesEqual returns true if a and b contain the same elements

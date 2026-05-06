@@ -16,24 +16,197 @@ Auth model
                 + server-side HMAC signing of tokens. Rate-limited.
   heartbeat   : authenticated by Authorization: Bearer <heartbeat_secret>
                 issued at enrollment and stored as a SHA-256 hash in the DB.
-                Works regardless of routing path — no WG tunnel required.
-  revocation  : same as heartbeat — bearer token auth.
+                Modern agents additionally sign each request with HMAC-SHA256
+                (X-Agent-Ts / X-Agent-Nonce / X-Agent-Sig); the server
+                rejects skewed timestamps and replayed nonces. The bearer-only
+                path is retained as a fall-back so old binaries keep working
+                during a fleet upgrade — set WS_HEARTBEAT_REQUIRE_SIG=1 in
+                the service environment to enforce signatures once the
+                rollout is complete.
+  revocation  : same as heartbeat — bearer + optional signature.
 
 All writes land in audit_log via the shared helper.
 """
 import hashlib
+import hmac
 import logging
 import os
+import threading
+import time
+from collections import OrderedDict
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import PlainTextResponse, FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.core.security import audit_log, rate_limiter
 from app.core.database import get_db
 from app.core.config import AGENT_BINARY_DIR
+
+
+# ============================================================================
+# Heartbeat signature verification
+# ============================================================================
+#
+# Modern agents send three headers in addition to the bearer token:
+#
+#   X-Agent-Ts:    seconds-since-epoch as decimal string
+#   X-Agent-Nonce: 32-character hex (16 random bytes)
+#   X-Agent-Sig:   hex(HMAC-SHA256(secret, METHOD || "\n" || PATH || "\n"
+#                                          || ts || "\n" || nonce || "\n"
+#                                          || raw_body))
+#
+# `secret` is the same heartbeat_secret already shared at enrollment, so no
+# new key distribution is required. The HMAC binds the request to a method,
+# path, time window, and body, blocking captured-bearer replay attacks.
+#
+# To roll back (e.g. an emergency where new agents misbehave), unset
+# WS_HEARTBEAT_REQUIRE_SIG and the server will accept bearer-only requests
+# again — old agents in the field stay connected throughout the rollout.
+
+# Maximum allowed clock skew between agent and server, in seconds. Beyond
+# this the server rejects the timestamp regardless of HMAC validity.
+_HB_SIG_MAX_SKEW_SECONDS = 60
+
+# How long a nonce is remembered for replay protection. Must be ≥ 2× the
+# allowed skew so an attacker cannot replay across the skew boundary.
+_HB_NONCE_TTL_SECONDS = 5 * 60
+
+# Bounded LRU per-agent nonce cache. The pruner clears expired entries
+# whenever the cache grows past the soft cap.
+_HB_NONCE_SOFT_CAP = 50_000
+
+_hb_nonce_cache: "OrderedDict[Tuple[int, str], float]" = OrderedDict()
+_hb_nonce_lock = threading.Lock()
+
+
+def _nonce_seen_or_record(agent_id: int, nonce: str, now: float) -> bool:
+    """Return True if (agent_id, nonce) has been seen within the TTL window;
+    otherwise record it and return False. Atomic under the lock."""
+    key = (agent_id, nonce)
+    cutoff = now - _HB_NONCE_TTL_SECONDS
+    with _hb_nonce_lock:
+        # Opportunistic prune of old entries from the front of the OrderedDict.
+        # OrderedDict preserves insertion order so the head is the oldest.
+        while _hb_nonce_cache:
+            head_key = next(iter(_hb_nonce_cache))
+            if _hb_nonce_cache[head_key] < cutoff:
+                _hb_nonce_cache.popitem(last=False)
+            else:
+                break
+        # Hard cap: if the cache has somehow blown past the soft cap (e.g. an
+        # agent DDoSing distinct nonces), evict aggressively.
+        if len(_hb_nonce_cache) > _HB_NONCE_SOFT_CAP:
+            for _ in range(len(_hb_nonce_cache) - _HB_NONCE_SOFT_CAP):
+                _hb_nonce_cache.popitem(last=False)
+
+        if key in _hb_nonce_cache:
+            return True
+        _hb_nonce_cache[key] = now
+        return False
+
+
+def _heartbeat_sig_required() -> bool:
+    """Whether to reject requests that lack a valid signature. Off by default
+    (backwards compat) — flip with WS_HEARTBEAT_REQUIRE_SIG=1 once every
+    deployed agent has been upgraded to a binary that signs."""
+    return os.environ.get("WS_HEARTBEAT_REQUIRE_SIG", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _sig_payload(method: str, path: str, ts: str, nonce: str, body: bytes) -> bytes:
+    """Canonical bytes the agent MUST sign and the server MUST verify.
+    Newline separators avoid concatenation ambiguity (e.g. method "POSTPOST"
+    with empty path) without depending on a JSON parser at either end."""
+    return b"\n".join((
+        method.encode("ascii"),
+        path.encode("ascii"),
+        ts.encode("ascii"),
+        nonce.encode("ascii"),
+        body or b"",
+    ))
+
+
+def _verify_agent_request(
+    request: Request,
+    raw_body: bytes,
+    method: str,
+    path: str,
+) -> Tuple[str, int]:
+    """Authenticate an agent request.
+
+    Returns (raw_bearer_token, agent_id) on success. Raises HTTPException(403)
+    on any auth failure. Looks up the agent row by hashed bearer once, then
+    verifies the optional signature in the headers. When
+    WS_HEARTBEAT_REQUIRE_SIG=1, the signature headers must be present and
+    valid.
+    """
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Agent authentication failed")
+    raw_token = auth[len("Bearer "):]
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, status FROM agents WHERE heartbeat_secret_hash = ?",
+            (token_hash,),
+        )
+        row = c.fetchone()
+    finally:
+        conn.close()
+    if not row:
+        raise HTTPException(status_code=403, detail="Agent authentication failed")
+    if row["status"] != "enrolled":
+        raise HTTPException(status_code=403, detail=f"Agent is {row['status']}")
+    agent_id = int(row["id"])
+
+    ts = request.headers.get("X-Agent-Ts", "")
+    nonce = request.headers.get("X-Agent-Nonce", "")
+    sig = request.headers.get("X-Agent-Sig", "")
+
+    if not (ts or nonce or sig):
+        # Legacy agent — bearer only. Allow unless explicit policy forbids.
+        if _heartbeat_sig_required():
+            raise HTTPException(status_code=403, detail="Signed heartbeats required")
+        return raw_token, agent_id
+
+    # Partial signature material is always a hard fail — never silently fall
+    # back. Either the agent signs (all three headers) or it doesn't.
+    if not (ts and nonce and sig):
+        raise HTTPException(status_code=403, detail="Incomplete signature headers")
+
+    # Timestamp must parse as an integer/float and be within skew.
+    try:
+        ts_value = float(ts)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid X-Agent-Ts")
+    now = time.time()
+    if abs(now - ts_value) > _HB_SIG_MAX_SKEW_SECONDS:
+        raise HTTPException(status_code=403, detail="Stale or future timestamp")
+
+    # Nonce shape: 32-char hex (16 bytes). Reject anything else early so the
+    # cache cannot be poisoned by long attacker-supplied values.
+    if len(nonce) != 32 or any(ch not in "0123456789abcdefABCDEF" for ch in nonce):
+        raise HTTPException(status_code=403, detail="Invalid X-Agent-Nonce")
+
+    expected = hmac.new(
+        raw_token.encode("utf-8"),
+        _sig_payload(method, path, ts, nonce, raw_body),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected, sig.lower()):
+        raise HTTPException(status_code=403, detail="Bad signature")
+
+    if _nonce_seen_or_record(agent_id, nonce.lower(), now):
+        raise HTTPException(status_code=403, detail="Replayed nonce")
+
+    return raw_token, agent_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -156,13 +329,23 @@ def _authenticated_agent_id(request: Request) -> int:
 
 
 @router.post("/api/agents/heartbeat", tags=["agent"])
-async def heartbeat_endpoint(body: AgentHeartbeatRequest, request: Request):
-    """Record a heartbeat. Auth = Authorization: Bearer <heartbeat_secret>."""
+async def heartbeat_endpoint(request: Request):
+    """Record a heartbeat. Auth = Authorization: Bearer <heartbeat_secret>
+    plus optional X-Agent-Ts/Nonce/Sig HMAC headers (see module docstring)."""
     from app.core.agents import record_heartbeat
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=403, detail="Agent authentication failed")
-    raw_token = auth[len("Bearer "):]
+    import json as _json
+
+    raw_body = await request.body()
+    try:
+        data = _json.loads(raw_body) if raw_body else {}
+        body = AgentHeartbeatRequest(**data)
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid request body: {exc}")
+
+    raw_token, _agent_id = _verify_agent_request(
+        request, raw_body, "POST", "/api/agents/heartbeat",
+    )
+
     source_ip = request.client.host if request and request.client else "unknown"
     result = record_heartbeat(
         auth_token=raw_token,
@@ -186,19 +369,17 @@ async def heartbeat_endpoint(body: AgentHeartbeatRequest, request: Request):
 async def revocation_check_endpoint(request: Request):
     """Let the agent daemon poll for its own revocation status. Returns
     `revoked: true` if an admin has revoked the agent — on receiving this
-    the daemon should self-uninstall. Auth = Authorization: Bearer <heartbeat_secret>."""
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=403, detail="Agent authentication failed")
-    raw_token = auth[len("Bearer "):]
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    the daemon should self-uninstall. Auth = Authorization: Bearer plus
+    optional X-Agent-Ts/Nonce/Sig HMAC headers."""
+    raw_body = await request.body()
+    raw_token, agent_id = _verify_agent_request(
+        request, raw_body, "GET", "/api/agents/revocation-check",
+    )
+
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute(
-            "SELECT status FROM agents WHERE heartbeat_secret_hash = ?",
-            (token_hash,),
-        )
+        c.execute("SELECT status FROM agents WHERE id = ?", (agent_id,))
         row = c.fetchone()
     finally:
         conn.close()

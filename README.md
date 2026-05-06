@@ -327,6 +327,17 @@ sudo systemctl restart wireshield.service
 | `WS_AGENT_HEARTBEAT_RETENTION_HOURS` | `48` | Hours of `agent_heartbeats` rows to retain before housekeeping prunes them |
 | `WS_AGENT_OFFLINE_AFTER_SECONDS` | `90` | Seconds without a heartbeat before an agent is reported as `online=false` in `/health` |
 | `WS_AGENT_BINARY_DIR` | `/etc/wireshield/agent-binaries` | Server-side directory holding pre-built Go-agent binaries + SHA-256 sidecars, populated by `make -C agent install` |
+| `WS_HEARTBEAT_REQUIRE_SIG` | `0` | When `1`, the heartbeat endpoint rejects bearer-only requests and requires the `X-Agent-Sig` HMAC headers. Flip on once every deployed agent has been upgraded to a binary that signs heartbeats. |
+| `WS_CSRF_DISABLE` | `0` | Emergency rollback for the console CSRF check. Leave at `0` in production. |
+
+#### Agent-side environment
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WIRESHIELD_TLS_INSECURE` | `0` | `1` to skip TLS verification on the agent → server channel. Set on the systemd unit (`Environment=WIRESHIELD_TLS_INSECURE=1`) instead of persisting in `config.json`; the agent installer sets this automatically when invoked with `AGENT_INSECURE_TLS=1`. |
+| `WIRESHIELD_REQUIRE_SIGNED_UPDATES` | `0` | `1` to refuse any auto-update from an unsigned manifest, even on agents built without an embedded release public key. |
+| `WIRESHIELD_AGENT_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
+| `WIRESHIELD_AGENT_DIR` | `/etc/wireshield-agent` | On-disk state directory (config, private key, heartbeat secret). |
 
 ### Tuning Examples
 
@@ -782,6 +793,53 @@ wireshield-agent update --dry-run # check only, do not touch /usr/local/bin
 ```
 
 A SHA-256 mismatch *never* replaces the binary — the daemon logs and continues with the old image.
+
+#### Signed updates (recommended for production)
+
+The SHA-256 in the manifest is a self-consistent integrity check, but it does not protect against a compromised manifest endpoint or a MITM that supplies attacker binary URL + attacker hash. To close that gap, generate an offline Ed25519 release keypair, embed the public half into every shipping agent binary, and sign every published manifest.
+
+One-time setup on an air-gapped signing host:
+
+```bash
+cd agent
+make gen-release-key       # writes release.key (mode 0600) + release.pub
+# Move release.key to a removable medium / sealed safe.
+```
+
+Build agents with the public key embedded:
+
+```bash
+make dist RELEASE_PUBKEY=$(cat release.pub)
+make install AGENT_BINARY_DIR=/etc/wireshield/agent-binaries
+```
+
+Sign each released manifest before publishing:
+
+```bash
+make sign-manifest MANIFEST=/etc/wireshield/agent-binaries/version.json PRIV_KEY=/path/to/release.key
+```
+
+When the agent has an embedded public key, the updater **refuses** any manifest that is unsigned, signed by a different key, or whose canonical payload doesn't match the signature — even before the binary is downloaded. Agents built without a public key (legacy mode) ignore the `signature` field and rely on SHA-256 only, so a single fleet can roll forward at its own pace.
+
+For an emergency lockdown that disables auto-update entirely until a properly-signed manifest is republished, set the env var on the agent host:
+
+```ini
+Environment=WIRESHIELD_REQUIRE_SIGNED_UPDATES=1
+```
+
+This forces a hard fail when no public key is embedded, blocking even legacy agents from upgrading.
+
+#### Heartbeat replay protection
+
+Heartbeats are bearer-authenticated by the secret issued at enrollment, but a captured bearer alone is no longer enough to mint a new heartbeat. Each request also carries:
+
+| Header | Value |
+|--------|-------|
+| `X-Agent-Ts` | seconds-since-epoch |
+| `X-Agent-Nonce` | 32-char hex (16 random bytes) |
+| `X-Agent-Sig` | hex(HMAC-SHA256(secret, METHOD ⏎ PATH ⏎ ts ⏎ nonce ⏎ body)) |
+
+The server enforces ±60s clock skew and a per-agent nonce LRU; replayed nonces are rejected with HTTP 403. Old binaries that send only the bearer continue to work during a fleet rollout. Once every agent has been upgraded, set `WS_HEARTBEAT_REQUIRE_SIG=1` in the FastAPI service environment to enforce signatures and reject any future bearer-only requests.
 
 ### End-to-End cURL Walkthrough
 

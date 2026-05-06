@@ -1,6 +1,9 @@
-import math
-import subprocess
+import hashlib
+import hmac
 import logging
+import math
+import os
+import subprocess
 import time
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Depends, HTTPException
@@ -27,7 +30,7 @@ class AgentPatchRequest(BaseModel):
 
 from app.core.database import get_db
 from app.core.security import audit_log
-from app.core.config import LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS, SSL_TYPE
+from app.core.config import LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS, SSL_TYPE, SECRET_KEY
 
 
 def _build_agent_install_command(token: str, server_base_url: str) -> str:
@@ -96,6 +99,67 @@ async def _check_console_access(request: Request) -> str:
     audit_log(client_id, "CONSOLE_ACCESS", "denied", ip_address)
     raise HTTPException(status_code=403, detail="Console access denied")
 
+
+# ----------------------------------------------------------------------------
+# CSRF protection for state-changing console endpoints
+# ----------------------------------------------------------------------------
+#
+# The console authenticates by source-IP only (the admin's WireGuard tunnel
+# IP must match a `console_access=1` user with a live session). This is solid
+# against direct attackers, but a malicious page the admin visits while
+# VPN-connected can fire same-origin-feeling requests at /api/console/* via
+# `<form>` POSTs or fetch — the request really does come from the admin's
+# IP, so source-IP auth lets it through.
+#
+# Defense: require an `X-CSRF-Token` header that equals
+# HMAC-SHA256(SECRET_KEY, ip_address) on every state-changing route. The
+# token is derived deterministically (no server-side storage needed) and
+# embedded in the rendered console.html via <meta name="csrf-token">.
+#
+# Why this is safe:
+#   - Cross-origin pages cannot read the meta tag (Same-Origin Policy).
+#   - Cross-origin fetch() can't set custom headers without a successful
+#     CORS preflight (which this server denies — no Access-Control-* on
+#     /api/console/* responses).
+#   - <form> submissions can't set custom headers at all.
+#   - An attacker who could read SECRET_KEY would already have a much
+#     larger compromise; CSRF is no longer the relevant threat.
+#
+# If the admin's WG IP changes (rare), the page reload will pick up a new
+# token. Tokens have no expiry — they simply rotate when SECRET_KEY does.
+
+def _csrf_token_for_ip(ip_address: str) -> str:
+    """Deterministic CSRF token derived from SECRET_KEY and the source IP."""
+    return hmac.new(
+        SECRET_KEY.encode("utf-8"),
+        ip_address.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _csrf_disabled() -> bool:
+    """Allow operators to disable CSRF as an emergency rollback. Off by
+    default — the protection is only useful when enforced."""
+    return os.environ.get("WS_CSRF_DISABLE", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+async def _check_csrf_token(request: Request) -> None:
+    """FastAPI dependency: enforce CSRF on state-changing console routes.
+
+    Must be applied AFTER _check_console_access in the dependency list so
+    audit/log reflects an authenticated user when the CSRF check fires.
+    """
+    if _csrf_disabled():
+        return
+    ip_address = request.client.host if request and request.client else ""
+    submitted = request.headers.get("X-CSRF-Token", "")
+    expected = _csrf_token_for_ip(ip_address)
+    if not submitted or not hmac.compare_digest(submitted, expected):
+        raise HTTPException(status_code=403, detail="CSRF token invalid or missing")
+
+
 @router.get("/console", response_class=HTMLResponse, tags=["console"])
 async def console_dashboard(request: Request):
     """Admin console dashboard."""
@@ -103,11 +167,11 @@ async def console_dashboard(request: Request):
         client_id = await _check_console_access(request)
     except HTTPException:
         return get_access_denied_html(request)
-        
+
     client_host = request.client.host if request and request.client else "unknown"
     audit_log(client_id, "CONSOLE_ACCESS", "granted", client_host)
-    
-    return get_console_html(request)
+
+    return get_console_html(request, csrf_token=_csrf_token_for_ip(client_host))
 
 @router.get("/api/console/users")
 async def get_users(
@@ -666,6 +730,7 @@ async def get_dashboard_charts(client_id: str = Depends(_check_console_access)):
 async def create_user(
     body: UserCreateRequest,
     client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
 ):
     """Create a new WireGuard client (equivalent of CLI 'Create Client').
 
@@ -791,6 +856,7 @@ async def user_config_qrcode(
 async def delete_user(
     user_client_id: str,
     client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
 ):
     """Revoke a WireGuard client (mirrors CLI 'Revoke Client')."""
     from app.core.wireguard import delete_client, validate_client_name
@@ -834,6 +900,7 @@ async def create_agent_endpoint(
     body: AgentCreateRequest,
     request: Request,
     client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
 ):
     """Create a pending agent and issue its one-time enrollment token."""
     from app.core.agents import create_agent
@@ -917,6 +984,7 @@ async def patch_agent_endpoint(
     body: AgentPatchRequest,
     request: Request,
     client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
 ):
     """Edit an agent's advertised CIDRs (live-synced to WireGuard) and/or
     its description. Other fields are immutable (name is identifier,
@@ -993,6 +1061,7 @@ async def delete_agent_endpoint(
     agent_id: int,
     request: Request,
     client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
 ):
     """Revoke an agent: remove its WG peer, mark soft-deleted."""
     from app.core.agents import get_agent, revoke_agent
@@ -1025,6 +1094,7 @@ async def rotate_agent_token_endpoint(
     agent_id: int,
     request: Request,
     client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
 ):
     """Reissue an enrollment token for a pending (not yet enrolled) agent.
     Useful if the first token expired or was lost. Refuses for agents that
@@ -1105,6 +1175,7 @@ async def grant_agent_access_endpoint(
     body: AgentAccessRequest,
     request: Request,
     client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
 ):
     """Add a user to an agent's allowlist."""
     from app.core.agents import grant_agent_access, get_agent
@@ -1144,6 +1215,7 @@ async def revoke_agent_access_endpoint(
     target_client_id: str,
     request: Request,
     client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
 ):
     """Remove a user from an agent's allowlist. Idempotent: returns 200
     with removed=false if the row was already absent."""

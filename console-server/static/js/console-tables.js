@@ -142,7 +142,7 @@ function revokeUser(clientId) {
         return;
     }
     fetch(`/api/console/users/${encodeURIComponent(clientId)}`, {
-        method: 'DELETE', cache: 'no-store',
+        method: 'DELETE', cache: 'no-store', headers: _csrfHeaders(),
     })
         .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
         .then(({ ok, data }) => {
@@ -281,7 +281,7 @@ function submitCreateUser() {
 
     fetch('/api/console/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
         body: JSON.stringify(payload),
         cache: 'no-store',
     })

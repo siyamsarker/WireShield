@@ -140,6 +140,18 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 UNIT_EOF
+
+# When the operator opted into insecure TLS at install time, persist it via
+# a systemd Environment= line rather than the agent's config.json — the
+# daemon honors WIRESHIELD_TLS_INSECURE=1 at run-time and a future re-enroll
+# leaves no trace in the agent state directory. Removing the env var (or
+# the unit drop-in) immediately re-enables verification.
+if [[ "${AGENT_INSECURE_TLS:-0}" == "1" ]]; then
+  sed -i '/^\[Service\]$/a Environment=WIRESHIELD_TLS_INSECURE=1' \
+    /etc/systemd/system/wireshield-agent.service
+  info "TLS verification disabled in the systemd unit (WIRESHIELD_TLS_INSECURE=1) — lab use only"
+fi
+
 chmod 0644 /etc/systemd/system/wireshield-agent.service
 info "installed /etc/systemd/system/wireshield-agent.service"
 
