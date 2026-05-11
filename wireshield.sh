@@ -1153,7 +1153,7 @@ function installWireGuard() {
 	echo -e "${GREEN}WireGuard tools installed/updated (post-upgrade):${NC} ${wg_version}"
 
 	# Ensure configuration directory exists (not always present by default)
-	mkdir /etc/wireguard >/dev/null 2>&1
+	mkdir -p /etc/wireguard >/dev/null 2>&1
 
 	chmod 600 -R /etc/wireguard/
 
@@ -1460,7 +1460,7 @@ function newClient() {
 
 	until [[ ${CLIENT_NAME} =~ ^[a-zA-Z0-9_-]+$ && ${CLIENT_EXISTS} == '0' && ${#CLIENT_NAME} -lt 16 ]]; do
 		read -rp "$(echo -ne "  ${GRAY}Client name${NC}     > ")" -e CLIENT_NAME
-		CLIENT_EXISTS=$(grep -c -E "^### Client ${CLIENT_NAME}\$" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+		CLIENT_EXISTS=$(grep -c -E "^### Client ${CLIENT_NAME}\$" "/etc/wireguard/${SERVER_WG_NIC}.conf" || true)
 
 		if [[ ${CLIENT_EXISTS} != 0 ]]; then
 			_ws_ui_warn "Client '${CLIENT_NAME}' already exists. Choose another name."
@@ -1468,7 +1468,7 @@ function newClient() {
 	done
 
 	for DOT_IP in {2..254}; do
-		DOT_EXISTS=$(grep -c "${SERVER_WG_IPV4::-1}${DOT_IP}" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+		DOT_EXISTS=$(grep -c "${SERVER_WG_IPV4::-1}${DOT_IP}" "/etc/wireguard/${SERVER_WG_NIC}.conf" || true)
 		if [[ ${DOT_EXISTS} == '0' ]]; then
 			break
 		fi
@@ -1484,7 +1484,7 @@ function newClient() {
 	until [[ ${IPV4_EXISTS} == '0' ]]; do
 		read -rp "$(echo -ne "  ${GRAY}Client IPv4${NC}     > ${BASE_IP}.")" -e -i "${DOT_IP}" DOT_IP
 		CLIENT_WG_IPV4="${BASE_IP}.${DOT_IP}"
-		IPV4_EXISTS=$(grep -c "$CLIENT_WG_IPV4/32" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+		IPV4_EXISTS=$(grep -c "$CLIENT_WG_IPV4/32" "/etc/wireguard/${SERVER_WG_NIC}.conf" || true)
 
 		if [[ ${IPV4_EXISTS} != 0 ]]; then
 			_ws_ui_warn "IPv4 ${CLIENT_WG_IPV4} already in use."
@@ -1495,7 +1495,7 @@ function newClient() {
 	until [[ ${IPV6_EXISTS} == '0' ]]; do
 		read -rp "$(echo -ne "  ${GRAY}Client IPv6${NC}     > ${BASE_IP}::")" -e -i "${DOT_IP}" DOT_IP
 		CLIENT_WG_IPV6="${BASE_IP}::${DOT_IP}"
-		IPV6_EXISTS=$(grep -c "${CLIENT_WG_IPV6}/128" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+		IPV6_EXISTS=$(grep -c "${CLIENT_WG_IPV6}/128" "/etc/wireguard/${SERVER_WG_NIC}.conf" || true)
 
 		if [[ ${IPV6_EXISTS} != 0 ]]; then
 			_ws_ui_warn "IPv6 ${CLIENT_WG_IPV6} already in use."
