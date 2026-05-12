@@ -565,7 +565,7 @@
 
                     <!-- Status Filter -->
                     <div class="filter-group">
-                        <select id="audit-status-filter" class="filter-select" onchange="applyAuditFilters()">
+                        <select id="audit-status-filter" class="filter-select" onchange="reloadAuditLogs()">
                             <option value="all">All Status</option>
                             <option value="granted">Granted</option>
                             <option value="denied">Denied</option>
@@ -640,7 +640,7 @@
 
                     <!-- Direction Filter -->
                     <div class="filter-group">
-                        <select id="activity-direction-filter" class="filter-select" onchange="applyActivityFilters()">
+                        <select id="activity-direction-filter" class="filter-select" onchange="reloadActivityLogs()">
                             <option value="all">All Directions</option>
                             <option value="in">Inbound</option>
                             <option value="out">Outbound</option>

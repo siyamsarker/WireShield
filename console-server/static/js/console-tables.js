@@ -328,6 +328,7 @@ async function loadAuditLogs(page = 1) {
 
         const searchTerm = document.getElementById('audit-search').value.trim();
         const userFilter = document.getElementById('audit-user-filter')?.value || 'all';
+        const statusFilter = document.getElementById('audit-status-filter')?.value || 'all';
         const dateFrom = document.getElementById('audit-date-from').value;
         const dateTo = document.getElementById('audit-date-to').value;
         const params = new URLSearchParams({
@@ -336,6 +337,7 @@ async function loadAuditLogs(page = 1) {
         });
         if (searchTerm) params.append('search', searchTerm);
         if (userFilter && userFilter !== 'all') params.append('client_filter', userFilter);
+        if (statusFilter && statusFilter !== 'all') params.append('status_filter', statusFilter);
         if (dateFrom) params.append('start_date', dateFrom);
         if (dateTo) params.append('end_date', dateTo);
 
@@ -365,6 +367,7 @@ async function loadActivityLogs(page = 1) {
 
         const searchTerm = document.getElementById('activity-search').value.trim();
         const userFilter = document.getElementById('activity-user-filter')?.value || 'all';
+        const directionFilter = document.getElementById('activity-direction-filter')?.value || 'all';
         const dateFrom = document.getElementById('activity-date-from').value;
         const dateTo = document.getElementById('activity-date-to').value;
         const params = new URLSearchParams({
@@ -373,6 +376,7 @@ async function loadActivityLogs(page = 1) {
         });
         if (searchTerm) params.append('search', searchTerm);
         if (userFilter && userFilter !== 'all') params.append('client_filter', userFilter);
+        if (directionFilter && directionFilter !== 'all') params.append('direction_filter', directionFilter);
         if (dateFrom) params.append('start_date', dateFrom);
         if (dateTo) params.append('end_date', dateTo);
 

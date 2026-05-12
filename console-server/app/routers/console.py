@@ -254,6 +254,7 @@ async def get_audit_logs(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     client_filter: Optional[str] = None,
+    status_filter: Optional[str] = None,
     client_id: str = Depends(_check_console_access)
 ):
     try:
@@ -265,19 +266,25 @@ async def get_audit_logs(
         query = "SELECT * FROM audit_log"
         conditions = []
         params = []
-        
+
         if search:
             conditions.append("(client_id LIKE ? OR action LIKE ? OR status LIKE ?)")
             params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
-        
+
         if client_filter:
             conditions.append("client_id = ?")
             params.append(client_filter)
-        
+
+        if status_filter:
+            # Compare case-insensitively so the UI's "success"/"denied" matches
+            # regardless of how individual audit_log() callers cased their value.
+            conditions.append("LOWER(status) = LOWER(?)")
+            params.append(status_filter)
+
         if start_date:
             conditions.append("timestamp >= ?")
             params.append(f"{start_date} 00:00:00")
-        
+
         if end_date:
             conditions.append("timestamp <= ?")
             params.append(f"{end_date} 23:59:59")
@@ -321,6 +328,7 @@ async def get_activity_logs(
     end_date: Optional[str] = None,
     client_filter: Optional[str] = None,
     domain_filter: Optional[str] = None,
+    direction_filter: Optional[str] = None,
     client_id: str = Depends(_check_console_access)
 ):
     """Fetch pre-ingested WireGuard/iptables logs from SQLite."""
@@ -350,6 +358,12 @@ async def get_activity_logs(
         if domain_filter:
             conditions.append("dc.domain LIKE ?")
             params.append(f"%{domain_filter}%")
+
+        if direction_filter:
+            # Stored values are "IN" / "OUT" (uppercase) from the ingester.
+            # Compare case-insensitively so the UI's "in"/"out" matches.
+            conditions.append("UPPER(a.direction) = UPPER(?)")
+            params.append(direction_filter)
 
         query = (
             "SELECT a.timestamp, a.client_id, a.direction, a.protocol, a.src_ip, a.src_port, "

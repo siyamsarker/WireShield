@@ -7,7 +7,7 @@ import socket
 import hashlib
 import re
 import ipaddress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -439,6 +439,15 @@ def _ingest_activity_logs():
                 try:
                     if 'T' in ts_raw:
                         dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
+                        # journalctl --output=short-iso emits LOCAL time with
+                        # a TZ offset (e.g. 2026-05-12T20:30:00+0530). Naively
+                        # strftime'ing the parsed value preserves the local
+                        # wall-clock instead of UTC, which then drifts from the
+                        # UTC dates the API filters expect. Convert to UTC
+                        # before storing so timestamps are uniform regardless
+                        # of host timezone.
+                        if dt.tzinfo is not None:
+                            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
                         ts = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     pass
