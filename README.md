@@ -678,9 +678,8 @@ flowchart TB
 
 Agents are statically-linked Go daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
 
-### Quick Reference
-
-The happy path: register an agent in the console, run the install one-liner on the remote host, verify the heartbeat, route VPN clients through the agent's advertised CIDRs.
+> [!TIP]
+> The happy path: register an agent in the console, run the install one-liner on the remote host, verify the heartbeat, route VPN clients through the agent's advertised CIDRs.
 
 ```mermaid
 flowchart LR
@@ -745,7 +744,7 @@ PreDown = iptables -t nat -D POSTROUTING -s 10.66.66.0/24 -o eth0 -j MASQUERADE
 
 **Advertised LAN CIDRs are required** when registering an agent. They cannot be left empty because without them the server has no CIDRs to route to the agent, the agent writes no iptables rules, and LAN access is silently broken.
 
-#### Step 1. Publish agent binaries on the VPN server (one-time setup)
+### Step 1. Publish agent binaries on the VPN server (one-time setup)
 
 **Done automatically by `sudo ./wireshield.sh`.** The installer:
 
@@ -784,7 +783,7 @@ version.json
 > [!NOTE]
 > No Go available? Use the [legacy Bash installer](#advanced) instead — it requires no build step and works on any enrolled agent.
 
-#### Step 2. Register the agent in the admin console
+### Step 2. Register the agent in the admin console
 
 1. Open `https://<server-ip>/console` in your browser and complete 2FA.
 2. Click **Agents** in the left sidebar.
@@ -797,7 +796,7 @@ version.json
 
 The console displays a one-time install command. **Copy it immediately** — it will not be shown again. If it expires (1-hour TTL), use the **Reissue token** button on the pending agent row.
 
-#### Step 3. Run the install command on the remote server
+### Step 3. Run the install command on the remote server
 
 SSH into the remote Linux server as root and paste the install command from Step 2. It looks like:
 
@@ -816,7 +815,7 @@ The bootstrap script automatically:
 
 The entire process takes under 60 seconds on a standard server.
 
-#### Step 4. Verify the connection
+### Step 4. Verify the connection
 
 **On the remote agent host:**
 
@@ -844,7 +843,7 @@ sudo wg show wg0
 
 VPN clients can now route traffic to the advertised CIDRs through the agent. No configuration changes are needed on the client side — routing is enforced server-side via `wg syncconf`.
 
-#### Reaching agent hosts and their LANs
+### Reaching agent hosts and their LANs
 
 Every enrolled agent has **two IP identities**, and they're reached over different paths. This trips up most first-time deployments — get it right the first time:
 
@@ -859,7 +858,7 @@ If `ssh user@<agent-lan-ip>` works some days and times out others, you're almost
 > [!TIP]
 > Prefer the WireGuard IP (`10.66.66.<N>`) for predictable behaviour everywhere. The server always has a `/32` route to every enrolled agent — no DNS, no LAN-direct fallbacks, no inconsistent behaviour when you change networks.
 
-##### How to SSH into the agent host — two options
+#### How to SSH into the agent host — two options
 
 You have a remote agent named `tn-office` with WG IP `10.66.66.200` on a LAN where its `ens160` address is `10.70.58.12`. You want to SSH in from your VPN client.
 
@@ -892,7 +891,7 @@ works from anywhere your VPN client is connected.
 > [!CAUTION]
 > If you're on the same physical network as the agent (e.g. office Wi-Fi where the agent also lives), `ssh <user>@10.70.58.12` will *appear* to work even without Option B — but only because your client routed LAN-direct, completely bypassing the VPN. Move to a different network and it will silently break. Option A or Option B is what makes it work reliably.
 
-#### Changing advertised CIDRs after enrollment
+### Changing advertised CIDRs after enrollment
 
 > [!IMPORTANT]
 > CIDR changes propagate from the server to the agent on the next heartbeat (≤30 s). No manual restart, no re-enrollment, no SSH into the agent host — just save the new CIDR list in the console.
@@ -916,7 +915,7 @@ ip route show | grep <new-cidr>                          # only on the *server*,
 > [!TIP]
 > Pre-declare CIDRs at registration time when possible. If you fill in `Advertised CIDRs` *before* generating the install token, the agent enrolls with them already in place and the `wg-quick up` PostUp installs the NAT/forwarding rules on first boot — no waiting for the heartbeat reconciliation cycle. The auto-reconcile path is there for after-the-fact changes; it's not a substitute for declaring upfront.
 
-#### Uninstalling an agent
+### Uninstalling an agent
 
 A full agent removal is a two-step process: local teardown on the agent host, then server-side revocation in the admin console.
 
