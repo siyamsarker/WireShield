@@ -701,6 +701,38 @@ sudo wg show wg0
 
 VPN clients can now route traffic to the advertised CIDRs through the agent. No configuration changes are needed on the client side — routing is enforced server-side via `wg syncconf`.
 
+### Reaching agent hosts and their LANs
+
+Every enrolled agent has **two IP identities**, and they're reached over different paths. This trips up most first-time deployments — get it right the first time:
+
+| Target | What it is | How to reach it from a VPN client | When to use |
+|---|---|---|---|
+| **`10.66.66.<N>`** (the agent's WireGuard IP) | The address allocated by the server at enrollment, visible in the Agents tab as `WG IPv4` | Always works via the VPN tunnel — server has a `/32` route to this peer | SSHing into the agent host itself, anywhere you are |
+| **An IP inside `advertised_cidrs`** (e.g. `192.168.169.10`) | A host *behind* the agent on its LAN | Works via the VPN tunnel — server has the CIDR routed through this peer, agent MASQUERADEs the source onto its LAN NIC | Reaching services on the LAN segment the agent advertises |
+| **The agent's LAN-side IP** (e.g. `10.70.58.12` on `ens160`) | The agent's own address on its physical LAN | **NOT routable via the VPN by default.** Only reachable if you (a) add it to `advertised_cidrs`, or (b) happen to be on the same physical LAN as the agent (LAN-direct, bypasses the VPN entirely) | Avoid this — prefer the WG IP for reaching the agent itself |
+
+If `ssh user@10.70.58.12` works some days and times out others, you're almost certainly switching between "on the same LAN as the agent" (LAN-direct succeeds) and "elsewhere" (tunnel can't route the private IP). **Use the WG IP for predictable behaviour everywhere.**
+
+### Changing advertised CIDRs after enrollment
+
+CIDRs can be edited from the **Agents** tab at any time without re-enrolling the agent or restarting anything. The full propagation path is automatic:
+
+1. Admin saves new CIDRs in the console (`PATCH /api/console/agents/{id}`).
+2. Server updates `wg0.conf`, calls `wg syncconf wg0`, and installs/removes kernel routes via `ip route replace|del`.
+3. Within ≤30 s, the agent's next heartbeat to `/api/agents/heartbeat` returns the new `advertised_cidrs` in the response body.
+4. The agent's daemon callback fires: applies the iptables `FORWARD` + `MASQUERADE` rules live, ensures `net.ipv4.ip_forward=1`, atomically rewrites `/etc/wireguard/wg-agent0.conf` (so a reboot is consistent), and persists the new CIDR list to `/etc/wireshield-agent/config.json`.
+
+There is no manual step on the agent host. Verify the change took effect on the agent:
+
+```bash
+sudo iptables -t nat -S POSTROUTING | grep wg-agent0    # MASQUERADE rule for the WG subnet
+sudo iptables -S FORWARD | grep wg-agent0               # FORWARD ACCEPT both directions
+sudo sysctl net.ipv4.ip_forward                          # must be 1
+ip route show | grep <new-cidr>                          # only on the *server*, not the agent
+```
+
+> **Pre-declare CIDRs at registration time when possible.** If you fill in `Advertised CIDRs` *before* generating the install token, the agent enrolls with them already in place and the `wg-quick up` PostUp installs the NAT/forwarding rules on first boot — no waiting for the heartbeat reconciliation cycle. The auto-reconcile path is there for after-the-fact changes; it's not a substitute for declaring upfront.
+
 ---
 
 ### Uninstalling an Agent
@@ -1229,6 +1261,48 @@ curl -sk https://<your-server>/api/agents/version | jq
 ```
 
 Ensure the operator has run `make -C agent dist && make -C agent install` and that `WS_AGENT_BINARY_DIR` points to the directory containing the built binaries.
+
+**VPN client can't reach an agent's advertised LAN:**
+
+Bisect the path before changing anything. Run these in three terminals:
+
+```bash
+# Terminal 1 — agent: are reply packets returning through the tunnel?
+sudo tcpdump -i wg-agent0 -nn icmp
+
+# Terminal 2 — agent: are reply packets leaving toward the LAN?
+sudo tcpdump -i <agent-lan-iface> -nn 'icmp and host <lan-target>'
+
+# Terminal 3 — VPN client (run after both tcpdumps are listening):
+ping -c 5 <lan-target>
+```
+
+Interpret:
+
+| Observed | Failing hop | Fix |
+|---|---|---|
+| Nothing on agent's `wg-agent0` | Server isn't forwarding to the agent | Check `ip route show \| grep <cidr>` on the server — the route must show `dev wg0`. If missing, restart `wireshield.service` (the periodic reconciler reinstalls it). |
+| ICMP arrives on `wg-agent0` but no packets on agent's LAN iface | Agent isn't NAT-forwarding | `sudo sysctl net.ipv4.ip_forward` must be `1`; `iptables -t nat -S POSTROUTING` must show a MASQUERADE rule for `10.66.66.0/24 -o <lan-iface>`. If not, restart `wireshield-agent` — the daemon's CIDR reconciler installs them. |
+| Outbound packets leave the LAN iface but no reply arrives | LAN-side problem | `<lan-target>` either doesn't respond to ICMP, is on a different subnet than the agent's LAN IP, or its gateway can't route back to the agent's LAN IP. |
+| Reply packets on `wg-agent0` (going back to server) but VPN client never sees them | Server is sinkholing return traffic | `sudo iptables -nvL FORWARD --line-numbers` should show `ACCEPT ... ctstate RELATED,ESTABLISHED` as **rule 1**. If missing, restart `wireshield.service` (the rule is reinstalled by the agent ACL sync loop every 30 s, and baked into `wg0.conf` PostUp on next interface up). |
+
+**Server-side `wg syncconf` keeps failing:**
+
+```bash
+sudo journalctl -u wireshield.service -o cat --no-pager -n 200 | grep -A1 "wg syncconf failed"
+```
+
+The decoded stderr (no `b"…"` repr wrapping) names the offending directive. Historical example: `Line unrecognized: 'Address=10.66.66.1/24,fd42:42:42::1/64'` meant `_strip_wg_conf` wasn't filtering `Address=` before piping to `wg syncconf` — fixed in `4d42c22`. If you see a directive listed here that the stripper doesn't know about, add it to the `WG_QUICK_KEYS` set in `console-server/app/core/agents.py`.
+
+**Agent and server show different `advertised_cidrs`:**
+
+The server is authoritative. The agent reconciles on its next heartbeat (≤30 s). To force an immediate convergence:
+
+```bash
+sudo systemctl restart wireshield-agent          # on the agent host
+```
+
+If the agent's `config.json` still doesn't match, the heartbeat loop probably never received a non-empty response — check `journalctl -u wireshield-agent -f` for the `CIDR update from server: ...` log line.
 
 ---
 
