@@ -711,7 +711,39 @@ Every enrolled agent has **two IP identities**, and they're reached over differe
 | **An IP inside `advertised_cidrs`** (e.g. `192.168.169.10`) | A host *behind* the agent on its LAN | Works via the VPN tunnel — server has the CIDR routed through this peer, agent MASQUERADEs the source onto its LAN NIC | Reaching services on the LAN segment the agent advertises |
 | **The agent's LAN-side IP** (e.g. `10.70.58.12` on `ens160`) | The agent's own address on its physical LAN | **NOT routable via the VPN by default.** Only reachable if you (a) add it to `advertised_cidrs`, or (b) happen to be on the same physical LAN as the agent (LAN-direct, bypasses the VPN entirely) | Avoid this — prefer the WG IP for reaching the agent itself |
 
-If `ssh user@10.70.58.12` works some days and times out others, you're almost certainly switching between "on the same LAN as the agent" (LAN-direct succeeds) and "elsewhere" (tunnel can't route the private IP). **Use the WG IP for predictable behaviour everywhere.**
+If `ssh user@<agent-lan-ip>` works some days and times out others, you're almost certainly switching between "on the same LAN as the agent" (LAN-direct succeeds) and "elsewhere" (tunnel can't route the private IP). **Use the WG IP for predictable behaviour everywhere.**
+
+#### How to SSH into the agent host — two options
+
+You have a remote agent named `tn-office` with WG IP `10.66.66.200` on a LAN where its `ens160` address is `10.70.58.12`. You want to SSH in from your VPN client.
+
+**Option A — use the WG IP (recommended, zero config):**
+
+```bash
+ssh <user>@10.66.66.200
+```
+
+This works from anywhere your VPN client is connected. No console changes, no DNS, no re-enrollment. The server already has a `/32` route to every enrolled agent over `wg0`, and the agent's `sshd` answers on its `wg-agent0` interface because it binds to `0.0.0.0`.
+
+**Option B — make the agent's LAN-side IP reachable through the tunnel too:**
+
+Useful when you want to reach the agent (or other hosts on its LAN) by their LAN addresses — e.g. existing tooling, DNS records, or runbooks reference `10.70.58.12` directly.
+
+1. Console → **Agents** → click `tn-office` → **Edit**
+2. Append the agent's LAN-side range to **Advertised CIDRs**, alongside whatever's already there:
+   - Just the agent itself: `10.70.58.12/32`
+   - The whole segment (lets you SSH to other LAN hosts too): `10.70.58.0/24`
+3. **Save.** Wait ≤30 seconds.
+
+The server installs the route + updates `wg0.conf`, the agent's next heartbeat receives the new CIDRs, and its daemon rebuilds `wg-agent0.conf` + applies iptables — all automatically. Then:
+
+```bash
+ssh <user>@10.70.58.12
+```
+
+works from anywhere your VPN client is connected.
+
+> **Avoid the trap:** if you're on the same physical network as the agent (e.g. office Wi-Fi where the agent also lives), `ssh <user>@10.70.58.12` will *appear* to work even without Option B — but only because your client routed LAN-direct, completely bypassing the VPN. Move to a different network and it will silently break. Option A or Option B is what makes it work reliably.
 
 ### Changing advertised CIDRs after enrollment
 
