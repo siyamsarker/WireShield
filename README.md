@@ -1567,9 +1567,43 @@ python run.py
 
 ### Tests
 
+The project ships a full Python test suite (101 tests) plus two bash integration scripts.
+
+#### Python tests
+
+Run from the repository root — no `cd` needed:
+
 ```bash
-cd console-server
-pytest -v
+python3 -m pytest tests/ -v
+```
+
+| File | Tests | Coverage |
+| :--- | :---: | :--- |
+| `tests/conftest.py` | — | Shared `tmp_db` fixture (isolated SQLite per test), autouse rate-limiter reset |
+| `tests/test_database.py` | 9 | Schema completeness, WAL mode, `synchronous=NORMAL`, FK enforcement, all performance indexes, migration columns |
+| `tests/test_security_utils.py` | 23 | Session token hashing/verification, CSRF token derivation, TOTP replay prevention (first use · replay · stale pruning · window boundary), `verify_client_ip` (6 cases incl. IPv6), `remove_client_by_id` session-cleanup regression, `audit_log` insert |
+| `tests/test_auth.py` | 14 | Full HTTP flow via `TestClient`: `setup-start` (new user, already-configured, IP mismatch), `setup-verify` (session created, invalid code, user not found), `verify` (session created, old sessions invalidated, TOTP replay rejected), `validate-session` (valid, expired, wrong token) |
+| `tests/test_console_api.py` | 27 | Audit log `status_filter` (server-side, case-insensitive, date range, pagination), activity log `direction_filter` (server-side, case-insensitive, DNS join, client filter), bandwidth gap-fill zeros, multi-user aggregation, user search + pagination + session status |
+| `tests/test_session_security.py` | 8 | `_check_console_access`: grants with live session, denies expired session (regression), denies missing session, denies no `console_access` flag, denies unknown IP, denies immediately after `remove_client_by_id` (post-disconnect bypass regression) |
+| `tests/test_tasks_utc.py` | 20 | UTC timestamp normalisation (all TZ offset variants, Z suffix, naive pass-through, half-hour IST, midnight wrap), iptables log-line parser (TCP/UDP/ICMP, ports, direction priority, IPv6), DB write integration |
+| `tests/test_activity_logs_api.py` | 1 | Activity log query with LEFT JOIN DNS cache, unambiguous ORDER BY |
+| `tests/test_bandwidth_usage_api.py` | 1 | Bandwidth usage user + date filter |
+| `tests/test_rate_limit.py` | 2 | Sliding-window rate limiter: burst blocking, window expiry |
+
+#### Go agent tests
+
+```bash
+cd agent
+make test
+```
+
+#### Bash integration tests
+
+These run against a live WireGuard + server stack — for use in CI or manual smoke-testing:
+
+```bash
+bash tests/test-2fa-access.sh
+bash tests/test-integration.sh
 ```
 
 ### Project Structure
@@ -1582,11 +1616,18 @@ WireShield/
 ├── assets/
 │   └── logo.svg
 ├── tests/
-│   ├── test_rate_limit.py
-│   ├── test_activity_logs_api.py
-│   ├── test_bandwidth_usage_api.py
-│   ├── test-2fa-access.sh
-│   └── test-integration.sh
+│   ├── conftest.py               # Shared pytest fixtures (tmp_db, rate-limiter reset)
+│   ├── test_database.py          # Schema, WAL mode, indexes, idempotent init
+│   ├── test_security_utils.py    # CSRF, TOTP replay, verify_client_ip, session cleanup
+│   ├── test_auth.py              # 2FA setup/verify/validate-session HTTP flow
+│   ├── test_console_api.py       # Audit/activity/bandwidth/users API endpoints
+│   ├── test_session_security.py  # Session expiry gate + post-disconnect bypass fix
+│   ├── test_tasks_utc.py         # UTC timestamp normalisation + log-line parser
+│   ├── test_rate_limit.py        # Sliding-window rate limiter
+│   ├── test_activity_logs_api.py # Activity log DNS join query
+│   ├── test_bandwidth_usage_api.py # Bandwidth user/date filters
+│   ├── test-2fa-access.sh        # Bash: live 2FA captive portal smoke test
+│   └── test-integration.sh       # Bash: end-to-end integration test
 ├── agent/                        # Go agent daemon
 │   ├── go.mod
 │   ├── Makefile                  # build / test / dist / install targets
