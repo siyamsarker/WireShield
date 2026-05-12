@@ -479,7 +479,8 @@ def wg_syncconf() -> None:
         )
         logger.info(f"wg syncconf applied to {iface}")
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"wg syncconf failed: {e.stderr!r}") from e
+        stderr_text = e.stderr.decode("utf-8", errors="replace").strip() if e.stderr else "<no stderr>"
+        raise RuntimeError(f"wg syncconf failed: {stderr_text}") from e
     except FileNotFoundError:
         logger.debug("wg not available (likely dev env)")
     finally:

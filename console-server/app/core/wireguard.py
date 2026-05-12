@@ -181,7 +181,8 @@ def _wg_syncconf(iface: str) -> None:
         )
         logger.info(f"wg syncconf applied to {iface}")
     except subprocess.CalledProcessError as e:
-        logger.warning(f"wg syncconf failed: {e.stderr!r}")
+        stderr_text = e.stderr.decode("utf-8", errors="replace").strip() if e.stderr else "<no stderr>"
+        logger.warning(f"wg syncconf failed: {stderr_text}")
     except FileNotFoundError:
         logger.debug("wg/wg-quick not available (likely dev env)")
 
@@ -325,7 +326,8 @@ def create_client(name: str, expiry_days: Optional[int] = None) -> Dict[str, str
     except FileNotFoundError:
         raise RuntimeError("wg binary not found — WireGuard tools must be installed")
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"wg keygen failed: {e.stderr!r}")
+        stderr_text = e.stderr.decode("utf-8", errors="replace").strip() if e.stderr else "<no stderr>"
+        raise RuntimeError(f"wg keygen failed: {stderr_text}")
 
     # Client config text
     client_config = _build_client_config(priv, psk, ipv4, ipv6, params)
