@@ -575,7 +575,7 @@ EOFSERVICE
 
 _WS_GO_MIN_MAJOR=1
 _WS_GO_MIN_MINOR=22
-_WS_GO_PIN_VERSION="1.22.10"
+_WS_GO_PIN_VERSION="1.25.0"
 _WS_GO_INSTALL_DIR="/usr/local/go"
 _WS_GO_PROFILE_SCRIPT="/etc/profile.d/wireshield-go.sh"
 _WS_GO_INSTALL_MARKER="/etc/wireshield/.go-installed-by-wireshield"
@@ -598,7 +598,7 @@ function _ws_go_meets_minimum() {
 }
 
 function _ws_ensure_go() {
-	# Make a Go 1.22+ toolchain available for the agent build. Sets:
+	# Make a Go 1.25+ toolchain available for the agent build. Sets:
 	#   _WS_GO_BIN — absolute path to the `go` binary to use
 	# Returns 0 on success, 1 if installation failed.
 	#
@@ -715,7 +715,7 @@ EOF
 
 function _ws_build_agent() {
 	# Build and publish wireshield-agent binaries to AGENT_BINARY_DIR. Auto-installs
-	# Go 1.22+ if not already present. Non-fatal at every step — any failure
+	# Go 1.25+ if not already present. Non-fatal at every step — any failure
 	# prints a warning with the manual recovery command and lets the main install
 	# complete normally.
 	local SCRIPT_DIR
@@ -738,7 +738,7 @@ function _ws_build_agent() {
 
 	if ! _ws_ensure_go; then
 		_ws_ui_warn "Could not provision Go toolchain — agent build skipped"
-		_ws_ui_info  "Install Go 1.22+ manually, then run:"
+		_ws_ui_info  "Install Go 1.25+ manually, then run:"
 		_ws_ui_info  "  make -C agent dist && sudo make -C agent install AGENT_BINARY_DIR=${AGENT_BINARY_DIR}"
 		return 0
 	fi

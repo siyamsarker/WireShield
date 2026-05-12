@@ -195,7 +195,7 @@ Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forward
 | Admin Console          | Bandwidth insights                          | Per-client daily upload/download tracking                                                                                            |
 | Admin Console          | Audit trail                                 | All security events (2FA setup, verification, failures)                                                                              |
 | Operational Features   | One-command installation                    | Interactive CLI wizard                                                                                                               |
-| Operational Features   | 9+ Linux distributions supported            | Ubuntu, Debian, Fedora, CentOS, Alma, Rocky, Oracle, Arch, Alpine                                                                    |
+| Operational Features   | Nine Linux distributions supported          | Ubuntu, Debian, Fedora, CentOS, Alma, Rocky, Oracle, Arch, Alpine                                                                    |
 | Operational Features   | Systemd integration                         | Hardened service configuration                                                                                                       |
 | Operational Features   | Client management via CLI                   | Add, list, revoke, reset 2FA                                                                                                         |
 | Operational Features   | Configurable log retention                  | Automatic cleanup                                                                                                                    |
@@ -219,17 +219,7 @@ cd WireShield
 sudo ./wireshield.sh
 ```
 
-Expected output near the end of a successful install:
-
-```text
-[+] WireGuard interface wg0 is up
-[+] 2FA service enabled and active (wireshield.service)
-[+] Captive portal listening on https://<server-ip>/
-[+] Agent binaries published to /etc/wireshield/agent-binaries/
-[+] First-time setup complete. Run sudo ./wireshield.sh to manage clients.
-```
-
-The interactive installer handles everything: WireGuard setup, firewall rules, SSL certificates, 2FA service, and your first client configuration. Takes about 5 minutes.
+A successful install ends with a "Subsystem status" panel that lists each component (WireGuard interface, 2FA portal + admin console, agent binaries) with a check or warning mark, followed by a "Next steps" panel pointing at the captive portal URL and the admin console. The interactive installer handles everything along the way: WireGuard setup, firewall rules, SSL certificates, 2FA service, and your first client configuration. Takes about 5 minutes.
 
 > [!TIP]
 > Next steps: [Step 2 — Verify the installation](#step-2-verify-the-installation) and [Step 3 — Add your first VPN client](#step-3-add-your-first-vpn-client).
@@ -370,7 +360,7 @@ sudo systemctl restart wireshield.service
 | `WS_2FA_RATE_LIMIT_WINDOW`            | `60`                                 | Rate limit window in seconds                                                                                                                                                                                                 |
 | `WS_2FA_ACTIVITY_LOG_RETENTION_DAYS`  | `30`                                 | Days to retain activity logs                                                                                                                                                                                                 |
 | `WS_2FA_LOG_LEVEL`                    | `INFO`                               | Logging verbosity                                                                                                                                                                                                            |
-| `WS_2FA_SSL_TYPE`                     | `self-signed`                        | `letsencrypt`, `self-signed`, or `disabled`                                                                                                                                                                                  |
+| `WS_2FA_SSL_TYPE`                     | set by installer (`letsencrypt`, `self-signed`, or `none`) | The installer writes this to `/etc/wireshield/2fa/config.env` based on your SSL choice. Python falls back to `self-signed` only if the variable is unset. Valid values: `letsencrypt`, `self-signed`, `disabled`. |
 | `WS_2FA_DOMAIN`                       |                                      | Domain name for Let's Encrypt                                                                                                                                                                                                |
 | `WS_AGENT_TOKEN_TTL_SECONDS`          | `3600`                               | Enrollment token lifetime (1 hour)                                                                                                                                                                                           |
 | `WS_AGENT_IP_START`                   | `200`                                | First WG IPv4 octet reserved for agents (inside the server subnet)                                                                                                                                                           |
@@ -610,7 +600,7 @@ flowchart TB
 ├── wireshield-agent_linux_amd64.sha256
 ├── wireshield-agent_linux_arm64        # Static binary for ARM64
 ├── wireshield-agent_linux_arm64.sha256
-└── version.json                        # Auto-update manifest
+└── version.json                        # Optional auto-update manifest (operator-authored, not produced by `make install`)
 
 /etc/systemd/system/
 ├── wireshield.service             # 2FA + admin console service unit
@@ -748,8 +738,8 @@ PreDown = iptables -t nat -D POSTROUTING -s 10.66.66.0/24 -o eth0 -j MASQUERADE
 
 **Done automatically by `sudo ./wireshield.sh`.** The installer:
 
-1. Detects whether Go 1.22+ is already on the server and uses it if so
-2. Otherwise downloads the official Go 1.22 tarball from go.dev (or `apk add go` on Alpine)
+1. Detects whether Go 1.25+ is already on the server and uses it if so
+2. Otherwise downloads the official Go 1.25 tarball from go.dev (or `apk add go` on Alpine)
 3. Cross-compiles `wireshield-agent` for `linux-amd64` and `linux-arm64`
 4. Publishes the binaries + SHA-256 sidecars to `/etc/wireshield/agent-binaries/`
 5. Marks `/etc/wireshield/.go-installed-by-wireshield` so the uninstaller knows to clean Go up
@@ -1142,7 +1132,7 @@ The WG peer block is removed, the DB row is marked `revoked`, and the next `/api
 
 #### Go Agent Build + Deployment
 
-The agent is a single statically-linked Go binary. Build it on any host with Go 1.22+:
+The agent is a single statically-linked Go binary. Build it on any host with Go 1.25+:
 
 ```bash
 cd agent
@@ -1606,8 +1596,9 @@ WireShield/
 │   │       ├── enroll.go         # Enrollment flow
 │   │       ├── daemon.go         # Heartbeat daemon (run subcommand)
 │   │       ├── update.go         # One-shot self-update (update subcommand)
-│   │       ├── revoke.go         # Local teardown
-│   │       └── status.go         # Enrollment state printer
+│   │       ├── revoke.go         # Local teardown of the agent peer (revoke subcommand)
+│   │       ├── status.go         # Enrollment state printer (status subcommand)
+│   │       └── uninstall.go      # Full local removal (uninstall subcommand)
 │   ├── internal/
 │   │   ├── client/client.go      # HTTP client for server API
 │   │   ├── config/config.go      # config.json read/write (atomic)
@@ -1621,6 +1612,7 @@ WireShield/
 │   │       ├── stats.go          # wg show transfer parser
 │   │       └── systemd.go        # systemctl enable/disable --now wrappers
 │   └── dist/
+│       ├── bin/                  # Populated by `make dist` — flat per-arch binaries + .sha256 sidecars
 │       ├── wireshield-agent.service  # Hardened systemd unit
 │       └── install.sh            # Bootstrap installer (arch-detect, binary download, enroll)
 └── console-server/
@@ -1663,7 +1655,7 @@ WireShield/
 | :------------- | :-------------------------------------------------------------------------------------- |
 | VPN            | WireGuard                                                                               |
 | Backend        | Python 3.8+, FastAPI 0.104, Uvicorn                                                     |
-| Agent daemon   | Go 1.22+ (single static binary, Curve25519 via `golang.org/x/crypto`)                   |
+| Agent daemon   | Go 1.25+ (single static binary, Curve25519 via `golang.org/x/crypto`)                   |
 | Database       | SQLite                                                                                  |
 | Frontend       | Jinja2, vanilla JavaScript, Chart.js                                                    |
 | Auth           | pyotp (TOTP), pyqrcode                                                                  |
