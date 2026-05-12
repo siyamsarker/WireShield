@@ -807,6 +807,31 @@ def _ensure_agent_acl_chain():
         _iptables_run(["-I", "FORWARD", "1", "-j", _AGENT_ACL_CHAIN])
 
 
+def _ensure_forward_state_accept():
+    """Idempotently ensure ESTABLISHED,RELATED traffic is ACCEPTed at the
+    top of FORWARD.
+
+    Without this, return packets for already-authorized 2FA flows fall
+    through to the captive-portal sinkhole (the `-A WS_2FA_PORTAL -j DROP`
+    appended by the wireshield.sh PostUp block). The 2FA gate rule
+    `-A FORWARD -i wg0 -m set --match-set ws_2fa_allowed_v4 src -j ACCEPT`
+    only matches when SOURCE is a 2FA-authed client — it does not match
+    return traffic where source is a LAN host (e.g. 192.168.169.1) behind
+    an agent peer, even when the destination IS a 2FA-authed client.
+
+    Standard stateful-firewall idiom: NEW connections still pass through
+    the 2FA gate; only return traffic for already-permitted flows is
+    short-circuited via conntrack.
+    """
+    rule = ["-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"]
+    r = _iptables_run(["-C", "FORWARD"] + rule)
+    if r.returncode == 0:
+        return
+    # Insert at position 1 so it runs before the audit LOG and any
+    # subsequent chain jumps. -I FORWARD 1 pushes everything down by one.
+    _iptables_run(["-I", "FORWARD", "1"] + rule)
+
+
 def _flush_agent_acl_chain():
     _iptables_run(["-F", _AGENT_ACL_CHAIN])
 
@@ -868,6 +893,7 @@ def _sync_agent_acl_once():
             return
 
         try:
+            _ensure_forward_state_accept()
             _ensure_agent_acl_chain()
             _flush_agent_acl_chain()
             rules = _build_acl_rules()
