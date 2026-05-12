@@ -436,9 +436,16 @@ def _strip_wg_conf(conf_path: str) -> bytes:
     Using Python instead of `wg-quick strip` avoids a dependency on wg-quick
     being available/working in the subprocess environment and eliminates the
     most common reason wg_syncconf fails on production systems."""
+    # Keys consumed by wg-quick that `wg syncconf` / `wg setconf` reject.
+    # Per wg-quick(8): Address, DNS, MTU, Table, SaveConfig, and the
+    # Pre/Post Up/Down hooks. Omitting `Address` causes wg syncconf to
+    # fail with "Line unrecognized: `Address=...'" — see prior incident
+    # where agent peers couldn't be live-applied to wg0 because the
+    # server's wg0.conf [Interface] block contained `Address = ...`.
     WG_QUICK_KEYS = {
-        "postup", "preup", "postdown", "predown",
-        "dns", "table", "mtu", "saveconfig",
+        "address",
+        "dns", "mtu", "table", "saveconfig",
+        "preup", "postup", "predown", "postdown",
     }
     out: List[str] = []
     with open(conf_path, "r") as f:
