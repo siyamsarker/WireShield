@@ -138,10 +138,29 @@ def allow_client_by_id(client_id: str) -> None:
         _ipset(["ipset", "add", "ws_2fa_allowed_v6", v6, "-exist"])
 
 def remove_client_by_id(client_id: str) -> None:
+    """Fully revoke a client: drop their IP from the 2FA ipset AND delete
+    every session row they own.
+
+    Deleting the session rows closes the post-disconnect bypass: without
+    it, an expires_at in the future would still satisfy the
+    `_check_console_access` JOIN-on-sessions, letting a user who
+    disconnected and reconnected reach /console without performing 2FA
+    again. The ipset removal alone gates FORWARD traffic, but the
+    captive portal is reachable via INPUT (DNAT lands packets on the
+    server itself regardless of 2FA state) — so the session row IS the
+    source of truth for "has this client authenticated for this
+    connection?" and must be invalidated when the WireGuard monitor
+    decides the client has gone away.
+    """
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT wg_ipv4, wg_ipv6 FROM users WHERE client_id = ?", (client_id,))
     row = c.fetchone()
+    if row:
+        # Invalidate sessions in the same connection so a concurrent
+        # /api/console/* request sees the deletion atomically.
+        c.execute("DELETE FROM sessions WHERE client_id = ?", (client_id,))
+        conn.commit()
     conn.close()
     if not row:
         return
