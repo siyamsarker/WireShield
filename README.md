@@ -15,31 +15,87 @@
 
 WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authentication at the connection layer. Every client must verify through a captive portal before any traffic is allowed through the tunnel. A built-in agent system lets remote Linux servers register as WireGuard peers — authenticated VPN clients can then route traffic to private LANs on those servers with no extra client-side configuration.
 
-[Quick Start](#quick-start) &bull; [How It Works](#how-it-works) &bull; [Architecture](#architecture) &bull; [Features](#features) &bull; [Installation](#installation) &bull; [Configuration](#configuration) &bull; [Usage](#usage) &bull; [Agents](#agents) &bull; [Security Model](#security-model) &bull; [Troubleshooting](#troubleshooting) &bull; [Uninstall](#uninstall) &bull; [Contributing](#contributing)
-
 </div>
 
 ---
 
-## Quick Start
+## Why WireShield
 
-```bash
-git clone https://github.com/siyamsarker/WireShield.git
-cd WireShield
-sudo ./wireshield.sh
-```
+- **Zero-trust 2FA at the connection layer.** A successful WireGuard handshake is not enough — every client is firewall-quarantined to the captive portal until a TOTP code is verified, then allowlisted via `ipset` for the rest of the session.
+- **Extend the VPN to remote LANs through the agent fleet.** Outbound-only Go daemons enroll over a single-use token, advertise their LAN CIDRs, and authenticated VPN users can reach those subnets immediately — no client-side routes, no re-enrollment when CIDRs change.
+- **One interactive bash installer for the whole stack.** `sudo ./wireshield.sh` provisions WireGuard, the 2FA FastAPI service, firewall, SSL, and cross-compiled agent binaries on nine major Linux distros in roughly five minutes.
 
-The interactive installer handles everything: WireGuard setup, firewall rules, SSL certificates, 2FA service, and your first client configuration. Takes about 5 minutes.
+---
+
+<details>
+<summary>Table of contents</summary>
+
+- [Why WireShield](#why-wireshield)
+- [How It Works](#how-it-works)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [System Requirements](#system-requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [SSL / TLS](#ssl--tls)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Agents](#agents)
+- [Operations and Troubleshooting](#operations-and-troubleshooting)
+- [Uninstall](#uninstall)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
+
+</details>
 
 ---
 
 ## How It Works
 
+An authenticated session is the product of three independent gates: a WireGuard handshake, a TOTP verification at the captive portal, and ongoing handshake freshness. The diagram below traces a single packet from a client device through every gate to the public internet (or to a LAN behind an agent).
+
+```mermaid
+flowchart LR
+    Client["VPN Client<br/>(WireGuard)"] -->|encrypted UDP| WG["wg0<br/>WireGuard server"]
+    WG --> Check{"Source IP in<br/>ws_2fa_allowed_v4?"}
+    Check -- no --> Portal["WS_2FA_PORTAL chain<br/>(captive portal)"]
+    Portal --> TOTP["2FA TOTP verify<br/>(FastAPI)"]
+    TOTP -->|valid code| IPSet["ipset add<br/>ws_2fa_allowed_v4"]
+    IPSet --> Check
+    Check -- yes --> FWD["FORWARD chain<br/>(ACCEPT)"]
+    FWD --> Internet["Internet"]
+    FWD --> Agent["Agent peer<br/>(wg-agent0)"]
+    Agent --> LAN["LAN behind agent<br/>(advertised CIDRs)"]
+```
+
 ### VPN + 2FA Flow
 
 Every VPN client must pass a TOTP challenge through the captive portal before any traffic is forwarded through the tunnel.
 
+```mermaid
+sequenceDiagram
+    participant Client
+    participant WireGuard as WireGuard / iptables
+    participant Portal as 2FA Portal (FastAPI)
+    participant DB as SQLite (auth.db)
+    participant IPSet as ipset ws_2fa_allowed_v4
+
+    Client->>WireGuard: WireGuard handshake (UDP 51820)
+    Client->>WireGuard: HTTP request to any destination
+    WireGuard->>WireGuard: Source IP not in allowlist
+    WireGuard-->>Client: Redirect to https://<server>/ (portal)
+    Client->>Portal: GET / (TOTP form)
+    Portal->>DB: lookup user by WG source IP
+    Client->>Portal: POST /api/verify (6-digit code)
+    Portal->>DB: pyotp.verify + insert session
+    Portal->>IPSet: ipset add <client-ip>
+    Portal-->>Client: 200 OK + /success page
+    Client->>WireGuard: subsequent traffic
+    WireGuard->>WireGuard: source IP allowlisted -> ACCEPT
 ```
+
+```text
 ┌──────────────────┐
 │  Client Device   │
 │  (WireGuard)     │
@@ -76,7 +132,7 @@ Every VPN client must pass a TOTP challenge through the captive portal before an
 
 Agents are Go daemons deployed on remote Linux servers. Each agent dials outbound into the WireShield VPN as a WireGuard peer and advertises its local LAN CIDRs. The server adds those CIDRs to the agent's `AllowedIPs`, so any authenticated VPN client can reach them without any client-side changes.
 
-```
+```text
 ┌──────────────────────┐       ┌────────────────────────────────────────────┐
 │     VPN Client       │       │           WireShield Server                │
 │     (WireGuard)      │◄─────►│                  (wg0)                     │
@@ -111,51 +167,79 @@ Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forward
 
 ### Session Rules
 
-| Rule | Behavior |
-|------|----------|
-| **Absolute timeout** | Sessions expire after 24 hours regardless of activity |
-| **Disconnect grace** | If the VPN disconnects, the session survives for 1 hour |
-| **Reconnect < 1h** | Instant access, no re-authentication required |
-| **Reconnect > 1h** | Session revoked, 2FA required again |
-| **Strict revocation** | Expired sessions immediately block all traffic |
+| Rule                 | Behavior                                                       |
+| :------------------- | :------------------------------------------------------------- |
+| **Absolute timeout** | Sessions expire after 24 hours regardless of activity          |
+| **Disconnect grace** | If the VPN disconnects, the session survives for 1 hour        |
+| **Reconnect < 1h**   | Instant access, no re-authentication required                  |
+| **Reconnect > 1h**   | Session revoked, 2FA required again                            |
+| **Strict revocation** | Expired sessions immediately block all traffic                |
 
 ---
 
 ## Features
 
-### Security
-- **Pre-connection 2FA** with TOTP (RFC 6238 compatible)
-- **TLS/SSL** with Let's Encrypt auto-renewal or self-signed certificates
-- **Rate limiting** at 30 requests per 60 seconds per IP/endpoint
-- **ipset-based firewall** for O(1) allowlist lookups (IPv4 + IPv6)
-- **Session-gated portal pages** — `/success`, `/console` and user APIs reject callers without a non-expired 2FA session
-- **WireGuard handshake monitoring** with 3-second polling for real-time session tracking
-- **Comprehensive audit logging** for all authentication events
+| Category               | Capability                                  | Details                                                                                                                              |
+| :--------------------- | :------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------- |
+| Security               | Pre-connection 2FA                          | TOTP (RFC 6238 compatible) verified at a captive portal before any traffic is forwarded                                              |
+| Security               | TLS / SSL                                   | Let's Encrypt auto-renewal or self-signed certificates                                                                               |
+| Security               | Rate limiting                               | 30 requests per 60 seconds per IP/endpoint                                                                                           |
+| Security               | ipset-based firewall                        | O(1) allowlist lookups for IPv4 and IPv6                                                                                             |
+| Security               | Session-gated portal pages                  | `/success`, `/console` and user APIs reject callers without a non-expired 2FA session                                                |
+| Security               | WireGuard handshake monitoring              | 3-second polling for real-time session tracking                                                                                      |
+| Security               | Audit logging                               | Comprehensive log of all authentication events                                                                                       |
+| Admin Console          | Dashboard                                   | Real-time statistics, charts, and active session monitoring                                                                          |
+| Admin Console          | User management                             | Pagination, search, in-browser Create / Revoke actions, per-user Download `.conf` — no SSH required                                  |
+| Admin Console          | Per-client access control                   | Admin console permission, expiry dates                                                                                               |
+| Admin Console          | Traffic activity                            | Logs with DNS resolution and protocol analysis                                                                                       |
+| Admin Console          | Bandwidth insights                          | Per-client daily upload/download tracking                                                                                            |
+| Admin Console          | Audit trail                                 | All security events (2FA setup, verification, failures)                                                                              |
+| Operational Features   | One-command installation                    | Interactive CLI wizard                                                                                                               |
+| Operational Features   | 9+ Linux distributions supported            | Ubuntu, Debian, Fedora, CentOS, Alma, Rocky, Oracle, Arch, Alpine                                                                    |
+| Operational Features   | Systemd integration                         | Hardened service configuration                                                                                                       |
+| Operational Features   | Client management via CLI                   | Add, list, revoke, reset 2FA                                                                                                         |
+| Operational Features   | Configurable log retention                  | Automatic cleanup                                                                                                                    |
+| Operational Features   | Activity logging                            | iptables-based traffic capture with DNS enrichment                                                                                   |
+| Operational Features   | Self-healing watchdog                       | Detects WireGuard interface flaps, re-asserts portal firewall rules, auto-restarts the DNS/TLS sniffer                               |
+| Operational Features   | Diagnostic `/health` endpoint               | Exposes WireGuard state, iptables rules, database stats, watchdog history, and agent fleet stats for monitoring                      |
+| Operational Features   | Agent fleet                                 | Deploy WireShield agent daemons on remote Linux servers — reverse-connection, outbound-only, token-enrolled                          |
 
-### Admin Console
-- **Dashboard** with real-time statistics, charts, and active session monitoring
-- **User management** with pagination, search, in-browser **Create / Revoke** actions and per-user **Download `.conf`** — no SSH required
-- **Per-client access control** (admin console permission, expiry dates)
-- **Traffic activity** logs with DNS resolution and protocol analysis
-- **Bandwidth insights** with per-client daily upload/download tracking
-- **Audit trail** for all security events (2FA setup, verification, failures)
+---
 
-### Operational Features
-- **One-command installation** with interactive CLI wizard
-- **9+ Linux distributions** supported (Ubuntu, Debian, Fedora, CentOS, Alma, Rocky, Oracle, Arch, Alpine)
-- **Systemd integration** with hardened service configuration
-- **Client management** via CLI (add, list, revoke, reset 2FA)
-- **Configurable log retention** with automatic cleanup
-- **Activity logging** with iptables-based traffic capture and DNS enrichment
-- **Self-healing watchdog** that detects WireGuard interface flaps, re-asserts portal firewall rules, and auto-restarts the DNS/TLS sniffer
-- **Diagnostic `/health` endpoint** exposing WireGuard state, iptables rules, database stats, watchdog history, and agent fleet stats for monitoring
-- **Agent fleet** — deploy WireShield agent daemons on remote Linux servers to let VPN clients reach private LANs behind those servers (reverse-connection, outbound-only, token-enrolled)
+## Quick Start
+
+> [!IMPORTANT]
+> WireShield requires Linux with systemd, root privileges, an open UDP port for WireGuard, and reachable TCP `80`/`443` for the captive portal. See [System Requirements](#system-requirements) for the full list.
+
+Install with a single command:
+
+```bash
+git clone https://github.com/siyamsarker/WireShield.git
+cd WireShield
+sudo ./wireshield.sh
+```
+
+Expected output near the end of a successful install:
+
+```text
+[+] WireGuard interface wg0 is up
+[+] 2FA service enabled and active (wireshield.service)
+[+] Captive portal listening on https://<server-ip>/
+[+] Agent binaries published to /etc/wireshield/agent-binaries/
+[+] First-time setup complete. Run sudo ./wireshield.sh to manage clients.
+```
+
+The interactive installer handles everything: WireGuard setup, firewall rules, SSL certificates, 2FA service, and your first client configuration. Takes about 5 minutes.
+
+> [!TIP]
+> Next steps: [Step 2 — Verify the installation](#step-2-verify-the-installation) and [Step 3 — Add your first VPN client](#step-3-add-your-first-vpn-client).
 
 ---
 
 ## System Requirements
 
 ### Server
+
 - **OS:** Linux with systemd (kernel 5.6+ for built-in WireGuard, or compatible module)
 - **Architecture:** x86_64, ARM64
 - **RAM:** 512 MB minimum
@@ -163,19 +247,20 @@ Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forward
 
 ### Supported Distributions
 
-| Distribution | Minimum Version |
-|--------------|----------------|
-| Ubuntu | 18.04 (Bionic) |
-| Debian | 10 (Buster) |
-| Fedora | 32 |
-| CentOS Stream | 8 |
-| AlmaLinux | 8 |
-| Rocky Linux | 8 |
-| Oracle Linux | 8 |
-| Arch Linux | Rolling |
-| Alpine Linux | 3.14 |
+| Distribution    | Minimum Version |
+| :-------------- | :-------------- |
+| Ubuntu          | 18.04 (Bionic)  |
+| Debian          | 10 (Buster)     |
+| Fedora          | 32              |
+| CentOS Stream   | 8               |
+| AlmaLinux       | 8               |
+| Rocky Linux     | 8               |
+| Oracle Linux    | 8               |
+| Arch Linux      | Rolling         |
+| Alpine Linux    | 3.14            |
 
 ### Client
+
 - Any WireGuard client (Windows, macOS, Linux, iOS, Android)
 - A TOTP authenticator app (Google Authenticator, Authy, Microsoft Authenticator, 1Password, Bitwarden)
 - A web browser for 2FA verification
@@ -188,16 +273,16 @@ Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forward
 
 Before running the installer, ensure the following are in place:
 
-| Requirement | Details |
-|-------------|---------|
-| **Operating system** | Linux with systemd — see [Supported Distributions](#supported-distributions) |
-| **Privileges** | Root or `sudo` access during installation |
-| **Inbound ports** | UDP `51820` (WireGuard, configurable) · TCP `80` and `443` (captive portal) |
-| **Public address** | A static public IP or a domain name pointing to the server |
-| **Domain name** | Required only for Let's Encrypt; a bare IP works fine with self-signed TLS |
-| **Packages** | `git` and `curl` — pre-installed on most distributions |
+| Requirement          | Details                                                                                                  |
+| :------------------- | :------------------------------------------------------------------------------------------------------- |
+| **Operating system** | Linux with systemd — see [Supported Distributions](#supported-distributions)                             |
+| **Privileges**       | Root or `sudo` access during installation                                                                |
+| **Inbound ports**    | UDP `51820` (WireGuard, configurable); TCP `80` and `443` (captive portal)                               |
+| **Public address**   | A static public IP or a domain name pointing to the server                                               |
+| **Domain name**      | Required only for Let's Encrypt; a bare IP works fine with self-signed TLS                               |
+| **Packages**         | `git` and `curl` — pre-installed on most distributions                                                   |
 
-### Step 1 — Clone and run the installer
+### Step 1. Clone and run the installer
 
 ```bash
 git clone https://github.com/siyamsarker/WireShield.git
@@ -208,19 +293,19 @@ sudo ./wireshield.sh
 
 Select **Install WireShield** from the main menu. The interactive wizard walks through each component in order:
 
-| Section | What it configures |
-|---------|--------------------|
-| **Network** | Public IP/hostname (auto-detected), public interface |
-| **WireGuard** | Interface name, server IPv4/IPv6 subnet, UDP listen port |
-| **Client DNS** | Primary and secondary resolvers pushed to clients (default: Cloudflare) |
-| **Routing** | `AllowedIPs` controlling what traffic routes through the tunnel |
-| **SSL/TLS** | Let's Encrypt (certbot), self-signed certificate, or disabled |
+| Section        | What it configures                                                              |
+| :------------- | :------------------------------------------------------------------------------ |
+| **Network**    | Public IP/hostname (auto-detected), public interface                            |
+| **WireGuard**  | Interface name, server IPv4/IPv6 subnet, UDP listen port                        |
+| **Client DNS** | Primary and secondary resolvers pushed to clients (default: Cloudflare)         |
+| **Routing**    | `AllowedIPs` controlling what traffic routes through the tunnel                 |
+| **SSL/TLS**    | Let's Encrypt (certbot), self-signed certificate, or disabled                   |
 
 A review summary is displayed before anything is written to disk. All prompts have sensible defaults — press Enter to accept them.
 
 The installer sets up WireGuard, configures iptables/ipset firewall rules, generates SSL certificates, deploys the 2FA FastAPI service under systemd, and writes all configuration to `/etc/wireshield/`.
 
-### Step 2 — Verify the installation
+### Step 2. Verify the installation
 
 ```bash
 sudo wg show                                         # WireGuard interface + peers
@@ -231,7 +316,7 @@ curl -sk https://localhost/health | jq .status       # Expect "ok"
 
 The `/health` endpoint returns a JSON snapshot of every subsystem. If `status` is `"degraded"`, check the individual fields (`database`, `wireguard`, `iptables_portal`) to identify which component needs attention.
 
-### Step 3 — Add your first VPN client
+### Step 3. Add your first VPN client
 
 ```bash
 sudo ./wireshield.sh   # Select option 1 — Create Client
@@ -239,13 +324,13 @@ sudo ./wireshield.sh   # Select option 1 — Create Client
 
 Enter a client ID when prompted (e.g. `alice`). The wizard generates a WireGuard `.conf` file and a QR code at:
 
-```
+```text
 /etc/wireshield/clients/alice.conf
 ```
 
 Transfer it to the client device via `scp`, email, or by scanning the QR code printed directly in the terminal.
 
-### Step 4 — Enable admin console access
+### Step 4. Enable admin console access
 
 By default no client has admin console access. Grant it to a specific client:
 
@@ -255,7 +340,7 @@ sudo ./wireshield.sh   # Select option 12 — Console Access
 
 Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client can reach `https://<server-ip>/console` — but only while holding an active 2FA session (connect VPN → complete captive portal → browse to `/console`).
 
-### Step 5 — Connect the VPN client
+### Step 5. Connect the VPN client
 
 1. Import the `.conf` file into any WireGuard app (Windows, macOS, Linux, iOS, Android) or scan the QR code.
 2. Toggle the VPN tunnel on.
@@ -264,9 +349,244 @@ Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client ca
 5. **Subsequent connections:** enter the current 6-digit TOTP code directly.
 6. Access granted. Session stays valid for 24 hours.
 
+---
+
+## Configuration
+
+Edit `/etc/wireshield/2fa/config.env` and restart the service:
+
+```bash
+sudo systemctl restart wireshield.service
+```
+
+### Key Settings
+
+| Variable                              | Default                              | Description                                                                                                                                                                                                                  |
+| :------------------------------------ | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WS_2FA_SESSION_TIMEOUT`              | `1440`                               | Session lifetime in minutes (24h)                                                                                                                                                                                            |
+| `WS_2FA_SESSION_IDLE_TIMEOUT`         | `3600`                               | Handshake freshness threshold in seconds (1h)                                                                                                                                                                                |
+| `WS_2FA_DISCONNECT_GRACE_SECONDS`     | `3600`                               | Grace period after disconnect in seconds (1h)                                                                                                                                                                                |
+| `WS_2FA_RATE_LIMIT_MAX_REQUESTS`      | `30`                                 | Max requests per rate limit window                                                                                                                                                                                           |
+| `WS_2FA_RATE_LIMIT_WINDOW`            | `60`                                 | Rate limit window in seconds                                                                                                                                                                                                 |
+| `WS_2FA_ACTIVITY_LOG_RETENTION_DAYS`  | `30`                                 | Days to retain activity logs                                                                                                                                                                                                 |
+| `WS_2FA_LOG_LEVEL`                    | `INFO`                               | Logging verbosity                                                                                                                                                                                                            |
+| `WS_2FA_SSL_TYPE`                     | `self-signed`                        | `letsencrypt`, `self-signed`, or `disabled`                                                                                                                                                                                  |
+| `WS_2FA_DOMAIN`                       |                                      | Domain name for Let's Encrypt                                                                                                                                                                                                |
+| `WS_AGENT_TOKEN_TTL_SECONDS`          | `3600`                               | Enrollment token lifetime (1 hour)                                                                                                                                                                                           |
+| `WS_AGENT_IP_START`                   | `200`                                | First WG IPv4 octet reserved for agents (inside the server subnet)                                                                                                                                                           |
+| `WS_AGENT_IP_END`                     | `254`                                | Last WG IPv4 octet reserved for agents                                                                                                                                                                                       |
+| `WS_AGENT_HEARTBEAT_RETENTION_HOURS`  | `48`                                 | Hours of `agent_heartbeats` rows to retain before housekeeping prunes them                                                                                                                                                   |
+| `WS_AGENT_OFFLINE_AFTER_SECONDS`      | `90`                                 | Seconds without a heartbeat before an agent is reported as `online=false` in `/health`                                                                                                                                       |
+| `WS_AGENT_BINARY_DIR`                 | `/etc/wireshield/agent-binaries`     | Server-side directory holding pre-built Go-agent binaries + SHA-256 sidecars, populated by `make -C agent install`                                                                                                           |
+| `WS_HEARTBEAT_REQUIRE_SIG`            | `0`                                  | When `1`, the heartbeat endpoint rejects bearer-only requests and requires the `X-Agent-Sig` HMAC headers. Flip on once every deployed agent has been upgraded to a binary that signs heartbeats.                            |
+| `WS_CSRF_DISABLE`                     | `0`                                  | Emergency rollback for the console CSRF check. Leave at `0` in production.                                                                                                                                                   |
+
+### Agent-side environment
+
+| Variable                              | Default                  | Description                                                                                                                                                                                                                                              |
+| :------------------------------------ | :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `WIRESHIELD_TLS_INSECURE`             | `0`                      | `1` to skip TLS verification on the agent → server channel. Set on the systemd unit (`Environment=WIRESHIELD_TLS_INSECURE=1`) instead of persisting in `config.json`; the agent installer sets this automatically when invoked with `AGENT_INSECURE_TLS=1`. |
+| `WIRESHIELD_REQUIRE_SIGNED_UPDATES`   | `0`                      | `1` to refuse any auto-update from an unsigned manifest, even on agents built without an embedded release public key.                                                                                                                                    |
+| `WIRESHIELD_AGENT_LOG_LEVEL`          | `info`                   | `debug`, `info`, `warn`, or `error`.                                                                                                                                                                                                                     |
+| `WIRESHIELD_AGENT_DIR`                | `/etc/wireshield-agent`  | On-disk state directory (config, private key, heartbeat secret).                                                                                                                                                                                         |
+
+### Tuning Examples
+
+**Session and portal:**
+
+```ini
+# Extend session lifetime to 7 days
+WS_2FA_SESSION_TIMEOUT=10080
+
+# More lenient disconnect detection (2 hours grace)
+WS_2FA_SESSION_IDLE_TIMEOUT=7200
+
+# Tighter disconnect detection (10 seconds grace)
+WS_2FA_DISCONNECT_GRACE_SECONDS=10
+
+# Keep activity logs for 90 days instead of 30
+WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=90
+```
+
+**Agent fleet:**
+
+```ini
+# Shorten enrollment token TTL to 15 minutes for tighter security
+WS_AGENT_TOKEN_TTL_SECONDS=900
+
+# Mark agents offline faster — useful if heartbeat interval is tuned down
+WS_AGENT_OFFLINE_AFTER_SECONDS=45
+
+# Reserve a different IP range for agents (e.g. .150–.199 within the server subnet)
+WS_AGENT_IP_START=150
+WS_AGENT_IP_END=199
+
+# Keep 7 days of heartbeat history for the metrics sparklines
+WS_AGENT_HEARTBEAT_RETENTION_HOURS=168
+
+# Serve agent binaries from a custom directory
+WS_AGENT_BINARY_DIR=/opt/wireshield/agent-binaries
+```
+
+---
+
+## SSL / TLS
+
+The installer configures TLS during setup based on your choice (Let's Encrypt, self-signed, or disabled). Use the commands below for ongoing certificate operations.
+
+### Let's Encrypt
+
+Auto-renewal is configured via systemd timer during installation.
+
+```bash
+sudo systemctl status wireshield-2fa-renew.timer  # Check timer
+sudo certbot renew --dry-run                       # Test renewal
+sudo certbot certificates                          # View cert details
+```
+
+### Self-Signed
+
+> [!WARNING]
+> Self-signed certificates leave clients vulnerable to MITM until the certificate is explicitly added to the client's trust store. Until then, an active network attacker can intercept the captive portal handshake and replay credentials. Pin or import the cert on every client device, or switch to Let's Encrypt for production deployments.
+
+```bash
+# Check expiry
+sudo openssl x509 -in /etc/wireshield/2fa/cert.pem -noout -dates
+
+# Regenerate (365 days)
+sudo openssl req -x509 -newkey rsa:4096 \
+  -keyout /etc/wireshield/2fa/key.pem \
+  -out /etc/wireshield/2fa/cert.pem \
+  -days 365 -nodes -subj "/CN=<your-ip>"
+sudo systemctl restart wireshield.service
+```
+
+---
+
+## Usage
+
+### Client Management
+
+All client operations are available through the interactive menu:
+
+```bash
+sudo ./wireshield.sh
+```
+
+The menu is organized into categories: **Client Management**, **Server Operations**, **Security & Logging**, and **System**. Enter a number to select or `q` to exit.
+
+|   # | Option              | Description                                              |
+| --: | :------------------ | :------------------------------------------------------- |
+|   1 | Create Client       | Generate WireGuard config and QR code                    |
+|   2 | List Clients        | Show all registered VPN clients                          |
+|   3 | Display Client QR   | Render config as terminal QR code                        |
+|   4 | Revoke Client       | Remove client, sessions, and firewall entries            |
+|   5 | Clean Up Expired    | Remove expired clients automatically                     |
+|   6 | View Status         | WireGuard runtime info                                   |
+|   7 | Restart VPN         | Restart the WireGuard service                            |
+|   8 | Backup Config       | Archive /etc/wireguard                                   |
+|   9 | Audit Logs          | View 2FA authentication events                           |
+|  10 | Remove Client 2FA   | Reset 2FA for lost authenticator devices                 |
+|  11 | Activity Logs       | Enable/disable logging, set retention, view traffic      |
+|  12 | Console Access      | Toggle admin console access per client                   |
+|  13 | Uninstall           | Remove WireShield completely                             |
+
+### For VPN Users
+
+1. Import the `.conf` file into your WireGuard client and connect
+2. Your browser opens the captive portal automatically
+3. First time: scan the QR code with your authenticator app, then enter the 6-digit code
+4. Returning: enter the current 6-digit code from your authenticator app
+5. Access granted. Session valid for 24 hours
+
+### Using the Admin Console
+
+Access the web console at `https://<server-ip>/console`. Two conditions must both hold:
+
+1. The client must have `console_access = 1` in the users table.
+2. The client must have an **active (non-expired) 2FA session**. Expired sessions are denied access even if `console_access = 1`, so an idle admin has to re-verify TOTP at the captive portal before they can reach the console again.
+
+The console provides:
+
+- **Overview** with active users, sessions, bandwidth, and event charts
+- **Bandwidth Insights** with per-client upload/download data
+- **User Management** with status, IPs, access control — plus in-browser **Create User**, per-row **Download Config** (`.conf` file) and **Revoke** buttons
+- **Audit Trail** for security events
+- **Traffic Activity** with connection logs, DNS resolution, and filtering
+
+---
+
+## Architecture
+
+WireShield is a thin orchestration layer on top of WireGuard. The bash CLI shells out to kernel-level primitives (`wg`, `iptables`, `ipset`), the FastAPI service brokers user-facing auth and bookkeeping in SQLite, and the Go agents extend the WireGuard data plane out to remote LANs.
+
+### System Components
+
+```mermaid
+flowchart TB
+    subgraph User["User-space"]
+        CLI["wireshield.sh<br/>(bash CLI)"]
+        FastAPI["FastAPI service<br/>(uvicorn)"]
+        subgraph Routers["Routers"]
+            R1["auth.py<br/>captive portal"]
+            R2["console.py<br/>admin API"]
+            R3["agents.py<br/>agent public API"]
+            R4["health.py<br/>/health"]
+        end
+        FastAPI --> R1
+        FastAPI --> R2
+        FastAPI --> R3
+        FastAPI --> R4
+    end
+    subgraph Kernel["Kernel / network layer"]
+        WG["WireGuard<br/>wg0 + wg-agent0"]
+        IPT["iptables<br/>FORWARD + WS_2FA_PORTAL + WS_AGENT_ACL"]
+        IPSET["ipset<br/>ws_2fa_allowed_v4 / v6"]
+        DB["SQLite<br/>auth.db"]
+    end
+
+    CLI -->|wg / iptables / ipset| WG
+    CLI --> IPT
+    CLI --> IPSET
+    R1 --> IPSET
+    R1 --> DB
+    R2 --> DB
+    R2 --> WG
+    R3 --> DB
+    R3 --> WG
+    R4 --> DB
+    R4 --> WG
+```
+
+| Component        | Technology                       | Purpose                                                                                       |
+| :--------------- | :------------------------------- | :-------------------------------------------------------------------------------------------- |
+| Installer & CLI  | Bash                             | Server setup, client management, firewall config, agent binary build                          |
+| 2FA Service      | Python, FastAPI                  | Captive portal, TOTP, session management, admin console API                                   |
+| Admin Console    | Vanilla JavaScript, Chart.js     | Web UI for users, sessions, agents, bandwidth, activity logs                                  |
+| Database         | SQLite                           | Users, sessions, audit logs, activity, bandwidth, agents, heartbeats, ACL grants              |
+| Firewall         | iptables, ipset                  | Zero-trust access control + per-user agent allowlist enforcement                              |
+| VPN              | WireGuard                        | Encrypted tunnel for both VPN clients and agent peers                                         |
+| DNS Sniffer      | scapy                            | IP-to-domain resolution for activity logs                                                     |
+| Monitors         | Background threads               | Handshake tracking, ipset sync, HTTP redirect, agent ACL sync, watchdog                       |
+| Agent daemon     | Go (static binary)               | Remote-LAN gateway: outbound WireGuard peer + heartbeat + self-update                         |
+
+### Background Services
+
+| Monitor                       | Interval     | Function                                                                                                                                                                          |
+| :---------------------------- | :----------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WireGuard session monitor     | 3s           | Polls handshakes, tracks bandwidth, revokes stale sessions                                                                                                                        |
+| ipset sync daemon             | 60s          | Removes clients without active sessions from firewall                                                                                                                             |
+| HTTP redirector               | Continuous   | Redirects port 80 to HTTPS captive portal                                                                                                                                         |
+| Activity log ingestion        | 5s           | Parses kernel logs into queryable database records                                                                                                                                |
+| Log retention cleanup         | Daily        | Purges activity logs older than retention period                                                                                                                                  |
+| Interface watchdog            | 30s          | Tracks WireGuard interface state; logs flaps; re-inserts missing `INPUT ACCEPT` rules for ports 80/443                                                                            |
+| DNS + TLS SNI sniffer         | Continuous   | Auto-recovering sniffer; waits for `wg0` to come back up before resuming after interface drops                                                                                    |
+| Agent housekeeping            | 1h           | Purges expired/used enrollment tokens and prunes `agent_heartbeats` older than the retention window                                                                               |
+| Agent ACL iptables sync       | 30s          | Rebuilds the `WS_AGENT_ACL` iptables chain to match the current per-user allowlist for all restricted agents; also triggered immediately on every grant/revoke                    |
+
 ### File Layout
 
-```
+```text
 /etc/wireguard/
 ├── wg0.conf                  # WireGuard server configuration (VPN clients + agent peers)
 └── params                    # Installation parameters
@@ -298,252 +618,59 @@ Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client ca
 └── wireshield-2fa-renew.timer     # Let's Encrypt renewal timer (if applicable)
 ```
 
----
-
-## Configuration
-
-Edit `/etc/wireshield/2fa/config.env` and restart the service:
-
-```bash
-sudo systemctl restart wireshield.service
-```
-
-### Key Settings
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WS_2FA_SESSION_TIMEOUT` | `1440` | Session lifetime in minutes (24h) |
-| `WS_2FA_SESSION_IDLE_TIMEOUT` | `3600` | Handshake freshness threshold in seconds (1h) |
-| `WS_2FA_DISCONNECT_GRACE_SECONDS` | `3600` | Grace period after disconnect in seconds (1h) |
-| `WS_2FA_RATE_LIMIT_MAX_REQUESTS` | `30` | Max requests per rate limit window |
-| `WS_2FA_RATE_LIMIT_WINDOW` | `60` | Rate limit window in seconds |
-| `WS_2FA_ACTIVITY_LOG_RETENTION_DAYS` | `30` | Days to retain activity logs |
-| `WS_2FA_LOG_LEVEL` | `INFO` | Logging verbosity |
-| `WS_2FA_SSL_TYPE` | `self-signed` | `letsencrypt`, `self-signed`, or `disabled` |
-| `WS_2FA_DOMAIN` | | Domain name for Let's Encrypt |
-| `WS_AGENT_TOKEN_TTL_SECONDS` | `3600` | Enrollment token lifetime (1 hour) |
-| `WS_AGENT_IP_START` | `200` | First WG IPv4 octet reserved for agents (inside the server subnet) |
-| `WS_AGENT_IP_END` | `254` | Last WG IPv4 octet reserved for agents |
-| `WS_AGENT_HEARTBEAT_RETENTION_HOURS` | `48` | Hours of `agent_heartbeats` rows to retain before housekeeping prunes them |
-| `WS_AGENT_OFFLINE_AFTER_SECONDS` | `90` | Seconds without a heartbeat before an agent is reported as `online=false` in `/health` |
-| `WS_AGENT_BINARY_DIR` | `/etc/wireshield/agent-binaries` | Server-side directory holding pre-built Go-agent binaries + SHA-256 sidecars, populated by `make -C agent install` |
-| `WS_HEARTBEAT_REQUIRE_SIG` | `0` | When `1`, the heartbeat endpoint rejects bearer-only requests and requires the `X-Agent-Sig` HMAC headers. Flip on once every deployed agent has been upgraded to a binary that signs heartbeats. |
-| `WS_CSRF_DISABLE` | `0` | Emergency rollback for the console CSRF check. Leave at `0` in production. |
-
-#### Agent-side environment
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WIRESHIELD_TLS_INSECURE` | `0` | `1` to skip TLS verification on the agent → server channel. Set on the systemd unit (`Environment=WIRESHIELD_TLS_INSECURE=1`) instead of persisting in `config.json`; the agent installer sets this automatically when invoked with `AGENT_INSECURE_TLS=1`. |
-| `WIRESHIELD_REQUIRE_SIGNED_UPDATES` | `0` | `1` to refuse any auto-update from an unsigned manifest, even on agents built without an embedded release public key. |
-| `WIRESHIELD_AGENT_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
-| `WIRESHIELD_AGENT_DIR` | `/etc/wireshield-agent` | On-disk state directory (config, private key, heartbeat secret). |
-
-### Tuning Examples
-
-**Session and portal:**
-
-```bash
-# Extend session lifetime to 7 days
-WS_2FA_SESSION_TIMEOUT=10080
-
-# More lenient disconnect detection (2 hours grace)
-WS_2FA_SESSION_IDLE_TIMEOUT=7200
-
-# Tighter disconnect detection (10 seconds grace)
-WS_2FA_DISCONNECT_GRACE_SECONDS=10
-
-# Keep activity logs for 90 days instead of 30
-WS_2FA_ACTIVITY_LOG_RETENTION_DAYS=90
-```
-
-**Agent fleet:**
-
-```bash
-# Shorten enrollment token TTL to 15 minutes for tighter security
-WS_AGENT_TOKEN_TTL_SECONDS=900
-
-# Mark agents offline faster — useful if heartbeat interval is tuned down
-WS_AGENT_OFFLINE_AFTER_SECONDS=45
-
-# Reserve a different IP range for agents (e.g. .150–.199 within the server subnet)
-WS_AGENT_IP_START=150
-WS_AGENT_IP_END=199
-
-# Keep 7 days of heartbeat history for the metrics sparklines
-WS_AGENT_HEARTBEAT_RETENTION_HOURS=168
-
-# Serve agent binaries from a custom directory
-WS_AGENT_BINARY_DIR=/opt/wireshield/agent-binaries
-```
-
----
-
-## SSL/TLS
-
-The installer configures TLS during setup based on your choice (Let's Encrypt, self-signed, or disabled). Use the commands below for ongoing certificate operations.
-
-### Let's Encrypt
-
-Auto-renewal is configured via systemd timer during installation.
-
-```bash
-sudo systemctl status wireshield-2fa-renew.timer  # Check timer
-sudo certbot renew --dry-run                       # Test renewal
-sudo certbot certificates                          # View cert details
-```
-
-### Self-Signed
-
-```bash
-# Check expiry
-sudo openssl x509 -in /etc/wireshield/2fa/cert.pem -noout -dates
-
-# Regenerate (365 days)
-sudo openssl req -x509 -newkey rsa:4096 \
-  -keyout /etc/wireshield/2fa/key.pem \
-  -out /etc/wireshield/2fa/cert.pem \
-  -days 365 -nodes -subj "/CN=<your-ip>"
-sudo systemctl restart wireshield.service
-```
-
----
-
-## Usage
-
-### Client Management
-
-All client operations are available through the interactive menu:
-
-```bash
-sudo ./wireshield.sh
-```
-
-The menu is organized into categories: **Client Management**, **Server Operations**, **Security & Logging**, and **System**. Enter a number to select or `q` to exit.
-
-| # | Option | Description |
-|---|--------|-------------|
-| 1 | Create Client | Generate WireGuard config and QR code |
-| 2 | List Clients | Show all registered VPN clients |
-| 3 | Display Client QR | Render config as terminal QR code |
-| 4 | Revoke Client | Remove client, sessions, and firewall entries |
-| 5 | Clean Up Expired | Remove expired clients automatically |
-| 6 | View Status | WireGuard runtime info |
-| 7 | Restart VPN | Restart the WireGuard service |
-| 8 | Backup Config | Archive /etc/wireguard |
-| 9 | Audit Logs | View 2FA authentication events |
-| 10 | Remove Client 2FA | Reset 2FA for lost authenticator devices |
-| 11 | Activity Logs | Enable/disable logging, set retention, view traffic |
-| 12 | Console Access | Toggle admin console access per client |
-| 13 | Uninstall | Remove WireShield completely |
-
-### For VPN Users
-
-1. Import the `.conf` file into your WireGuard client and connect
-2. Your browser opens the captive portal automatically
-3. First time: scan the QR code with your authenticator app, then enter the 6-digit code
-4. Returning: enter the current 6-digit code from your authenticator app
-5. Access granted. Session valid for 24 hours
-
-### Using the Admin Console
-
-Access the web console at `https://<server-ip>/console`. Two conditions must both hold:
-
-1. The client must have `console_access = 1` in the users table.
-2. The client must have an **active (non-expired) 2FA session**. Expired sessions are denied access even if `console_access = 1`, so an idle admin has to re-verify TOTP at the captive portal before they can reach the console again.
-
-The console provides:
-- **Overview** with active users, sessions, bandwidth, and event charts
-- **Bandwidth Insights** with per-client upload/download data
-- **User Management** with status, IPs, access control — plus in-browser **Create User**, per-row **Download Config** (`.conf` file) and **Revoke** buttons
-- **Audit Trail** for security events
-- **Traffic Activity** with connection logs, DNS resolution, and filtering
-
----
-
-## Architecture
-
-### System Components
-
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Installer & CLI | Bash | Server setup, client management, firewall config, agent binary build |
-| 2FA Service | Python, FastAPI | Captive portal, TOTP, session management, admin console API |
-| Admin Console | Vanilla JavaScript, Chart.js | Web UI for users, sessions, agents, bandwidth, activity logs |
-| Database | SQLite | Users, sessions, audit logs, activity, bandwidth, agents, heartbeats, ACL grants |
-| Firewall | iptables, ipset | Zero-trust access control + per-user agent allowlist enforcement |
-| VPN | WireGuard | Encrypted tunnel for both VPN clients and agent peers |
-| DNS Sniffer | scapy | IP-to-domain resolution for activity logs |
-| Monitors | Background threads | Handshake tracking, ipset sync, HTTP redirect, agent ACL sync, watchdog |
-| Agent daemon | Go (static binary) | Remote-LAN gateway: outbound WireGuard peer + heartbeat + self-update |
-
-### Background Services
-
-| Monitor | Interval | Function |
-|---------|----------|----------|
-| WireGuard session monitor | 3s | Polls handshakes, tracks bandwidth, revokes stale sessions |
-| ipset sync daemon | 60s | Removes clients without active sessions from firewall |
-| HTTP redirector | Continuous | Redirects port 80 to HTTPS captive portal |
-| Activity log ingestion | 5s | Parses kernel logs into queryable database records |
-| Log retention cleanup | Daily | Purges activity logs older than retention period |
-| Interface watchdog | 30s | Tracks WireGuard interface state; logs flaps; re-inserts missing `INPUT ACCEPT` rules for ports 80/443 |
-| DNS + TLS SNI sniffer | Continuous | Auto-recovering sniffer; waits for `wg0` to come back up before resuming after interface drops |
-| Agent housekeeping | 1h | Purges expired/used enrollment tokens and prunes `agent_heartbeats` older than the retention window |
-| Agent ACL iptables sync | 30s | Rebuilds the `WS_AGENT_ACL` iptables chain to match the current per-user allowlist for all restricted agents; also triggered immediately on every grant/revoke |
-
 ### API Endpoints
 
 **Authentication:**
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | 2FA setup or verification page |
-| `GET` | `/success` | Post-verification success page |
-| `POST` | `/api/setup-start` | Generate TOTP secret and QR code |
-| `POST` | `/api/setup-verify` | Verify initial TOTP code during setup |
-| `POST` | `/api/verify` | Verify TOTP code for existing users |
-| `POST` | `/api/validate-session` | Check session token validity |
-| `GET` | `/health` | Diagnostic snapshot: database, WireGuard interface, iptables rules, watchdog state, agent ACL chain |
+| Method   | Path                       | Description                                                                                            |
+| :------- | :------------------------- | :----------------------------------------------------------------------------------------------------- |
+| `GET`    | `/`                        | 2FA setup or verification page                                                                         |
+| `GET`    | `/success`                 | Post-verification success page                                                                         |
+| `POST`   | `/api/setup-start`         | Generate TOTP secret and QR code                                                                       |
+| `POST`   | `/api/setup-verify`        | Verify initial TOTP code during setup                                                                  |
+| `POST`   | `/api/verify`              | Verify TOTP code for existing users                                                                    |
+| `POST`   | `/api/validate-session`    | Check session token validity                                                                           |
+| `GET`    | `/health`                  | Diagnostic snapshot: database, WireGuard interface, iptables rules, watchdog state, agent ACL chain    |
 
 **Admin Console:**
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/console` | Admin dashboard |
-| `GET` | `/api/console/users` | User list with pagination and search |
-| `POST` | `/api/console/users` | Create a new WireGuard client (JSON body: `client_id`, `expiry_days?`) |
-| `GET` | `/api/console/users/{client}/config` | Download the client's `.conf` file |
-| `GET` | `/api/console/users/{client}/qrcode` | Return a base64 PNG QR code of the client config |
-| `DELETE` | `/api/console/users/{client}` | Revoke a client (remove peer, delete config, clear sessions) |
-| `GET` | `/api/console/audit-logs` | Audit events with filtering |
-| `GET` | `/api/console/activity-logs` | Traffic logs with DNS resolution |
-| `GET` | `/api/console/bandwidth-usage` | Per-client bandwidth data |
-| `GET` | `/api/console/dashboard-stats` | Dashboard metrics |
-| `GET` | `/api/console/dashboard-charts` | Chart visualization data |
-| `POST` | `/api/console/agents` | Register a new agent; returns a single-use enrollment token + install command |
-| `GET` | `/api/console/agents` | List agents (add `?include_revoked=true` to include revoked rows) |
-| `GET` | `/api/console/agents/{id}` | Agent detail (preshared key is redacted) |
-| `PATCH` | `/api/console/agents/{id}` | Update advertised CIDRs or description |
-| `DELETE` | `/api/console/agents/{id}` | Revoke an agent (removes its WG peer + marks DB row as revoked) |
-| `POST` | `/api/console/agents/{id}/rotate-token` | Reissue an enrollment token for a `pending` agent |
-| `GET` | `/api/console/agents/{id}/metrics` | Time-bucketed RX/TX deltas + uptime % from heartbeats |
-| `GET` | `/api/console/agents/{id}/access` | Read `is_restricted` flag + per-user allowlist |
-| `POST` | `/api/console/agents/{id}/access` | Grant a user (body: `{client_id}`) — triggers immediate iptables sync |
-| `DELETE` | `/api/console/agents/{id}/access/{client_id}` | Remove a user from the allowlist |
+| Method   | Path                                                  | Description                                                                                                  |
+| :------- | :---------------------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/console`                                            | Admin dashboard                                                                                              |
+| `GET`    | `/api/console/users`                                  | User list with pagination and search                                                                         |
+| `POST`   | `/api/console/users`                                  | Create a new WireGuard client (JSON body: `client_id`, `expiry_days?`)                                       |
+| `GET`    | `/api/console/users/{client}/config`                  | Download the client's `.conf` file                                                                           |
+| `GET`    | `/api/console/users/{client}/qrcode`                  | Return a base64 PNG QR code of the client config                                                             |
+| `DELETE` | `/api/console/users/{client}`                         | Revoke a client (remove peer, delete config, clear sessions)                                                 |
+| `GET`    | `/api/console/audit-logs`                             | Audit events with filtering                                                                                  |
+| `GET`    | `/api/console/activity-logs`                          | Traffic logs with DNS resolution                                                                             |
+| `GET`    | `/api/console/bandwidth-usage`                        | Per-client bandwidth data                                                                                    |
+| `GET`    | `/api/console/dashboard-stats`                        | Dashboard metrics                                                                                            |
+| `GET`    | `/api/console/dashboard-charts`                       | Chart visualization data                                                                                     |
+| `POST`   | `/api/console/agents`                                 | Register a new agent; returns a single-use enrollment token + install command                                |
+| `GET`    | `/api/console/agents`                                 | List agents (add `?include_revoked=true` to include revoked rows)                                            |
+| `GET`    | `/api/console/agents/{id}`                            | Agent detail (preshared key is redacted)                                                                     |
+| `PATCH`  | `/api/console/agents/{id}`                            | Update advertised CIDRs or description                                                                       |
+| `DELETE` | `/api/console/agents/{id}`                            | Revoke an agent (removes its WG peer + marks DB row as revoked)                                              |
+| `POST`   | `/api/console/agents/{id}/rotate-token`               | Reissue an enrollment token for a `pending` agent                                                            |
+| `GET`    | `/api/console/agents/{id}/metrics`                    | Time-bucketed RX/TX deltas + uptime % from heartbeats                                                        |
+| `GET`    | `/api/console/agents/{id}/access`                     | Read `is_restricted` flag + per-user allowlist                                                               |
+| `POST`   | `/api/console/agents/{id}/access`                     | Grant a user (body: `{client_id}`) — triggers immediate iptables sync                                        |
+| `DELETE` | `/api/console/agents/{id}/access/{client_id}`         | Remove a user from the allowlist                                                                             |
 
 **Agent Public API** (called by the agent daemon, not by humans):
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/agents/enroll` | Exchange a single-use token for a WG peer config (public/keyless endpoint, rate-limited) |
-| `POST` | `/api/agents/heartbeat` | Periodic liveness + bandwidth report (auth: WG tunnel source IP) |
-| `GET` | `/api/agents/revocation-check` | Agent polls this to self-disable when revoked (auth: bearer token) |
-| `GET` | `/api/agents/install` | **Legacy** Bash installer (kept for backward compatibility) |
-| `GET` | `/api/agents/install-go` | Bash bootstrap that downloads the Go binary |
-| `GET` | `/api/agents/binary/{arch}` | Pre-built agent binary (`linux-amd64`, `linux-arm64`) |
-| `GET` | `/api/agents/binary/{arch}.sha256` | Sidecar SHA-256 checksum for integrity verification |
-| `GET` | `/api/agents/unit` | systemd unit file (`wireshield-agent.service`) |
-| `GET` | `/api/agents/version` | Version manifest used by `--auto-update` agents |
+| Method   | Path                                | Description                                                                                |
+| :------- | :---------------------------------- | :----------------------------------------------------------------------------------------- |
+| `POST`   | `/api/agents/enroll`                | Exchange a single-use token for a WG peer config (public/keyless endpoint, rate-limited)   |
+| `POST`   | `/api/agents/heartbeat`             | Periodic liveness + bandwidth report (auth: WG tunnel source IP)                           |
+| `GET`    | `/api/agents/revocation-check`      | Agent polls this to self-disable when revoked (auth: bearer token)                         |
+| `GET`    | `/api/agents/install`               | **Legacy** Bash installer (kept for backward compatibility)                                |
+| `GET`    | `/api/agents/install-go`            | Bash bootstrap that downloads the Go binary                                                |
+| `GET`    | `/api/agents/binary/{arch}`         | Pre-built agent binary (`linux-amd64`, `linux-arm64`)                                      |
+| `GET`    | `/api/agents/binary/{arch}.sha256`  | Sidecar SHA-256 checksum for integrity verification                                        |
+| `GET`    | `/api/agents/unit`                  | systemd unit file (`wireshield-agent.service`)                                             |
+| `GET`    | `/api/agents/version`               | Version manifest used by `--auto-update` agents                                            |
 
 ---
 
@@ -551,9 +678,24 @@ The console provides:
 
 Agents are statically-linked Go daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
 
-### How traffic flows: User → WireShield → Agent → Local LAN
+### Quick Reference
 
+The happy path: register an agent in the console, run the install one-liner on the remote host, verify the heartbeat, route VPN clients through the agent's advertised CIDRs.
+
+```mermaid
+flowchart LR
+    Client["VPN Client<br/>10.66.66.50"] -->|wg0 tunnel| Server["WireShield Server<br/>(wg0, 10.66.66.1)"]
+    Server -->|wg0 peer route<br/>192.168.169.0/24| Agent1["Agent A<br/>wg-agent0 10.66.66.200"]
+    Server -->|wg0 peer route<br/>10.50.0.0/24| Agent2["Agent B<br/>wg-agent0 10.66.66.201"]
+    Server -->|wg0 peer route<br/>10.60.0.0/24| Agent3["Agent C<br/>wg-agent0 10.66.66.202"]
+    Agent1 -->|ens160 MASQUERADE| LAN1["LAN behind A<br/>192.168.169.0/24"]
+    Agent2 -->|ens160 MASQUERADE| LAN2["LAN behind B<br/>10.50.0.0/24"]
+    Agent3 -->|ens160 MASQUERADE| LAN3["LAN behind C<br/>10.60.0.0/24"]
 ```
+
+**How traffic flows: User → WireShield → Agent → Local LAN**
+
+```text
 VPN Client (user laptop)          WireShield Server             Agent Host              Local LAN
 192.168.1.x / 10.66.66.50         47.x.x.x (public)            10.66.66.200            192.168.169.0/24
         │                                │                            │                       │
@@ -581,15 +723,15 @@ VPN Client (user laptop)          WireShield Server             Agent Host      
 
 **What each component does:**
 
-| Component | Role |
-|---|---|
-| **WireShield server** | Terminates the client tunnel. Routes packets destined for an agent's advertised CIDRs to that agent's WireGuard peer (via kernel routing — the agent's peer entry has `AllowedIPs = <wg-ip>/32, <LAN-CIDRs>`). |
-| **Agent (wg-agent0)** | Maintains a persistent outbound WireGuard tunnel to the server. Accepts packets from the VPN subnet, forwards them to the LAN via `ip_forward=1`, and masquerades the source with iptables POSTROUTING so LAN hosts reply to the agent's LAN IP. |
-| **VPN client** | Sends all traffic through the WireGuard tunnel (`AllowedIPs = 0.0.0.0/0`). No special routes or configuration needed — the server handles all routing decisions. |
+| Component             | Role                                                                                                                                                                                                            |
+| :-------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WireShield server** | Terminates the client tunnel. Routes packets destined for an agent's advertised CIDRs to that agent's WireGuard peer (via kernel routing — the agent's peer entry has `AllowedIPs = <wg-ip>/32, <LAN-CIDRs>`).  |
+| **Agent (wg-agent0)** | Maintains a persistent outbound WireGuard tunnel to the server. Accepts packets from the VPN subnet, forwards them to the LAN via `ip_forward=1`, and masquerades the source with iptables POSTROUTING.         |
+| **VPN client**        | Sends all traffic through the WireGuard tunnel (`AllowedIPs = 0.0.0.0/0`). No special routes or configuration needed — the server handles all routing decisions.                                                |
 
 **iptables rules on the agent host** (written to `/etc/wireguard/wg-agent0.conf` as `PostUp`/`PreDown`):
 
-```
+```ini
 PostUp = sysctl -w net.ipv4.ip_forward=1
 PostUp = iptables -A FORWARD -i wg-agent0 -j ACCEPT
 PostUp = iptables -A FORWARD -o wg-agent0 -j ACCEPT
@@ -603,7 +745,7 @@ PreDown = iptables -t nat -D POSTROUTING -s 10.66.66.0/24 -o eth0 -j MASQUERADE
 
 **Advertised LAN CIDRs are required** when registering an agent. They cannot be left empty because without them the server has no CIDRs to route to the agent, the agent writes no iptables rules, and LAN access is silently broken.
 
-### Step 1 — Publish agent binaries on the VPN server (one-time setup)
+#### Step 1. Publish agent binaries on the VPN server (one-time setup)
 
 **Done automatically by `sudo ./wireshield.sh`.** The installer:
 
@@ -631,7 +773,7 @@ WS_SKIP_AGENT_BUILD=1 sudo ./wireshield.sh
 
 This populates `/etc/wireshield/agent-binaries/` with:
 
-```
+```text
 wireshield-agent_linux_amd64
 wireshield-agent_linux_amd64.sha256
 wireshield-agent_linux_arm64
@@ -639,9 +781,10 @@ wireshield-agent_linux_arm64.sha256
 version.json
 ```
 
-> **No Go available?** Use the [legacy Bash installer](#legacy-installer-compatibility) instead — it requires no build step and works on any enrolled agent.
+> [!NOTE]
+> No Go available? Use the [legacy Bash installer](#advanced) instead — it requires no build step and works on any enrolled agent.
 
-### Step 2 — Register the Agent in the Admin Console
+#### Step 2. Register the agent in the admin console
 
 1. Open `https://<server-ip>/console` in your browser and complete 2FA.
 2. Click **Agents** in the left sidebar.
@@ -654,7 +797,7 @@ version.json
 
 The console displays a one-time install command. **Copy it immediately** — it will not be shown again. If it expires (1-hour TTL), use the **Reissue token** button on the pending agent row.
 
-### Step 3 — Run the Install Command on the Remote Server
+#### Step 3. Run the install command on the remote server
 
 SSH into the remote Linux server as root and paste the install command from Step 2. It looks like:
 
@@ -673,7 +816,7 @@ The bootstrap script automatically:
 
 The entire process takes under 60 seconds on a standard server.
 
-### Step 4 — Verify the Connection
+#### Step 4. Verify the connection
 
 **On the remote agent host:**
 
@@ -701,19 +844,22 @@ sudo wg show wg0
 
 VPN clients can now route traffic to the advertised CIDRs through the agent. No configuration changes are needed on the client side — routing is enforced server-side via `wg syncconf`.
 
-### Reaching agent hosts and their LANs
+#### Reaching agent hosts and their LANs
 
 Every enrolled agent has **two IP identities**, and they're reached over different paths. This trips up most first-time deployments — get it right the first time:
 
-| Target | What it is | How to reach it from a VPN client | When to use |
-|---|---|---|---|
-| **`10.66.66.<N>`** (the agent's WireGuard IP) | The address allocated by the server at enrollment, visible in the Agents tab as `WG IPv4` | Always works via the VPN tunnel — server has a `/32` route to this peer | SSHing into the agent host itself, anywhere you are |
-| **An IP inside `advertised_cidrs`** (e.g. `192.168.169.10`) | A host *behind* the agent on its LAN | Works via the VPN tunnel — server has the CIDR routed through this peer, agent MASQUERADEs the source onto its LAN NIC | Reaching services on the LAN segment the agent advertises |
-| **The agent's LAN-side IP** (e.g. `10.70.58.12` on `ens160`) | The agent's own address on its physical LAN | **NOT routable via the VPN by default.** Only reachable if you (a) add it to `advertised_cidrs`, or (b) happen to be on the same physical LAN as the agent (LAN-direct, bypasses the VPN entirely) | Avoid this — prefer the WG IP for reaching the agent itself |
+| Target                                                       | What it is                                                                                  | How to reach it from a VPN client                                                                                                              | When to use                                                                            |
+| :----------------------------------------------------------- | :------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
+| **`10.66.66.<N>`** (the agent's WireGuard IP)                | The address allocated by the server at enrollment, visible in the Agents tab as `WG IPv4`   | Always works via the VPN tunnel — server has a `/32` route to this peer                                                                        | SSHing into the agent host itself, anywhere you are                                    |
+| **An IP inside `advertised_cidrs`** (e.g. `192.168.169.10`)  | A host *behind* the agent on its LAN                                                        | Works via the VPN tunnel — server has the CIDR routed through this peer, agent MASQUERADEs the source onto its LAN NIC                        | Reaching services on the LAN segment the agent advertises                              |
+| **The agent's LAN-side IP** (e.g. `10.70.58.12` on `ens160`) | The agent's own address on its physical LAN                                                 | **NOT routable via the VPN by default.** Only reachable if you (a) add it to `advertised_cidrs`, or (b) are on the same physical LAN as the agent | Avoid this — prefer the WG IP for reaching the agent itself                            |
 
 If `ssh user@<agent-lan-ip>` works some days and times out others, you're almost certainly switching between "on the same LAN as the agent" (LAN-direct succeeds) and "elsewhere" (tunnel can't route the private IP). **Use the WG IP for predictable behaviour everywhere.**
 
-#### How to SSH into the agent host — two options
+> [!TIP]
+> Prefer the WireGuard IP (`10.66.66.<N>`) for predictable behaviour everywhere. The server always has a `/32` route to every enrolled agent — no DNS, no LAN-direct fallbacks, no inconsistent behaviour when you change networks.
+
+##### How to SSH into the agent host — two options
 
 You have a remote agent named `tn-office` with WG IP `10.66.66.200` on a LAN where its `ens160` address is `10.70.58.12`. You want to SSH in from your VPN client.
 
@@ -743,9 +889,13 @@ ssh <user>@10.70.58.12
 
 works from anywhere your VPN client is connected.
 
-> **Avoid the trap:** if you're on the same physical network as the agent (e.g. office Wi-Fi where the agent also lives), `ssh <user>@10.70.58.12` will *appear* to work even without Option B — but only because your client routed LAN-direct, completely bypassing the VPN. Move to a different network and it will silently break. Option A or Option B is what makes it work reliably.
+> [!CAUTION]
+> If you're on the same physical network as the agent (e.g. office Wi-Fi where the agent also lives), `ssh <user>@10.70.58.12` will *appear* to work even without Option B — but only because your client routed LAN-direct, completely bypassing the VPN. Move to a different network and it will silently break. Option A or Option B is what makes it work reliably.
 
-### Changing advertised CIDRs after enrollment
+#### Changing advertised CIDRs after enrollment
+
+> [!IMPORTANT]
+> CIDR changes propagate from the server to the agent on the next heartbeat (≤30 s). No manual restart, no re-enrollment, no SSH into the agent host — just save the new CIDR list in the console.
 
 CIDRs can be edited from the **Agents** tab at any time without re-enrolling the agent or restarting anything. The full propagation path is automatic:
 
@@ -763,11 +913,10 @@ sudo sysctl net.ipv4.ip_forward                          # must be 1
 ip route show | grep <new-cidr>                          # only on the *server*, not the agent
 ```
 
-> **Pre-declare CIDRs at registration time when possible.** If you fill in `Advertised CIDRs` *before* generating the install token, the agent enrolls with them already in place and the `wg-quick up` PostUp installs the NAT/forwarding rules on first boot — no waiting for the heartbeat reconciliation cycle. The auto-reconcile path is there for after-the-fact changes; it's not a substitute for declaring upfront.
+> [!TIP]
+> Pre-declare CIDRs at registration time when possible. If you fill in `Advertised CIDRs` *before* generating the install token, the agent enrolls with them already in place and the `wg-quick up` PostUp installs the NAT/forwarding rules on first boot — no waiting for the heartbeat reconciliation cycle. The auto-reconcile path is there for after-the-fact changes; it's not a substitute for declaring upfront.
 
----
-
-### Uninstalling an Agent
+#### Uninstalling an agent
 
 A full agent removal is a two-step process: local teardown on the agent host, then server-side revocation in the admin console.
 
@@ -779,14 +928,14 @@ sudo wireshield-agent uninstall
 
 This single command performs a complete local teardown in order:
 
-| Step | What happens |
-|------|--------------|
-| 1 | Stops and disables `wireshield-agent.service` (the heartbeat daemon) |
-| 2 | Stops and disables `wg-quick@wg-agent0` and removes `/etc/wireguard/wg-agent0.conf` |
-| 3 | Deletes `/etc/wireshield-agent/` (config.json + private.key) |
-| 4 | Removes `/etc/systemd/system/wireshield-agent.service` |
-| 5 | Runs `systemctl daemon-reload` |
-| 6 | Removes `/usr/local/bin/wireshield-agent` |
+| Step | What happens                                                                        |
+| ---: | :---------------------------------------------------------------------------------- |
+|    1 | Stops and disables `wireshield-agent.service` (the heartbeat daemon)                |
+|    2 | Stops and disables `wg-quick@wg-agent0` and removes `/etc/wireguard/wg-agent0.conf` |
+|    3 | Deletes `/etc/wireshield-agent/` (config.json + private.key)                        |
+|    4 | Removes `/etc/systemd/system/wireshield-agent.service`                              |
+|    5 | Runs `systemctl daemon-reload`                                                      |
+|    6 | Removes `/usr/local/bin/wireshield-agent`                                           |
 
 Every step is idempotent — running `uninstall` on an already-uninstalled host is safe.
 
@@ -800,30 +949,29 @@ sudo wireshield-agent uninstall --keep-binary
 
 Open `/console` → **Agents** → click **Delete** on the agent row. This removes the WireGuard peer from `wg0.conf`, marks the DB row as revoked, and stops the server accepting heartbeats from that enrollment. Without this step the agent's WireGuard slot and IP remain reserved on the server.
 
-> **Order matters:** run `uninstall` on the host *before* or *after* console revocation — both orders work. If you revoke from the console first, the agent daemon will detect the revocation on its next poll and shut down on its own. If you `uninstall` first, no heartbeats will arrive so the server simply sees the agent go offline; the console revocation then cleans up the server side.
+> [!NOTE]
+> Order matters less than you'd think — run `uninstall` on the host *before* or *after* console revocation; both orders work. If you revoke from the console first, the agent daemon will detect the revocation on its next poll and shut down on its own. If you `uninstall` first, no heartbeats will arrive so the server simply sees the agent go offline; the console revocation then cleans up the server side.
 
----
-
-### Managing Agents from the Console
+### Console Management
 
 The admin dashboard ships an **Agents** tab (sidebar, under "Users & Access") with a no-CLI-required workflow:
 
-| Action | What happens |
-|--------|--------------|
-| **Register Agent** | Opens a modal with name, description, and advertised-CIDR fields. On submit the server allocates a token + builds the install command, which is shown **once** in a copy-to-clipboard block. |
-| **Update CIDRs** (enrolled rows) | Inline textarea PATCHes the agent and live-applies via `wg syncconf` — no client disconnect. |
-| **Manage Access** (enrolled rows) | Toggle per-agent restriction + maintain a per-user allowlist. Default OFF (every VPN user can reach). When ON, only allowlisted client IDs can route to the agent's CIDRs; enforced by an `iptables` chain rebuilt every 30 s and on every grant/revoke. |
-| **Reissue token** (pending rows) | Generates a new single-use token and re-shows the install command. |
-| **Revoke / Delete** | Removes the WG peer immediately and stops accepting heartbeats. The agent daemon self-disables on its next revocation-check poll. Also run `sudo wireshield-agent uninstall` on the agent host for a full local teardown. |
-| **Details** | Read-only drawer with all 19 agent fields plus a 24-hour traffic sparkline (RX/TX deltas) and an uptime % derived from heartbeat coverage. |
+| Action                              | What happens                                                                                                                                                                                                                                       |
+| :---------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Register Agent**                  | Opens a modal with name, description, and advertised-CIDR fields. On submit the server allocates a token + builds the install command, which is shown **once** in a copy-to-clipboard block.                                                       |
+| **Update CIDRs** (enrolled rows)    | Inline textarea PATCHes the agent and live-applies via `wg syncconf` — no client disconnect.                                                                                                                                                       |
+| **Manage Access** (enrolled rows)   | Toggle per-agent restriction + maintain a per-user allowlist. Default OFF (every VPN user can reach). When ON, only allowlisted client IDs can route to the agent's CIDRs; enforced by an `iptables` chain rebuilt every 30 s and on every change. |
+| **Reissue token** (pending rows)    | Generates a new single-use token and re-shows the install command.                                                                                                                                                                                 |
+| **Revoke / Delete**                 | Removes the WG peer immediately and stops accepting heartbeats. The agent daemon self-disables on its next revocation-check poll. Also run `sudo wireshield-agent uninstall` on the agent host for a full local teardown.                          |
+| **Details**                         | Read-only drawer with all 19 agent fields plus a 24-hour traffic sparkline (RX/TX deltas) and an uptime % derived from heartbeat coverage.                                                                                                          |
 
 The **Overview** tab shows an "Agents" stat card alongside Users/Sessions/Failed/Bandwidth: enrolled count + online indicator + pending count.
 
-### Auto-Update Flow
+### Auto-Update
 
 Agents can self-upgrade against a server-published version manifest. Off by default — enable with `--auto-update` on the systemd unit:
 
-```bash
+```ini
 ExecStart=/usr/local/bin/wireshield-agent run --auto-update --update-interval 6
 ```
 
@@ -862,6 +1010,9 @@ A SHA-256 mismatch *never* replaces the binary — the daemon logs and continues
 
 The SHA-256 in the manifest is a self-consistent integrity check, but it does not protect against a compromised manifest endpoint or a MITM that supplies attacker binary URL + attacker hash. To close that gap, generate an offline Ed25519 release keypair, embed the public half into every shipping agent binary, and sign every published manifest.
 
+> [!WARNING]
+> The release private key (`release.key`) is the root of trust for every agent in the fleet. Anyone who obtains it can sign a malicious manifest and push a compromised binary to every enrolled agent on the next poll. Keep it on an air-gapped or removable medium, never check it into git, and rotate it if you suspect exposure.
+
 One-time setup on an air-gapped signing host:
 
 ```bash
@@ -897,15 +1048,30 @@ This forces a hard fail when no public key is embedded, blocking even legacy age
 
 Heartbeats are bearer-authenticated by the secret issued at enrollment, but a captured bearer alone is no longer enough to mint a new heartbeat. Each request also carries:
 
-| Header | Value |
-|--------|-------|
-| `X-Agent-Ts` | seconds-since-epoch |
-| `X-Agent-Nonce` | 32-char hex (16 random bytes) |
-| `X-Agent-Sig` | hex(HMAC-SHA256(secret, METHOD ⏎ PATH ⏎ ts ⏎ nonce ⏎ body)) |
+| Header           | Value                                                                              |
+| :--------------- | :--------------------------------------------------------------------------------- |
+| `X-Agent-Ts`     | seconds-since-epoch                                                                |
+| `X-Agent-Nonce`  | 32-char hex (16 random bytes)                                                      |
+| `X-Agent-Sig`    | hex(HMAC-SHA256(secret, METHOD ⏎ PATH ⏎ ts ⏎ nonce ⏎ body))                         |
 
 The server enforces ±60s clock skew and a per-agent nonce LRU; replayed nonces are rejected with HTTP 403. Old binaries that send only the bearer continue to work during a fleet rollout. Once every agent has been upgraded, set `WS_HEARTBEAT_REQUIRE_SIG=1` in the FastAPI service environment to enforce signatures and reject any future bearer-only requests.
 
-### End-to-End cURL Walkthrough
+### Advanced
+
+<details>
+<summary>Advanced topics</summary>
+
+#### Security Model
+
+| Control                       | Mechanism                                                                                                                                                       |
+| :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enrollment token              | 32-byte `secrets.token_urlsafe`, SHA-256 hashed in DB, single-use (atomic `UPDATE ... WHERE used_at IS NULL`), 1-hour TTL, IP-bound                             |
+| Heartbeat / revocation-check auth | Source IP must match the agent's allocated WG address — only reachable through the decrypted tunnel                                                          |
+| CIDR escalation defence       | Admin-pre-declared CIDRs take precedence over agent-declared CIDRs at enrollment                                                                                |
+| Replay / enumeration          | Rate-limited public endpoints; generic `401 Invalid or expired enrollment token` for all token-related failures                                                 |
+| Config hygiene                | Atomic `wg0.conf` writes (`tmp + os.replace`); idempotent peer-add/remove; hourly purge of stale tokens + old heartbeats                                        |
+
+#### End-to-End cURL Walkthrough
 
 Replace `VPN_HOST` and the agent ID as appropriate. The admin endpoints under `/api/console/*` authenticate by **source IP**: the request must originate from the WireGuard tunnel IP of a user with `console_access=1` and a live 2FA session. There is no cookie or bearer header — bring the tunnel up first, complete 2FA at `/`, then run these commands from the same host.
 
@@ -925,7 +1091,7 @@ Response (token is returned **once**):
 
 ```json
 {
-  "agent": { "id": 1, "name": "branch-office-01", "status": "pending", ... },
+  "agent": { "id": 1, "name": "branch-office-01", "status": "pending" },
   "enrollment_token": "RgV9...truncated...Ks",
   "expires_at": "2026-04-23T17:36:00Z",
   "install_command": "curl -ksSL https://VPN_HOST/api/agents/install-go | sudo TOKEN=RgV9...Ks WIRESHIELD_SERVER=https://VPN_HOST bash"
@@ -964,28 +1130,18 @@ curl -sS -X DELETE https://VPN_HOST/api/console/agents/1
 
 The WG peer block is removed, the DB row is marked `revoked`, and the next `/api/agents/revocation-check` poll causes the agent to self-disable its local `wg-agent0` unit.
 
-### Security Model
+#### Agent-Side Layout
 
-| Control | Mechanism |
-|---------|-----------|
-| Enrollment token | 32-byte `secrets.token_urlsafe`, SHA-256 hashed in DB, single-use (atomic `UPDATE ... WHERE used_at IS NULL`), 1-hour TTL, IP-bound |
-| Heartbeat / revocation-check auth | Source IP must match the agent's allocated WG address — only reachable through the decrypted tunnel |
-| CIDR escalation defence | Admin-pre-declared CIDRs take precedence over agent-declared CIDRs at enrollment |
-| Replay / enumeration | Rate-limited public endpoints; generic `401 Invalid or expired enrollment token` for all token-related failures |
-| Config hygiene | Atomic `wg0.conf` writes (`tmp + os.replace`); idempotent peer-add/remove; hourly purge of stale tokens + old heartbeats |
+| Path                                              | Purpose                                                                                                                       |
+| :------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------- |
+| `/usr/local/bin/wireshield-agent`                 | Statically-linked Go binary (subcommands: `enroll`, `run`, `status`, `revoke`, `uninstall`, `update`, `version`)              |
+| `/etc/wireshield-agent/heartbeat.secret`          | Bearer secret signed at enrollment (mode 0600)                                                                                |
+| `/etc/wireshield-agent/private.key`               | Agent WG private key (mode 0600)                                                                                              |
+| `/etc/wireshield-agent/config.json`               | Agent identity: server URL, agent ID, WG address, advertised CIDRs (mode 0600)                                                |
+| `/etc/wireguard/wg-agent0.conf`                   | WG interface config with `PostUp` MASQUERADE for the advertised LAN (mode 0600)                                               |
+| `/etc/systemd/system/wireshield-agent.service`    | systemd unit running the heartbeat daemon as a hardened long-lived process                                                    |
 
-### Agent-Side Layout
-
-| Path | Purpose |
-|------|---------|
-| `/usr/local/bin/wireshield-agent` | Statically-linked Go binary (subcommands: `enroll`, `run`, `status`, `revoke`, `uninstall`, `update`, `version`) |
-| `/etc/wireshield-agent/heartbeat.secret` | Bearer secret signed at enrollment (mode 0600) |
-| `/etc/wireshield-agent/private.key` | Agent WG private key (mode 0600) |
-| `/etc/wireshield-agent/config.json` | Agent identity: server URL, agent ID, WG address, advertised CIDRs (mode 0600) |
-| `/etc/wireguard/wg-agent0.conf` | WG interface config with `PostUp` MASQUERADE for the advertised LAN (mode 0600) |
-| `/etc/systemd/system/wireshield-agent.service` | systemd unit running the heartbeat daemon as a hardened long-lived process |
-
-### Go Agent Build + Deployment
+#### Go Agent Build + Deployment
 
 The agent is a single statically-linked Go binary. Build it on any host with Go 1.22+:
 
@@ -1013,22 +1169,26 @@ The installer detects architecture, downloads the binary (verifying its SHA-256 
 
 Operator subcommands on the agent host:
 
-| Command | Action |
-|---------|--------|
-| `wireshield-agent status` | Print current enrollment + WG interface state |
-| `wireshield-agent run` | Long-running heartbeat daemon (invoked by systemd; rarely run by hand) |
-| `wireshield-agent revoke` | Config-only teardown: stop `wg-quick@wg-agent0`, remove `/etc/wireshield-agent/`, leave the binary in place |
-| `wireshield-agent uninstall` | Full removal: revoke + delete the systemd unit and `/usr/local/bin/wireshield-agent` (use `--keep-binary` to retain the binary) |
-| `wireshield-agent update` | One-shot self-upgrade against the server's `version.json` manifest |
-| `wireshield-agent version` | Print the agent version |
+| Command                         | Action                                                                                                                                |
+| :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------ |
+| `wireshield-agent status`       | Print current enrollment + WG interface state                                                                                         |
+| `wireshield-agent run`          | Long-running heartbeat daemon (invoked by systemd; rarely run by hand)                                                                |
+| `wireshield-agent revoke`       | Config-only teardown: stop `wg-quick@wg-agent0`, remove `/etc/wireshield-agent/`, leave the binary in place                           |
+| `wireshield-agent uninstall`    | Full removal: revoke + delete the systemd unit and `/usr/local/bin/wireshield-agent` (use `--keep-binary` to retain the binary)       |
+| `wireshield-agent update`       | One-shot self-upgrade against the server's `version.json` manifest                                                                    |
+| `wireshield-agent version`      | Print the agent version                                                                                                               |
 
-### Legacy Installer Compatibility
+#### Legacy Installer Compatibility
 
 `/api/agents/install` still serves the original Bash installer and its heartbeat-timer approach so existing one-liners keep working. New agents enrolled from the admin console get the Go-daemon flow automatically.
 
+</details>
+
 ---
 
-## Troubleshooting
+<a id="troubleshooting"></a>
+
+## Operations and Troubleshooting
 
 ### Start here: the `/health` endpoint
 
@@ -1039,6 +1199,7 @@ curl -sk https://<your-server>/health | jq
 ```
 
 Example response:
+
 ```json
 {
   "status": "ok",
@@ -1071,24 +1232,25 @@ Example response:
 
 What each field tells you:
 
-| Field | Healthy value | Problem if not |
-|-------|---------------|----------------|
-| `status` | `"ok"` | `"degraded"` = at least one subsystem check failed |
-| `database.status` | `"ok"` | SQLite unreachable — service cannot verify codes or track sessions |
-| `wireguard.status` | `"up"` | VPN clients cannot connect or reach captive portal |
-| `wireguard.operstate` | `"up"` or `"unknown"` | WireGuard virtual interfaces always report `"unknown"` on Linux — this is normal, not an error |
-| `iptables_portal.80/443` | `"present"` | Portal is firewall-blocked even though uvicorn is listening |
-| `watchdog.portal_rule_fixes` | `0` | Non-zero = watchdog had to re-add stripped firewall rules (wg-quick flaps) |
-| `watchdog.last_transition` | `null` | Non-null = shows the most recent wg0 up/down transition for outage correlation |
-| `agents.online` | any integer | Shows how many enrolled agents sent a heartbeat within `WS_AGENT_OFFLINE_AFTER_SECONDS` |
-| `agent_acl.last_error` | `null` | Non-null string = iptables command failed; restricted agents may have stale rules |
-| `agent_acl.missing_iptables` | `false` | `true` = iptables not available on this host; agent ACL enforcement disabled |
+| Field                              | Healthy value         | Problem if not                                                                                              |
+| :--------------------------------- | :-------------------- | :---------------------------------------------------------------------------------------------------------- |
+| `status`                           | `"ok"`                | `"degraded"` = at least one subsystem check failed                                                          |
+| `database.status`                  | `"ok"`                | SQLite unreachable — service cannot verify codes or track sessions                                          |
+| `wireguard.status`                 | `"up"`                | VPN clients cannot connect or reach captive portal                                                          |
+| `wireguard.operstate`              | `"up"` or `"unknown"` | WireGuard virtual interfaces always report `"unknown"` on Linux — this is normal, not an error              |
+| `iptables_portal.80/443`           | `"present"`           | Portal is firewall-blocked even though uvicorn is listening                                                 |
+| `watchdog.portal_rule_fixes`       | `0`                   | Non-zero = watchdog had to re-add stripped firewall rules (wg-quick flaps)                                  |
+| `watchdog.last_transition`         | `null`                | Non-null = shows the most recent wg0 up/down transition for outage correlation                              |
+| `agents.online`                    | any integer           | Shows how many enrolled agents sent a heartbeat within `WS_AGENT_OFFLINE_AFTER_SECONDS`                     |
+| `agent_acl.last_error`             | `null`                | Non-null string = iptables command failed; restricted agents may have stale rules                           |
+| `agent_acl.missing_iptables`       | `false`               | `true` = iptables not available on this host; agent ACL enforcement disabled                                |
 
 ### 1. No Internet After 2FA Verification
 
 **Symptoms:** 2FA verification succeeds, browser shows success page, but no internet access.
 
 **Diagnose:**
+
 ```bash
 # Check if client IP is in the allowlist
 sudo ipset list ws_2fa_allowed_v4 | grep <client-ip>
@@ -1107,6 +1269,7 @@ sudo journalctl -u wireshield.service -n 50 | grep -i session
 ```
 
 **Solutions:**
+
 - If client IP is missing from ipset, manually add: `sudo ipset add ws_2fa_allowed_v4 <client-ip> -exist`
 - If firewall rule order is wrong, the allowlist rule must appear before the portal chain. Restart the service: `sudo systemctl restart wireshield.service`
 - If MASQUERADE rule is missing, check WireGuard PostUp/PostDown in `/etc/wireguard/wg0.conf`
@@ -1116,6 +1279,7 @@ sudo journalctl -u wireshield.service -n 50 | grep -i session
 **Symptoms:** Browser cannot load `https://<vpn-domain>`, connection timeout or refused.
 
 **Diagnose:**
+
 ```bash
 # Check service status
 sudo systemctl status wireshield.service
@@ -1134,6 +1298,7 @@ sudo iptables -t nat -L PREROUTING -n -v | grep -E '80|443'
 ```
 
 **Solutions:**
+
 - Restart the 2FA service: `sudo systemctl restart wireshield.service`
 - If SSL cert is missing, regenerate: `sudo /etc/wireshield/2fa/generate-certs.sh`
 - Check service logs for startup errors: `sudo journalctl -u wireshield.service -n 100`
@@ -1143,6 +1308,7 @@ sudo iptables -t nat -L PREROUTING -n -v | grep -E '80|443'
 **Symptoms:** Need to re-verify 2FA every few minutes despite active connection.
 
 **Diagnose:**
+
 ```bash
 # Check current timeout settings
 grep -E "IDLE_TIMEOUT|DISCONNECT_GRACE" /etc/wireshield/2fa/config.env
@@ -1155,34 +1321,45 @@ sudo journalctl -u wireshield.service | grep -i "stale\|expired\|revok"
 ```
 
 **Solutions:**
+
 - Increase idle timeout in `/etc/wireshield/2fa/config.env`:
-  ```bash
+
+  ```ini
   WS_2FA_SESSION_IDLE_TIMEOUT=7200  # 2 hours
-  sudo systemctl restart wireshield.service
   ```
+
+  Then `sudo systemctl restart wireshield.service`.
+
 - Enable PersistentKeepalive in the client `.conf` file to prevent handshake staleness:
+
   ```ini
   [Peer]
   PersistentKeepalive = 25
   ```
+
 - Increase disconnect grace period:
-  ```bash
+
+  ```ini
   WS_2FA_DISCONNECT_GRACE_SECONDS=7200  # 2 hours
-  sudo systemctl restart wireshield.service
   ```
+
+  Then `sudo systemctl restart wireshield.service`.
 
 ### 4. TOTP Codes Not Working
 
 **Symptoms:** 6-digit code is always rejected as invalid.
 
 **Diagnose:**
+
 - Verify device clock is synchronized (TOTP relies on accurate UTC time)
 - Wait for the next 30-second code rotation and try the new code
 - Confirm you're using the correct authenticator entry for this VPN
 
 **Solutions:**
+
 - Sync device time: on Android/iOS, enable automatic date & time in settings
 - If authenticator entry is lost, admin can reset 2FA:
+
   ```bash
   sudo ./wireshield.sh
   # Select: "Remove Client 2FA"
@@ -1194,6 +1371,7 @@ sudo journalctl -u wireshield.service | grep -i "stale\|expired\|revok"
 **Symptoms:** Certificate expiring soon, renewal timer shows failed status.
 
 **Diagnose:**
+
 ```bash
 # Check renewal service logs
 sudo journalctl -u wireshield-2fa-renew.service
@@ -1206,8 +1384,10 @@ nslookup <your-domain>
 ```
 
 **Solutions:**
+
 - Ensure ports 80/443 are accessible from the internet
 - Force renewal:
+
   ```bash
   sudo systemctl stop wireshield.service
   sudo certbot renew --force-renewal
@@ -1219,6 +1399,7 @@ nslookup <your-domain>
 **Symptoms:** Service won't start, SQLite errors in logs.
 
 **Diagnose:**
+
 ```bash
 # Check database integrity
 sudo sqlite3 /etc/wireshield/2fa/auth.db "PRAGMA integrity_check;"
@@ -1228,12 +1409,15 @@ ls -la /etc/wireshield/2fa/auth.db
 ```
 
 **Solutions:**
+
 - If corrupted, backup and restart (tables are auto-recreated):
+
   ```bash
   sudo cp /etc/wireshield/2fa/auth.db /etc/wireshield/2fa/auth.db.backup
   sudo rm /etc/wireshield/2fa/auth.db
   sudo systemctl restart wireshield.service
   ```
+
 - If permission issue: `sudo chown root:root /etc/wireshield/2fa/auth.db`
 
 ### General Diagnostics
@@ -1311,12 +1495,12 @@ ping -c 5 <lan-target>
 
 Interpret:
 
-| Observed | Failing hop | Fix |
-|---|---|---|
-| Nothing on agent's `wg-agent0` | Server isn't forwarding to the agent | Check `ip route show \| grep <cidr>` on the server — the route must show `dev wg0`. If missing, restart `wireshield.service` (the periodic reconciler reinstalls it). |
-| ICMP arrives on `wg-agent0` but no packets on agent's LAN iface | Agent isn't NAT-forwarding | `sudo sysctl net.ipv4.ip_forward` must be `1`; `iptables -t nat -S POSTROUTING` must show a MASQUERADE rule for `10.66.66.0/24 -o <lan-iface>`. If not, restart `wireshield-agent` — the daemon's CIDR reconciler installs them. |
-| Outbound packets leave the LAN iface but no reply arrives | LAN-side problem | `<lan-target>` either doesn't respond to ICMP, is on a different subnet than the agent's LAN IP, or its gateway can't route back to the agent's LAN IP. |
-| Reply packets on `wg-agent0` (going back to server) but VPN client never sees them | Server is sinkholing return traffic | `sudo iptables -nvL FORWARD --line-numbers` should show `ACCEPT ... ctstate RELATED,ESTABLISHED` as **rule 1**. If missing, restart `wireshield.service` (the rule is reinstalled by the agent ACL sync loop every 30 s, and baked into `wg0.conf` PostUp on next interface up). |
+| Observed                                                                                | Failing hop                                | Fix                                                                                                                                                                                                                                                                          |
+| :-------------------------------------------------------------------------------------- | :----------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nothing on agent's `wg-agent0`                                                          | Server isn't forwarding to the agent       | Check `ip route show \| grep <cidr>` on the server — the route must show `dev wg0`. If missing, restart `wireshield.service` (the periodic reconciler reinstalls it).                                                                                                        |
+| ICMP arrives on `wg-agent0` but no packets on agent's LAN iface                          | Agent isn't NAT-forwarding                 | `sudo sysctl net.ipv4.ip_forward` must be `1`; `iptables -t nat -S POSTROUTING` must show a MASQUERADE rule for `10.66.66.0/24 -o <lan-iface>`. If not, restart `wireshield-agent` — the daemon's CIDR reconciler installs them.                                              |
+| Outbound packets leave the LAN iface but no reply arrives                                | LAN-side problem                           | `<lan-target>` either doesn't respond to ICMP, is on a different subnet than the agent's LAN IP, or its gateway can't route back to the agent's LAN IP.                                                                                                                       |
+| Reply packets on `wg-agent0` (going back to server) but VPN client never sees them       | Server is sinkholing return traffic         | `sudo iptables -nvL FORWARD --line-numbers` should show `ACCEPT ... ctstate RELATED,ESTABLISHED` as **rule 1**. If missing, restart `wireshield.service` (the rule is reinstalled by the agent ACL sync loop every 30 s, and baked into `wg0.conf` PostUp on next interface up). |
 
 **Server-side `wg syncconf` keeps failing:**
 
@@ -1336,11 +1520,23 @@ sudo systemctl restart wireshield-agent          # on the agent host
 
 If the agent's `config.json` still doesn't match, the heartbeat loop probably never received a non-empty response — check `journalctl -u wireshield-agent -f` for the `CIDR update from server: ...` log line.
 
+### 8. Database WAL and General Lockups
+
+If the service hangs or returns 5xx with no clear cause, capture the live state and restart cleanly:
+
+```bash
+sudo journalctl -u wireshield.service -n 200 --no-pager
+sudo systemctl restart wireshield.service
+curl -sk https://localhost/health | jq .
+```
+
+The first run after a hard reboot may take a few extra seconds while SQLite replays its WAL — this is normal.
+
 ---
 
 ## Uninstall
 
-### Server (VPN host)
+### Server
 
 Run the installer with the `uninstall` action — option **13** in the interactive menu — or invoke it non-interactively:
 
@@ -1358,7 +1554,7 @@ What it removes:
 
 You will be prompted before destructive steps. Existing VPN clients lose connectivity immediately; re-issue them new configs after a fresh install.
 
-### Agent (remote host)
+### Agent
 
 ```bash
 sudo wireshield-agent uninstall
@@ -1389,7 +1585,7 @@ pytest -v
 
 ### Project Structure
 
-```
+```text
 WireShield/
 ├── wireshield.sh                 # Installer and management CLI
 ├── LICENSE
@@ -1464,18 +1660,18 @@ WireShield/
 
 ### Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| VPN | WireGuard |
-| Backend | Python 3.8+, FastAPI 0.104, Uvicorn |
-| Agent daemon | Go 1.22+ (single static binary, Curve25519 via `golang.org/x/crypto`) |
-| Database | SQLite |
-| Frontend | Jinja2, vanilla JavaScript, Chart.js |
-| Auth | pyotp (TOTP), pyqrcode |
-| Firewall | iptables, ip6tables, ipset |
-| DNS | scapy, tldextract |
-| Service | systemd |
-| SSL | Let's Encrypt (certbot), OpenSSL |
+| Layer          | Technology                                                                              |
+| :------------- | :-------------------------------------------------------------------------------------- |
+| VPN            | WireGuard                                                                               |
+| Backend        | Python 3.8+, FastAPI 0.104, Uvicorn                                                     |
+| Agent daemon   | Go 1.22+ (single static binary, Curve25519 via `golang.org/x/crypto`)                   |
+| Database       | SQLite                                                                                  |
+| Frontend       | Jinja2, vanilla JavaScript, Chart.js                                                    |
+| Auth           | pyotp (TOTP), pyqrcode                                                                  |
+| Firewall       | iptables, ip6tables, ipset                                                              |
+| DNS            | scapy, tldextract                                                                       |
+| Service        | systemd                                                                                 |
+| SSL            | Let's Encrypt (certbot), OpenSSL                                                        |
 
 ---
 
@@ -1508,4 +1704,3 @@ Contributions are welcome. To get started:
 WireShield is licensed under the [GNU General Public License v3.0](LICENSE).
 
 You are free to use, modify, and distribute this software. Modified versions must be released under the same license with source code disclosed.
-
