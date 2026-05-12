@@ -498,6 +498,50 @@ def wg_syncconf() -> None:
                 pass
 
 
+def _ensure_route_for_cidr(cidr: str, iface: str) -> None:
+    """Idempotently install a kernel route for `cidr` via `iface`.
+
+    `wg syncconf` only updates the WireGuard interface's internal peer
+    table — it does NOT add kernel routes. wg-quick installs routes on
+    `up`/`down`, but live peer mutations bypass wg-quick. Without an
+    explicit `ip route` call here, packets destined for an agent's
+    advertised_cidrs leave via the default route (the public NIC)
+    instead of the WG tunnel, defeating the whole point of advertising
+    the CIDR.
+
+    Uses `ip route replace` so it's safe to call repeatedly — creates
+    or replaces in one step.
+    """
+    family = "-6" if ":" in cidr else "-4"
+    try:
+        subprocess.run(
+            ["ip", family, "route", "replace", cidr, "dev", iface],
+            check=True, capture_output=True,
+        )
+        logger.info(f"route added: {cidr} dev {iface}")
+    except subprocess.CalledProcessError as e:
+        stderr_text = e.stderr.decode("utf-8", errors="replace").strip() if e.stderr else "<no stderr>"
+        logger.warning(f"add route {cidr} dev {iface} failed: {stderr_text}")
+    except FileNotFoundError:
+        logger.debug("`ip` not available (likely dev env)")
+
+
+def _remove_route_for_cidr(cidr: str, iface: str) -> None:
+    """Best-effort removal of a route. Missing-route is not an error."""
+    family = "-6" if ":" in cidr else "-4"
+    try:
+        subprocess.run(
+            ["ip", family, "route", "del", cidr, "dev", iface],
+            check=True, capture_output=True,
+        )
+        logger.info(f"route removed: {cidr} dev {iface}")
+    except subprocess.CalledProcessError:
+        # Route may not exist; nothing to do.
+        pass
+    except FileNotFoundError:
+        pass
+
+
 def reconcile_wg_peers() -> int:
     """Compare every enrolled agent in the DB against the running wg0 state.
 
@@ -590,6 +634,18 @@ def reconcile_wg_peers() -> int:
             logger.info(f"reconcile_wg_peers: synced {synced} peer(s) to running {iface}")
         except RuntimeError as exc:
             logger.error(f"reconcile_wg_peers: wg_syncconf failed after re-add: {exc}")
+
+    # Ensure kernel routes exist for every enrolled agent's CIDRs. This
+    # also heals startup state where the service restarts after a reboot:
+    # wg-quick brings up wg0 but doesn't know about live-added agent peers,
+    # so no routes for their advertised CIDRs are installed.
+    for agent in enrolled:
+        try:
+            cidrs = json.loads(agent["advertised_cidrs"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            cidrs = []
+        for cidr in cidrs:
+            _ensure_route_for_cidr(cidr, iface)
 
     return synced
 
@@ -736,6 +792,13 @@ def enroll_agent(raw_token: str, public_key: str, hostname: Optional[str],
         # Leave status='enrolled' so the admin can see the partial state;
         # they can retry via the console or manually reconcile.
 
+    # Install kernel routes for each advertised CIDR via wg0. wg syncconf
+    # only touches the WG peer table; without these `ip route` calls the
+    # server would never forward packets for the agent's LAN into the tunnel.
+    iface_for_routes = _iface(_load_wg_params())
+    for cidr in final_cidrs:
+        _ensure_route_for_cidr(cidr, iface_for_routes)
+
     # Build client-side config
     params = _load_wg_params()
     endpoint_host = params.get("SERVER_PUB_IP", "")
@@ -782,13 +845,17 @@ def revoke_agent(agent_id: int) -> bool:
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute("SELECT name, status FROM agents WHERE id = ?", (agent_id,))
+        c.execute("SELECT name, status, advertised_cidrs FROM agents WHERE id = ?", (agent_id,))
         row = c.fetchone()
         if not row:
             return False
         if row["status"] == "revoked":
             return False
         name = row["name"]
+        try:
+            stale_cidrs = json.loads(row["advertised_cidrs"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            stale_cidrs = []
         c.execute(
             "UPDATE agents SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP "
             "WHERE id = ?",
@@ -807,6 +874,14 @@ def revoke_agent(agent_id: int) -> bool:
                 f"revoke_agent: wg_syncconf failed for agent "
                 f"id={agent_id} — peer removed from conf, reconciler will sync: {exc}"
             )
+
+    # Tear down kernel routes that pointed at this peer's CIDRs. Leaving them
+    # in place would silently blackhole packets after revoke.
+    if stale_cidrs:
+        iface_for_routes = _iface(_load_wg_params())
+        for cidr in stale_cidrs:
+            _remove_route_for_cidr(cidr, iface_for_routes)
+
     logger.info(f"Revoked agent id={agent_id} name={name!r} (peer removed={removed})")
     return True
 
@@ -823,6 +898,10 @@ def update_agent_cidrs(agent_id: int, new_cidrs: List[str]) -> bool:
         if not row or row["status"] != "enrolled":
             return False
         agent = dict(row)
+        try:
+            old_cidrs = json.loads(agent.get("advertised_cidrs") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            old_cidrs = []
         c.execute(
             "UPDATE agents SET advertised_cidrs = ? WHERE id = ?",
             (json.dumps(cidrs), agent_id),
@@ -844,6 +923,15 @@ def update_agent_cidrs(agent_id: int, new_cidrs: List[str]) -> bool:
                 f"update_agent_cidrs: wg_syncconf failed for agent "
                 f"id={agent_id} — conf updated, reconciler will apply: {exc}"
             )
+
+    # Reconcile kernel routes: remove orphans, add the rest. `replace` is
+    # idempotent so we can call it on the entire new set without checking
+    # which were already present.
+    iface_for_routes = _iface(_load_wg_params())
+    for stale in set(old_cidrs) - set(cidrs):
+        _remove_route_for_cidr(stale, iface_for_routes)
+    for cidr in cidrs:
+        _ensure_route_for_cidr(cidr, iface_for_routes)
     logger.info(f"Updated agent id={agent_id} CIDRs to {cidrs}")
     return True
 
