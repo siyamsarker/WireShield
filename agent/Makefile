@@ -23,7 +23,22 @@ SHELL := /usr/bin/env bash
 MODULE       := github.com/siyamsarker/wireshield/agent
 CMD_PKG      := ./cmd/wireshield-agent
 BINARY       := wireshield-agent
-VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# Agent version is intentionally distinct from the project semver release tag.
+# Each invocation of `make` produces a UNIQUE identifier so two builds from
+# the same commit are still distinguishable in journals, heartbeat reports,
+# and the admin console's VERSION column.
+#
+# Format: <7-char-commit>-<UTC-timestamp>[-dirty]
+#   e.g. "35a3a48-20260512.103200"
+#        "35a3a48-20260512.103205-dirty"
+#
+# Override for a proper semver release build (auto-update uses semver
+# comparison; this override is the way to opt back into it):
+#   make VERSION=3.0.1 dist
+GIT_COMMIT   := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+BUILD_DATE   := $(shell date -u +%Y%m%d.%H%M%S)
+GIT_DIRTY    := $(shell git diff --quiet 2>/dev/null || echo -dirty)
+VERSION      ?= $(GIT_COMMIT)-$(BUILD_DATE)$(GIT_DIRTY)
 DIST_DIR     := dist/bin
 ARCHES       := linux-amd64 linux-arm64
 
