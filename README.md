@@ -237,17 +237,19 @@ A successful install ends with a "Subsystem status" panel that lists each compon
 
 ### Supported Distributions
 
-| Distribution    | Minimum Version |
-| :-------------- | :-------------- |
-| Ubuntu          | 18.04 (Bionic)  |
-| Debian          | 10 (Buster)     |
-| Fedora          | 32              |
-| CentOS Stream   | 8               |
-| AlmaLinux       | 8               |
-| Rocky Linux     | 8               |
-| Oracle Linux    | 8               |
-| Arch Linux      | Rolling         |
-| Alpine Linux    | 3.14            |
+| Distribution    | Minimum Version | Notes                                            |
+| :-------------- | :-------------- | :----------------------------------------------- |
+| Ubuntu          | 18.04 (Bionic)  | Tested through 24.04 LTS and 26.04               |
+| Debian          | 10 (Buster)     | 11/12 use the standard apt path                  |
+| Fedora          | 32              |                                                  |
+| CentOS Stream   | 8               | v9 supported (EPEL auto-installed for ipset)     |
+| AlmaLinux       | 8               | v9 supported (EPEL auto-installed for ipset)     |
+| Rocky Linux     | 8               | v9 supported (EPEL auto-installed for ipset)     |
+| Oracle Linux    | 8               | v9 supported (uses AppStream + EPEL)             |
+| Arch Linux      | Rolling         |                                                  |
+| Alpine Linux    | 3.14            |                                                  |
+
+> The installer auto-loads the required kernel modules (`wireguard`, `ip6table_nat`, `nf_conntrack`) and persists them across reboots via `/etc/modules-load.d/wireshield.conf` (or `/etc/modules` on Alpine).
 
 ### Client
 
@@ -1430,7 +1432,44 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
   "SELECT timestamp, client_id, action, status FROM audit_log ORDER BY timestamp DESC LIMIT 20;"
 ```
 
-### 7. Agent Issues
+### 7. WireGuard Service Won't Start After Install
+
+**Symptoms:** `systemctl start wg-quick@wg0` fails. `journalctl -u wg-quick@wg0` shows `Unable to access interface: No such device` or `Cannot find device "wg0"`. The 2FA service health check also fails because the WireGuard interface never came up.
+
+**Cause:** On most Debian/Ubuntu kernels the `wireguard` module is compiled as a loadable module (`CONFIG_WIREGUARD=m`), not linked into the kernel image (`CONFIG_WIREGUARD=y`) — even on kernel 5.6+. If the module is not loaded, `wg-quick` cannot create the virtual interface. Similarly, the `ip6tables -t nat ...` PostUp rules require the `ip6table_nat` module to be loaded.
+
+The installer now handles this automatically (it runs `modprobe` for the required modules and persists them via `/etc/modules-load.d/wireshield.conf`). If you installed an older version of WireShield or your host has unusual kernel restrictions, you may need to fix it by hand.
+
+**Diagnose:**
+
+```bash
+# Check whether the wireguard module is loaded
+lsmod | grep -E '^wireguard|^ip6table_nat'
+
+# Try to load it
+sudo modprobe wireguard
+sudo modprobe ip6table_nat
+
+# Try to start the service again
+sudo systemctl start wg-quick@wg0
+sudo journalctl -u wg-quick@wg0 -n 50 --no-pager
+```
+
+**Solutions:**
+
+- If `modprobe wireguard` fails with `Module not found`, install the package: `sudo apt-get install -y wireguard` (Debian/Ubuntu) or the distro equivalent.
+- Persist the modules across reboots:
+  ```bash
+  sudo tee /etc/modules-load.d/wireshield.conf >/dev/null <<'EOF'
+  wireguard
+  ip6table_nat
+  nf_conntrack
+  EOF
+  ```
+- On Alpine: append the same names to `/etc/modules` (one per line).
+- If the kernel was just updated by the package manager, reboot before retrying — the running kernel may not match the installed module set.
+
+### 8. Agent Issues
 
 **Agent not connecting / stuck in `pending`:**
 
@@ -1509,7 +1548,7 @@ sudo systemctl restart wireshield-agent          # on the agent host
 
 If the agent's `config.json` still doesn't match, the heartbeat loop probably never received a non-empty response — check `journalctl -u wireshield-agent -f` for the `CIDR update from server: ...` log line.
 
-### 8. Database WAL and General Lockups
+### 9. Database WAL and General Lockups
 
 If the service hangs or returns 5xx with no clear cause, capture the live state and restart cleanly:
 
