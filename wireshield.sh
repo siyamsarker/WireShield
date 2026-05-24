@@ -1102,12 +1102,14 @@ function installWireGuard() {
 		# Install wireguard package which includes kernel module and tools
 		apt-get install -y wireguard iptables resolvconf qrencode ipset sqlite3
 	elif [[ ${OS} == 'debian' ]]; then
-		# For Debian 10 Buster, use backports repository
+		# For Debian 10 Buster, use backports repository.
+		# `|| true` on update so a broken 3rd-party source on the host does not
+		# abort the install — the WireShield packages still resolve.
 		if ! grep -rqs "^deb .* buster-backports" /etc/apt/; then
 			echo "deb http://deb.debian.org/debian buster-backports main" >/etc/apt/sources.list.d/backports.list
-			apt-get update
+			apt-get update || true
 		fi
-		apt-get update
+		apt-get update || true
 		apt-get install -y iptables resolvconf qrencode sqlite3
 		apt-get install -y -t buster-backports wireguard
 	elif [[ ${OS} == 'fedora' ]]; then
@@ -1119,25 +1121,36 @@ function installWireGuard() {
 		fi
 		dnf install -y wireguard-tools iptables qrencode ipset sqlite
 	elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
-		# For RHEL-based systems
+		# For RHEL-based systems. v8 uses elrepo's kmod-wireguard;
+		# v9 has wireguard in AppStream but still needs EPEL for ipset/qrencode.
 		if [[ ${VERSION_ID} == 8* ]]; then
 			yum install -y epel-release elrepo-release
 			yum install -y kmod-wireguard
-			yum install -y qrencode # not available on release 9
+			yum install -y qrencode
+		else
+			# v9 (and any future ≥9): EPEL provides ipset + qrencode
+			yum install -y epel-release || dnf install -y epel-release || true
+			yum install -y qrencode || true
 		fi
 		yum install -y wireguard-tools iptables ipset sqlite
 	elif [[ ${OS} == 'oracle' ]]; then
-		dnf install -y oraclelinux-developer-release-el8
-		dnf config-manager --disable -y ol8_developer
-		dnf config-manager --enable -y ol8_developer_UEKR6
-		dnf config-manager --save -y --setopt=ol8_developer_UEKR6.includepkgs='wireguard-tools*'
-		dnf install -y wireguard-tools qrencode iptables sqlite
+		# Oracle Linux 8 ships wireguard via the UEKR6 developer repo;
+		# Oracle Linux 9 has it in AppStream. EPEL provides ipset + qrencode
+		# on both versions.
+		if [[ ${VERSION_ID} == 8* ]]; then
+			dnf install -y oraclelinux-developer-release-el8
+			dnf config-manager --disable -y ol8_developer
+			dnf config-manager --enable -y ol8_developer_UEKR6
+			dnf config-manager --save -y --setopt=ol8_developer_UEKR6.includepkgs='wireguard-tools*'
+		fi
+		dnf install -y oracle-epel-release-el${VERSION_ID%%.*} 2>/dev/null || dnf install -y epel-release 2>/dev/null || true
+		dnf install -y wireguard-tools qrencode iptables ipset sqlite
 	elif [[ ${OS} == 'arch' ]]; then
 		# Arch Linux has latest WireGuard in official repositories
 		pacman -Sy --needed --noconfirm wireguard-tools qrencode ipset sqlite
 	elif [[ ${OS} == 'alpine' ]]; then
 		# Alpine Linux supports WireGuard natively
-		apk update
+		apk update || true
 		apk add wireguard-tools iptables libqrencode-tools ipset sqlite
 	fi
 
@@ -1294,6 +1307,34 @@ net.ipv4.tcp_congestion_control = bbr
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 
+	# Pre-load kernel modules needed by wg-quick + the PostUp ruleset.
+	#   wireguard       — virtual interface (loadable on most distros; =m, not =y)
+	#   ip6table_nat    — required for `ip6tables -t nat ...` PostUp rules; not
+	#                     auto-loaded on minimal Alpine/RHEL images
+	#   nf_conntrack    — required for ESTABLISHED,RELATED FORWARD rule; usually
+	#                     auto-loaded but harmless to assert
+	# All three are no-ops if already loaded or compiled in (=y).
+	modprobe wireguard 2>/dev/null || true
+	modprobe ip6table_nat 2>/dev/null || true
+	modprobe nf_conntrack 2>/dev/null || true
+
+	# Persist module loading across reboots so wg-quick@wg0 starts cleanly on
+	# every boot without depending on lazy-load by `wg` invocation.
+	if [[ ${OS} == 'alpine' ]]; then
+		# OpenRC: /etc/modules is read by the modules service at boot
+		for _m in wireguard ip6table_nat nf_conntrack; do
+			grep -qxF "${_m}" /etc/modules 2>/dev/null || echo "${_m}" >>/etc/modules
+		done
+	else
+		# systemd: drop a modules-load.d snippet
+		mkdir -p /etc/modules-load.d
+		cat >/etc/modules-load.d/wireshield.conf <<- 'MOD_EOF'
+			wireguard
+			ip6table_nat
+			nf_conntrack
+		MOD_EOF
+	fi
+
 	if [[ ${OS} == 'alpine' ]]; then
 		sysctl -p /etc/sysctl.d/wg.conf
 		rc-update add sysctl
@@ -1302,13 +1343,6 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 		rc-update add "wg-quick.${SERVER_WG_NIC}"
 	else
 		sysctl --system
-
-		# On Ubuntu/Debian kernels wireguard is compiled as a loadable module
-		# (CONFIG_WIREGUARD=m) even on kernel 5.6+, so wg-quick cannot create
-		# the virtual interface unless the module is explicitly loaded first.
-		# modprobe is a no-op when wireguard is already in-kernel (=y), so it is
-		# always safe to call.
-		modprobe wireguard 2>/dev/null || true
 
 		systemctl start "wg-quick@${SERVER_WG_NIC}"
 		systemctl enable "wg-quick@${SERVER_WG_NIC}"
@@ -1970,6 +2004,7 @@ function uninstallWg() {
 		_ws_ui_info "Removing WireGuard configuration..."
 		rm -rf /etc/wireguard 2>/dev/null || true
 		rm -f /etc/sysctl.d/wg.conf 2>/dev/null || true
+		rm -f /etc/modules-load.d/wireshield.conf 2>/dev/null || true
 
 		# Remove 2FA gating firewall structures (defensive — wg-quick down
 		# should have handled most of this, but re-run in case the interface
