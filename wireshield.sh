@@ -243,7 +243,7 @@ function checkWireGuardSupport() {
 	KERNEL_MINOR=$(echo "$KERNEL_VERSION" | cut -d'.' -f2)
 	
 	if [[ ${KERNEL_MAJOR} -gt 5 ]] || [[ ${KERNEL_MAJOR} -eq 5 && ${KERNEL_MINOR} -ge 6 ]]; then
-		echo -e "${GREEN}Kernel ${KERNEL_VERSION} detected - WireGuard is built into your kernel!${NC}"
+		echo -e "${GREEN}Kernel ${KERNEL_VERSION} detected - WireGuard kernel module is available (will be loaded via modprobe).${NC}"
 	else
 		echo -e "${ORANGE}Kernel ${KERNEL_VERSION} detected - WireGuard kernel module will be installed separately.${NC}"
 	fi
@@ -410,7 +410,7 @@ function installQuestions() {
 function _ws_upgrade_wireguard_packages() {
 	# Best-effort upgrade to the newest WireGuard packages available for the distro.
 	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
-		apt-get update
+		apt-get update || true   # broken 3rd-party PPAs must not abort the upgrade
 		apt-get install -y --only-upgrade wireguard wireguard-tools qrencode || true
 	elif [[ ${OS} == 'fedora' ]]; then
 		dnf upgrade -y wireguard-tools wireguard-dkms qrencode || true
@@ -1095,7 +1095,10 @@ function installWireGuard() {
 	# Install WireGuard tools and module using the detected package manager
 	echo "Installing WireGuard..."
 	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' && ${VERSION_ID} -gt 10 ]]; then
-		apt-get update
+		# A broken third-party PPA (e.g. Ansible PPA not yet published for this
+		# release) returns rc=100 from apt-get update but does not prevent the
+		# WireShield packages from resolving — treat it as a warning, not fatal.
+		apt-get update || true
 		# Install wireguard package which includes kernel module and tools
 		apt-get install -y wireguard iptables resolvconf qrencode ipset sqlite3
 	elif [[ ${OS} == 'debian' ]]; then
@@ -1299,6 +1302,13 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 		rc-update add "wg-quick.${SERVER_WG_NIC}"
 	else
 		sysctl --system
+
+		# On Ubuntu/Debian kernels wireguard is compiled as a loadable module
+		# (CONFIG_WIREGUARD=m) even on kernel 5.6+, so wg-quick cannot create
+		# the virtual interface unless the module is explicitly loaded first.
+		# modprobe is a no-op when wireguard is already in-kernel (=y), so it is
+		# always safe to call.
+		modprobe wireguard 2>/dev/null || true
 
 		systemctl start "wg-quick@${SERVER_WG_NIC}"
 		systemctl enable "wg-quick@${SERVER_WG_NIC}"
