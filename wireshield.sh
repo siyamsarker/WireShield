@@ -1157,6 +1157,24 @@ function installWireGuard() {
 	# Ensure the newest available WireGuard packages are installed
 	_ws_upgrade_wireguard_packages
 
+	# On Debian/Ubuntu, make sure the kernel-extra module package for the
+	# currently running kernel is present. This avoids the common case where
+	# `wireguard.ko` is not available yet after a recent kernel update.
+	if [[ ${OS} == 'ubuntu' || ${OS} == 'debian' ]]; then
+		if command -v apt-cache >/dev/null 2>&1; then
+			local kernel_extra="linux-modules-extra-$(uname -r)"
+			if apt-cache show "${kernel_extra}" >/dev/null 2>&1; then
+				apt-get install -y "${kernel_extra}" || true
+			fi
+			# AWS kernels commonly ship the WireGuard module in the extra package
+			# set, and this fallback keeps the install path resilient on newer
+			# Ubuntu releases/EC2 images.
+			if [[ $(uname -r) == *-aws* ]]; then
+				apt-get install -y linux-modules-extra-aws || true
+			fi
+		fi
+	fi
+
 	# Check if WireGuard was installed successfully
 	if ! command -v wg &>/dev/null; then
 		echo -e "${RED}Error: WireGuard installation failed. The 'wg' command is not available.${NC}"
@@ -1344,8 +1362,14 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 	else
 		sysctl --system
 
-		systemctl start "wg-quick@${SERVER_WG_NIC}"
-		systemctl enable "wg-quick@${SERVER_WG_NIC}"
+		systemctl start "wg-quick@${SERVER_WG_NIC}" || true
+		systemctl enable "wg-quick@${SERVER_WG_NIC}" || true
+		if ! systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}"; then
+			echo -e "\n${RED}WireGuard failed to start after installation.${NC}"
+			echo -e "${ORANGE}This usually means the running kernel has not yet loaded the WireGuard module (for example after a recent kernel upgrade).${NC}"
+			echo -e "${ORANGE}Reboot the server, then rerun the installer. You can confirm with: systemctl status wg-quick@${SERVER_WG_NIC}${NC}"
+			return 1
+		fi
 	fi
 
 	# Ensure automatic expiration cleanup at 12:00 AM daily
@@ -3300,6 +3324,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 		_ws_ensure_auto_expiration >/dev/null 2>&1 || true
 		manageMenu
 	else
-		installWireGuard
+		if ! installWireGuard; then
+			echo -e "${RED}Installation aborted because WireGuard could not be started.${NC}" >&2
+			exit 1
+		fi
 	fi
 fi
