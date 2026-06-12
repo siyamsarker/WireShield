@@ -6,7 +6,7 @@
 
 **Zero-trust WireGuard VPN with pre-connection two-factor authentication**
 
-[![Version](https://img.shields.io/badge/Version-3.0.4-2ea44f.svg)](#)
+[![Version](https://img.shields.io/badge/Version-3.0.5-2ea44f.svg)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776ab.svg)](https://www.python.org/)
@@ -1440,23 +1440,32 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
 
 ### 7. WireGuard Service Won't Start After Install
 
-**Symptoms:** `systemctl start wg-quick@wg0` fails. `journalctl -u wg-quick@wg0` shows `Unable to access interface: No such device` or `Cannot find device "wg0"` — or, on hardened hosts, a PostUp helper dies with `/usr/sbin/ipset: Permission denied` and `status=126` even though the service runs as root. The 2FA service health check also fails because the WireGuard interface never came up.
+**Symptoms:** `systemctl start wg-quick@wg0` fails. `journalctl -u wg-quick@wg0` shows `Unable to access interface: No such device` or `Cannot find device "wg0"` — or, on hardened hosts, a PostUp helper dies with `/usr/sbin/ipset: Permission denied` (`status=126`) or `iptables v1.8.11 (nf_tables): Can't open socket to ipset` (`status=1`). The 2FA service health check also fails because the WireGuard interface never came up.
 
-**Cause:** On most Debian/Ubuntu kernels the `wireguard` module is compiled as a loadable module (`CONFIG_WIREGUARD=m`), not linked into the kernel image (`CONFIG_WIREGUARD=y`) — even on kernel 5.6+. Cloud kernels (AWS/GCP/Azure/Oracle images) go one step further and ship `wireguard.ko` in a separate `linux-modules-extra-*` package that minimal images don't preinstall. If the module is not loaded, `wg-quick` cannot create the virtual interface. Similarly, the `ip6tables -t nat ...` PostUp rules require the `ip6table_nat` module to be loaded.
+**Cause:** Three distinct failure modes cover the cases observed in production:
 
-A second failure mode appears on hardened releases (observed on Ubuntu 26.04): AppArmor-style exec confinement denies `wg-quick` permission to run the `ipset` binary from its PostUp hooks — `Permission denied`, exit `status=126`, even as root — which tears the interface straight back down.
+1. **WireGuard kernel module missing.** On most Debian/Ubuntu kernels `wireguard.ko` is a loadable module (`CONFIG_WIREGUARD=m`), not built into the image. Cloud kernels (AWS, GCP, Azure, Oracle) ship it in a separate `linux-modules-extra-*` package that minimal images don't preinstall. If the module can't load, `wg-quick` can't create the virtual interface.
 
-The installer handles all of this automatically: it installs the matching `linux-modules-extra-<kernel>` (or flavor meta-package) when needed, runs `modprobe` for the required modules, persists them via `/etc/modules-load.d/wireshield.conf`, and falls back to the userspace `wireguard-go` implementation when no kernel module can be provisioned. For the hardened-host case, the 2FA allowlist ipsets are pre-created by a oneshot `wireshield-ipsets.service` ordered before `wg-quick@wg0` (a drop-in ties the two together at boot), and the PostUp `ipset create` lines are tolerant no-ops — `iptables -m set` rules match sets in-kernel without ever exec'ing the ipset binary, so the firewall comes up regardless. When `wg-quick` still fails to start, the installer prints the service's last journal lines plus a cause-specific diagnosis instead of a generic error. If you installed an older version of WireShield or your host has unusual kernel restrictions, you may need to fix it by hand (`systemctl status wireshield-ipsets` is the first thing to check for the permission-denied variant).
+2. **AppArmor exec confinement (status=126).** On hardened releases such as Ubuntu 26.04, AppArmor denies `wg-quick` permission to exec the `ipset` binary from its PostUp hooks — `Permission denied`, exit `status=126` — even as root, tearing the interface back down.
+
+3. **`xt_set` kernel module not loaded (status=1).** `iptables-nft`'s `--match-set` extension requires the `xt_set` module at the time the PostUp rule is applied. Ubuntu 26.04's hardened kernel blocks module auto-loading in `wg-quick`'s exec context, so iptables can't open the ipset socket and exits with `Can't open socket to ipset`.
+
+The installer handles all three automatically: it provisions the matching `linux-modules-extra-<kernel>` (or flavor meta-package), falls back to `wireguard-go` when no kernel module is available, and runs a oneshot `wireshield-ipsets.service` ordered before `wg-quick@wg0` (a drop-in ties the two at boot) that pre-loads `ip_set`, `ip_set_hash_ip`, and `xt_set` then pre-creates the 2FA allowlist ipsets — so neither the ipset binary exec nor the `xt_set` module auto-load ever needs to happen inside `wg-quick`'s restricted context. When startup still fails, the installer prints the last journal lines and a cause-specific diagnosis. Run `systemctl status wireshield-ipsets` as the first diagnostic step for all three failure modes.
 
 **Diagnose:**
 
 ```bash
-# Check whether the wireguard module is loaded
-lsmod | grep -E '^wireguard|^ip6table_nat'
+# Check loaded modules
+lsmod | grep -E '^wireguard|^ip6table_nat|^ip_set|^xt_set'
 
-# Try to load it
+# Try loading the required modules
 sudo modprobe wireguard
 sudo modprobe ip6table_nat
+sudo modprobe ip_set
+sudo modprobe xt_set
+
+# Check the ipset pre-creation service (failure mode 2 and 3)
+sudo systemctl status wireshield-ipsets
 
 # Try to start the service again
 sudo systemctl start wg-quick@wg0
@@ -1465,13 +1474,17 @@ sudo journalctl -u wg-quick@wg0 -n 50 --no-pager
 
 **Solutions:**
 
-- If `modprobe wireguard` fails with `Module not found`, install the package: `sudo apt-get install -y wireguard` (Debian/Ubuntu) or the distro equivalent.
+- **Missing wireguard module:** `sudo apt-get install -y wireguard` (Debian/Ubuntu) or the distro equivalent. On cloud kernels also install `linux-modules-extra-$(uname -r)`.
+- **`xt_set` not found:** Install the kernel extras package that contains it: `sudo apt-get install -y linux-modules-extra-$(uname -r)`, then `sudo modprobe xt_set && sudo systemctl restart wireshield-ipsets && sudo systemctl start wg-quick@wg0`.
+- **`wireshield-ipsets` service failed:** Run `sudo modprobe ip_set xt_set && sudo systemctl restart wireshield-ipsets`, then start wg-quick again.
 - Persist the modules across reboots:
   ```bash
   sudo tee /etc/modules-load.d/wireshield.conf >/dev/null <<'EOF'
   wireguard
   ip6table_nat
-  nf_conntrack
+  ip_set
+  ip_set_hash_ip
+  xt_set
   EOF
   ```
 - On Alpine: append the same names to `/etc/modules` (one per line).

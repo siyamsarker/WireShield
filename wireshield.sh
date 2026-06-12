@@ -26,7 +26,7 @@
 # Repository
 #   https://github.com/siyamsarker/WireShield
 #
-# Version: 3.0.4
+# Version: 3.0.5
 # ============================================================================
 
 # ── Color System ──────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ function installQuestions() {
 		echo ""
     echo -e "  ╭──────────────────────────────────────────────────────╮"
 		echo -e "  │                                                      │"
-		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.4${NC}                  │"
+		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.5${NC}                  │"
 		echo -e "  │                                                      │"
 		echo -e "  │           ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}          │"
 		echo -e "  │                                                      │"
@@ -526,8 +526,9 @@ function _ws_install_ipset_boot_unit() {
 	# unhardened systems and manual `wg-quick up` invocations.
 	local iface="$1"
 	local unit_dir="${WS_TEST_SYSTEMD_DIR:-/etc/systemd/system}"
-	local ipset_bin
+	local ipset_bin modprobe_bin
 	ipset_bin=$(command -v ipset 2>/dev/null || echo /usr/sbin/ipset)
+	modprobe_bin=$(command -v modprobe 2>/dev/null || echo /sbin/modprobe)
 
 	mkdir -p "${unit_dir}"
 	cat > "${unit_dir}/wireshield-ipsets.service" <<- UNIT_EOF
@@ -538,6 +539,9 @@ function _ws_install_ipset_boot_unit() {
 		[Service]
 		Type=oneshot
 		RemainAfterExit=yes
+		ExecStart=-${modprobe_bin} ip_set
+		ExecStart=-${modprobe_bin} ip_set_hash_ip
+		ExecStart=-${modprobe_bin} xt_set
 		ExecStart=${ipset_bin} create ws_2fa_allowed_v4 hash:ip family inet -exist
 		ExecStart=${ipset_bin} create ws_2fa_allowed_v6 hash:ip family inet6 -exist
 
@@ -1524,6 +1528,15 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 				echo -e "${ORANGE}       does not need to exec ipset. Check it with: systemctl status wireshield-ipsets${NC}"
 				echo -e "${ORANGE}       For other denied helpers, inspect the AppArmor log (journalctl | grep -i denied)${NC}"
 				echo -e "${ORANGE}       and rerun the installer.${NC}"
+			elif echo "${_wg_journal}" | grep -qF "Can't open socket to ipset"; then
+				echo -e "${ORANGE}Cause: the xt_set kernel module (netfilter bridge to ipset) was not loaded before${NC}"
+				echo -e "${ORANGE}       wg-quick ran PostUp. Ubuntu 26.04's hardened kernel blocks module auto-loading${NC}"
+				echo -e "${ORANGE}       in wg-quick's exec context — iptables --match-set cannot open the ipset socket.${NC}"
+				echo -e "${ORANGE}Fix:   systemctl status wireshield-ipsets — the unit now pre-loads ip_set + xt_set.${NC}"
+				echo -e "${ORANGE}       If the unit failed, run:${NC}"
+				echo -e "${ORANGE}         modprobe xt_set && systemctl restart wireshield-ipsets${NC}"
+				echo -e "${ORANGE}         systemctl start wg-quick@${SERVER_WG_NIC}${NC}"
+				echo -e "${ORANGE}       If xt_set is missing entirely, install linux-modules-extra-$(uname -r).${NC}"
 			elif echo "${_wg_journal}" | grep -qiE "iptables|ip6tables|ipset|nft"; then
 				echo -e "${ORANGE}Cause: a PostUp firewall command failed (see the journal lines above for the exact rule).${NC}"
 				echo -e "${ORANGE}Fix:   ensure iptables, ip6tables, and ipset are installed and the ip6table_nat module loads, then rerun the installer.${NC}"
@@ -2455,7 +2468,7 @@ function _ws_header() {
 
 	# Brand line
 	echo ""
-	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.4${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
+	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.5${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
 	_ws_ui_divider
 	echo ""
 
