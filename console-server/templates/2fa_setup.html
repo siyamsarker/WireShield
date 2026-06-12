@@ -370,10 +370,10 @@
     <div class="auth-right">
         <div class="setup-form-inner">
             <div class="setup-form-header">
-                <div class="setup-form-title">
+                <h1 class="setup-form-title">
                     Two-Factor Authentication Setup
                     <span class="required-badge">Required</span>
-                </div>
+                </h1>
                 <div class="setup-form-sub">Set up your authenticator to enable secure VPN access.</div>
             </div>
 
@@ -407,13 +407,14 @@
 
                     <div class="input-group">
                         <label for="verifyCode">6-Digit Code from Authenticator</label>
-                        <input type="text" id="verifyCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric">
+                        <input type="text" id="verifyCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" aria-describedby="verifyCodeHelp">
+                        <span id="verifyCodeHelp" class="form-hint">Enter the current 6-digit code shown in your authenticator app.</span>
                     </div>
 
-                    <button id="verifyBtn" class="btn">Verify &amp; Complete Setup</button>
+                    <button id="verifyBtn" class="btn" type="button">Verify &amp; Complete Setup</button>
                 </div>
 
-                <div id="statusMessage"></div>
+                <div id="statusMessage" role="status" aria-live="polite"></div>
             </div>
         </div>
     </div>
@@ -447,9 +448,21 @@
         }, 5000);
     }
 
+    // Toggle a button into a busy state with a spinner + aria-busy so the
+    // pending request is conveyed both visually and to assistive tech.
+    function setBtnLoading(btn, loadingLabel) {
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+        btn.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span>${loadingLabel}`;
+    }
+    function clearBtnLoading(btn, label) {
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        btn.textContent = label;
+    }
+
     async function generateQR() {
-        elements.generateBtn.disabled = true;
-        elements.generateBtn.textContent = 'Generating...';
+        setBtnLoading(elements.generateBtn, 'Generating…');
 
         try {
             const response = await fetch('/api/setup-start', {
@@ -476,13 +489,11 @@
                 showStatus('QR code generated! Scan with your authenticator app.', 'success');
             } else {
                 showStatus(result.detail || 'Failed to generate QR code', 'error');
-                elements.generateBtn.disabled = false;
-                elements.generateBtn.textContent = 'Generate QR Code';
+                clearBtnLoading(elements.generateBtn, 'Generate QR Code');
             }
         } catch (error) {
             showStatus('Network error. Please try again.', 'error');
-            elements.generateBtn.disabled = false;
-            elements.generateBtn.textContent = 'Generate QR Code';
+            clearBtnLoading(elements.generateBtn, 'Generate QR Code');
         }
     }
 
@@ -493,8 +504,7 @@
             return;
         }
 
-        elements.verifyBtn.disabled = true;
-        elements.verifyBtn.textContent = 'Verifying...';
+        setBtnLoading(elements.verifyBtn, 'Verifying…');
 
         try {
             const response = await fetch('/api/setup-verify', {
@@ -512,15 +522,13 @@
                 }, 2000);
             } else {
                 showStatus(result.detail || 'Invalid code. Please try again.', 'error');
-                elements.verifyBtn.disabled = false;
-                elements.verifyBtn.textContent = 'Verify & Complete Setup';
+                clearBtnLoading(elements.verifyBtn, 'Verify & Complete Setup');
                 elements.verifyCode.value = '';
                 elements.verifyCode.focus();
             }
         } catch (error) {
             showStatus('Network error. Please try again.', 'error');
-            elements.verifyBtn.disabled = false;
-            elements.verifyBtn.textContent = 'Verify & Complete Setup';
+            clearBtnLoading(elements.verifyBtn, 'Verify & Complete Setup');
         }
     }
 

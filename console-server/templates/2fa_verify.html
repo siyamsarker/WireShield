@@ -257,7 +257,7 @@
             <div class="auth-features">
                 <div class="auth-feature">
                     <div class="auth-feature-icon">
-                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                         </svg>
                     </div>
@@ -268,7 +268,7 @@
                 </div>
                 <div class="auth-feature">
                     <div class="auth-feature-icon">
-                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
@@ -280,7 +280,7 @@
                 </div>
                 <div class="auth-feature">
                     <div class="auth-feature-icon">
-                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                             <circle cx="12" cy="12" r="10"/>
                             <polyline points="12 6 12 12 16 14"/>
                         </svg>
@@ -297,7 +297,7 @@
 
     <div class="auth-right">
         <div class="auth-form-inner">
-            <div class="auth-form-title">Two-Factor Authentication</div>
+            <h1 class="auth-form-title">Two-Factor Authentication</h1>
             <div class="auth-form-sub">Enter the 6-digit code from your authenticator app to access the VPN.</div>
 
             <div class="client-badge">
@@ -316,14 +316,15 @@
                     pattern="[0-9]{6}"
                     autocomplete="one-time-code"
                     inputmode="numeric"
+                    aria-describedby="authCodeHelp"
                 >
             </div>
 
-            <button id="verifyBtn" class="btn-verify">Verify Access</button>
+            <button id="verifyBtn" class="btn-verify" type="button">Verify Access</button>
 
-            <div id="statusMessage"></div>
+            <div id="statusMessage" role="status" aria-live="polite"></div>
 
-            <p class="help-text">
+            <p class="help-text" id="authCodeHelp">
                 Codes rotate every 30 seconds.<br>
                 Enter the current code shown in your authenticator app.
             </p>
@@ -359,7 +360,8 @@
         }
 
         elements.verifyBtn.disabled = true;
-        elements.verifyBtn.textContent = 'Verifying...';
+        elements.verifyBtn.setAttribute('aria-busy', 'true');
+        elements.verifyBtn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span>Verifying…';
 
         try {
             const response = await fetch('/api/verify', {
@@ -378,6 +380,7 @@
             } else {
                 showStatus('Invalid code. Please try again.', 'error');
                 elements.verifyBtn.disabled = false;
+                elements.verifyBtn.removeAttribute('aria-busy');
                 elements.verifyBtn.textContent = 'Verify Access';
                 elements.authCode.value = '';
                 elements.authCode.focus();
