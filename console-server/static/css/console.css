@@ -2543,3 +2543,113 @@ tbody tr:last-child td {
         scroll-behavior: auto !important;
     }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Toast notifications (wsToast)
+   Bottom-right transient messages. The region is an aria-live=polite status
+   landmark so screen readers announce new toasts without stealing focus.
+   ─────────────────────────────────────────────────────────────────────────── */
+.ws-toast-region {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: min(380px, calc(100vw - 40px));
+    pointer-events: none;
+}
+
+.ws-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 12px 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-muted);
+    border-radius: 10px;
+    box-shadow: var(--shadow-lg);
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-main);
+    animation: ws-toast-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ws-toast--leaving {
+    animation: ws-toast-out 0.2s ease forwards;
+}
+
+@keyframes ws-toast-in {
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ws-toast-out {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(16px); }
+}
+
+.ws-toast-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+}
+
+.ws-toast-icon svg { width: 18px; height: 18px; }
+
+.ws-toast-body { flex: 1; min-width: 0; word-break: break-word; }
+
+.ws-toast-close {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-light);
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    transition: color 0.15s, background 0.15s;
+}
+.ws-toast-close svg { width: 14px; height: 14px; }
+.ws-toast-close:hover { color: var(--text-main); background: var(--bg-card-hover); }
+
+.ws-toast--success { border-left-color: var(--success); }
+.ws-toast--success .ws-toast-icon { color: var(--success); }
+.ws-toast--error { border-left-color: var(--error); }
+.ws-toast--error .ws-toast-icon { color: var(--error); }
+.ws-toast--info { border-left-color: var(--accent); }
+.ws-toast--info .ws-toast-icon { color: var(--accent); }
+
+/* ── Confirm dialog (wsConfirm) ─────────────────────────────── */
+.ws-confirm-modal { max-width: 420px; }
+
+.ws-confirm-message {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+/* Danger button — destructive confirm action */
+.btn-danger {
+    background: var(--error);
+    border-color: var(--error);
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(239, 68, 68, 0.3);
+}
+.btn-danger:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+}

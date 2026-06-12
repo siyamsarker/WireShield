@@ -126,33 +126,34 @@ function downloadUserConfig(clientId) {
             setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
         })
         .catch(err => {
-            alert(`Download failed: ${err.message}`);
+            wsToast(`Download failed: ${err.message}`, 'error');
         });
 }
 
-function revokeUser(clientId) {
-    const message =
-        `Revoke client "${clientId}"?\n\n` +
-        `This will:\n` +
-        `  • Remove the peer from the VPN server\n` +
-        `  • Delete the client's configuration file\n` +
-        `  • Clear all active 2FA sessions\n\n` +
-        `This action cannot be undone.`;
-    if (!confirm(message)) {
-        return;
-    }
+async function revokeUser(clientId) {
+    const confirmed = await wsConfirm({
+        title: `Revoke client "${clientId}"?`,
+        message: 'This removes the peer from the VPN server, deletes the client\'s '
+            + 'configuration file, and clears all active 2FA sessions. This action '
+            + 'cannot be undone.',
+        confirmLabel: 'Revoke client',
+        cancelLabel: 'Cancel',
+        danger: true,
+    });
+    if (!confirmed) return;
     fetch(`/api/console/users/${encodeURIComponent(clientId)}`, {
         method: 'DELETE', cache: 'no-store', headers: _csrfHeaders(),
     })
         .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
         .then(({ ok, data }) => {
             if (ok && data.success) {
+                wsToast(`Client "${clientId}" revoked.`, 'success');
                 loadUsers(usersPage);
             } else {
-                alert(`Revoke failed: ${(data && data.detail) || 'Unknown error'}`);
+                wsToast(`Revoke failed: ${(data && data.detail) || 'Unknown error'}`, 'error');
             }
         })
-        .catch(err => alert(`Revoke failed: ${err.message}`));
+        .catch(err => wsToast(`Revoke failed: ${err.message}`, 'error'));
 }
 
 // ── Create User Modal ────────────────────────────────────────────────────────
@@ -311,14 +312,6 @@ function submitCreateUser() {
             submitBtn.textContent = 'Create Client';
         });
 }
-
-// Escape-key close for the Create User modal
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-        const modal = document.getElementById('create-user-modal');
-        if (modal && modal.style.display !== 'none') closeCreateUserModal();
-    }
-});
 
 async function loadAuditLogs(page = 1) {
     try {

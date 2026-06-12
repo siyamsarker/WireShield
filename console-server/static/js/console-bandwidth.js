@@ -67,12 +67,12 @@ function applyBandwidthCustomDate() {
     const toDate = toInput ? toInput.value : '';
 
     if (!fromDate || !toDate) {
-        alert('Please select both start and end dates.');
+        wsToast('Please select both start and end dates.', 'info');
         return;
     }
 
     if (new Date(fromDate) > new Date(toDate)) {
-        alert('Start date must be before or equal to end date.');
+        wsToast('Start date must be before or equal to end date.', 'error');
         return;
     }
 

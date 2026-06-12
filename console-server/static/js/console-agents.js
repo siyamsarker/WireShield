@@ -423,7 +423,7 @@
         const a = _agentsCache.find(x => x.id === agentId);
         if (!a) return;
         if (a.status !== 'enrolled') {
-            alert('CIDR updates only apply to enrolled agents.');
+            wsToast('CIDR updates only apply to enrolled agents.', 'info');
             return;
         }
         _editingAgentId = agentId;
@@ -476,10 +476,17 @@
 
     // ── Revoke ─────────────────────────────────────────────────────────────
 
-    function confirmRevokeAgent(agentId, name) {
-        if (!confirm(`Revoke agent "${name}"?\n\nThis removes the WG peer immediately and the agent's heartbeat will start failing. The local install on the agent host is untouched — the operator must run \`wireshield-agent revoke\` to clean up.`)) {
-            return;
-        }
+    async function confirmRevokeAgent(agentId, name) {
+        const ok = await wsConfirm({
+            title: `Revoke agent "${name}"?`,
+            message: 'This removes the WireGuard peer immediately and the agent\'s '
+                + 'heartbeat will start failing. The local install on the agent host is '
+                + 'untouched — the operator must run `wireshield-agent revoke` to clean up.',
+            confirmLabel: 'Revoke agent',
+            cancelLabel: 'Cancel',
+            danger: true,
+        });
+        if (!ok) return;
         fetch(`/api/console/agents/${agentId}`, { method: 'DELETE', headers: _csrfHeaders() })
             .then(async r => {
                 if (!r.ok) {
@@ -488,14 +495,21 @@
                 }
                 return r.json();
             })
-            .then(() => loadAgents())
-            .catch(err => alert(`Revoke failed: ${err.message}`));
+            .then(() => { wsToast(`Agent "${name}" revoked.`, 'success'); loadAgents(); })
+            .catch(err => wsToast(`Revoke failed: ${err.message}`, 'error'));
     }
 
     // ── Rotate token (pending agents) ─────────────────────────────────────
 
-    function rotateAgentToken(agentId) {
-        if (!confirm('Generate a new enrollment token for this pending agent? The old token (if still valid) will continue to work until it expires or is consumed.')) return;
+    async function rotateAgentToken(agentId) {
+        const ok = await wsConfirm({
+            title: 'Reissue enrollment token?',
+            message: 'Generate a new enrollment token for this pending agent. The old '
+                + 'token (if still valid) will continue to work until it expires or is consumed.',
+            confirmLabel: 'Reissue token',
+            cancelLabel: 'Cancel',
+        });
+        if (!ok) return;
         fetch(`/api/console/agents/${agentId}/rotate-token`, { method: 'POST', headers: _csrfHeaders() })
             .then(async r => {
                 if (!r.ok) {
@@ -521,7 +535,7 @@
                 document.getElementById('create-agent-cancel-btn').textContent = 'Done';
                 document.getElementById('create-agent-submit-btn').style.display = 'none';
             })
-            .catch(err => alert(`Token rotation failed: ${err.message}`));
+            .catch(err => wsToast(`Token rotation failed: ${err.message}`, 'error'));
     }
 
     // ── Detail drawer ──────────────────────────────────────────────────────
