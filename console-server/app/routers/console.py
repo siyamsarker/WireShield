@@ -212,7 +212,7 @@ async def get_users(
             if item.get('active_session_start'):
                 try:
                     start = datetime.strptime(item['active_session_start'], "%Y-%m-%d %H:%M:%S")
-                    diff = datetime.utcnow() - start
+                    diff = datetime.now(timezone.utc).replace(tzinfo=None) - start
                     total_seconds = int(diff.total_seconds())
                     if total_seconds > 0:
                         hours = total_seconds // 3600
@@ -421,12 +421,12 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
         active_users = c.fetchone()[0]
         
         # --- Session Statistics ---
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
         c.execute("SELECT COUNT(*) FROM sessions WHERE expires_at > ?", (now,))
         active_sessions = c.fetchone()[0]
         
         # --- 2FA Statistics (Last 24 hours) ---
-        yesterday = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+        yesterday = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
         
         # auth.py emits action='2FA_VERIFY' / '2FA_SETUP_VERIFY' with status='success'
         # for happy path, and 'invalid_code' / 'replay_detected' / 'ip_mismatch' /
@@ -468,7 +468,7 @@ async def get_dashboard_stats(client_id: str = Depends(_check_console_access)):
         # Estimate rolling last-24h bandwidth from daily aggregates.
         # bandwidth_usage is stored per UTC day (to match tasks.py), so combine all of today
         # and a proportional slice of yesterday based on current UTC time.
-        now_utc = datetime.utcnow()
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         today_utc = now_utc.strftime("%Y-%m-%d")
         yesterday_utc = (now_utc - timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -674,7 +674,7 @@ async def get_dashboard_charts(client_id: str = Depends(_check_console_access)):
         # --- 24-Hour Traffic Trend (hourly connection activity) ---
         activity_trend = []
         for i in range(23, -1, -1):  # Last 24 hours
-            hour_start = datetime.utcnow() - timedelta(hours=i)
+            hour_start = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=i)
             hour_end = hour_start + timedelta(hours=1)
             
             # Count new connections per hour from activity_log

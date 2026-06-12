@@ -244,7 +244,7 @@ def _monitor_wireguard_sessions():
                     # Persist if there is activity
                     if delta_rx > 0 or delta_tx > 0:
                         # Use UTC date to match API queries (SQLite date('now') is UTC)
-                        today = datetime.utcnow().strftime("%Y-%m-%d")
+                        today = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
                         # DB Mapping: rx_bytes (Client Download/Server TX), tx_bytes (Client Upload/Server RX)
                         # Note: We are using standard ISP terminology for the DB columns where RX is what client receives.
                         try:
@@ -270,7 +270,7 @@ def _monitor_wireguard_sessions():
                             created_dt = None
 
                         if created_dt is not None:
-                            in_grace = (datetime.utcnow() - created_dt).total_seconds() < grace_seconds
+                            in_grace = (datetime.now(timezone.utc).replace(tzinfo=None) - created_dt).total_seconds() < grace_seconds
 
                         if not in_grace:
                             state = _MONITOR_CLIENT_STATE.get(client_id, {
@@ -549,7 +549,7 @@ def _cleanup_activity_logs():
 
     while True:
         try:
-            cutoff = (datetime.utcnow() - timedelta(days=retention_days)).strftime("%Y-%m-%d %H:%M:%S")
+            cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=retention_days)).strftime("%Y-%m-%d %H:%M:%S")
             conn = get_db()
             c = conn.cursor()
 
@@ -735,7 +735,7 @@ def _watchdog_loop():
         try:
             state = _interface_operstate(iface)
             _WATCHDOG_STATE["iface_state"] = state
-            _WATCHDOG_STATE["last_check"] = datetime.utcnow().isoformat()
+            _WATCHDOG_STATE["last_check"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
             if last_state is not None and state != last_state:
                 logger.warning(f"Watchdog: {iface} transitioned {last_state} → {state}")

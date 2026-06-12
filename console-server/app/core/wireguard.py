@@ -21,7 +21,7 @@ import glob
 import subprocess
 import logging
 import ipaddress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict
 
 from app.core.database import get_db
@@ -318,7 +318,7 @@ def create_client(name: str, expiry_days: Optional[int] = None) -> Dict[str, str
     if expiry_days is not None:
         if not isinstance(expiry_days, int) or expiry_days <= 0:
             raise ValueError("expiry_days must be a positive integer")
-        expires = (datetime.utcnow() + timedelta(days=expiry_days)).strftime("%Y-%m-%d")
+        expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=expiry_days)).strftime("%Y-%m-%d")
 
     # Keypair
     try:

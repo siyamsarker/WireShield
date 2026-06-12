@@ -1,6 +1,6 @@
 import os
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter
 from app.core.database import get_db
 
@@ -59,7 +59,7 @@ async def health_check():
     """Comprehensive health check: DB, WireGuard interface, iptables, watchdog."""
     status = {
         "status": "ok",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     }
 
     # Database

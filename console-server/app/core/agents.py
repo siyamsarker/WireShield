@@ -44,7 +44,7 @@ import logging
 import subprocess
 import tempfile
 import ipaddress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple
 
 from app.core.database import get_db
@@ -162,7 +162,7 @@ def issue_enrollment_token(agent_id: int, ttl_seconds: Optional[int] = None) -> 
     raw = secrets.token_urlsafe(32)
     token_hash = _hash_token(raw)
     ttl = ttl_seconds if ttl_seconds is not None else AGENT_TOKEN_TTL_SECONDS
-    expires_at = datetime.utcnow() + timedelta(seconds=ttl)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=ttl)
 
     conn = get_db()
     try:
@@ -213,7 +213,7 @@ def consume_enrollment_token(raw: str, source_ip: str) -> Optional[int]:
             except ValueError:
                 logger.error(f"Unparseable expires_at on token id={row['id']}")
                 return None
-        if expires_at < datetime.utcnow():
+        if expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
             logger.info(f"Expired enrollment token presented from {source_ip}")
             return None
 
@@ -1038,7 +1038,7 @@ def _is_online(last_seen: Optional[str]) -> bool:
         ts = datetime.strptime(last_seen, "%Y-%m-%d %H:%M:%S")
     except (ValueError, TypeError):
         return False
-    return (datetime.utcnow() - ts).total_seconds() < AGENT_OFFLINE_AFTER_SECONDS
+    return (datetime.now(timezone.utc).replace(tzinfo=None) - ts).total_seconds() < AGENT_OFFLINE_AFTER_SECONDS
 
 
 def stats() -> Dict[str, int]:

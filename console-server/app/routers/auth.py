@@ -3,7 +3,7 @@ import pyotp
 import qrcode
 import logging
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Request, Form, Depends, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -227,7 +227,7 @@ async def setup_verify(
             c.execute("UPDATE users SET wg_ipv4 = ? WHERE client_id = ?", (ip_address, client_id))
         
         session_token = generate_session_token()
-        expires_at = datetime.utcnow() + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
         c.execute(
             "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) VALUES (?, ?, ?, ?)",
             (client_id, hash_session_token(session_token), expires_at, ip_address)
@@ -311,7 +311,7 @@ async def verify_code(
         
         # Create session token
         session_token = generate_session_token()
-        expires_at = datetime.utcnow() + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
         c.execute(
             "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) VALUES (?, ?, ?, ?)",
             (client_id, hash_session_token(session_token), expires_at, ip_address)
