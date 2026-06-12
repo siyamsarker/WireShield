@@ -50,8 +50,8 @@ async def root(request: Request, client_id: Optional[str] = None):
             logger.debug(f"Auto-discovery for IP {ip_address} failed: {e}")
     
     if not client_id:
-        return get_access_denied_html()
-    
+        return get_access_denied_html(request)
+
     # Decide which UI to render based on whether 2FA is already configured
     try:
         conn = get_db()
@@ -61,12 +61,12 @@ async def root(request: Request, client_id: Optional[str] = None):
         conn.close()
         if row and int(row[0]) == 1 and (row[1] or "") != "":
             audit_log(client_id, "UI_ACCESS", "verify_only", ip_address)
-            return get_2fa_verify_only_html(client_id)
+            return get_2fa_verify_only_html(client_id, request)
     except Exception as e:
         logger.debug(f"State check failed for {client_id}: {e}")
 
     audit_log(client_id, "UI_ACCESS", "setup_flow", ip_address)
-    return get_2fa_ui_html(client_id)
+    return get_2fa_ui_html(client_id, request)
 
 @router.get("/success", response_class=HTMLResponse, tags=["ui"])
 async def success_page(request: Request, client_id: Optional[str] = None):
@@ -96,13 +96,13 @@ async def success_page(request: Request, client_id: Optional[str] = None):
         conn.close()
         if not row:
             audit_log(client_id, "SUCCESS_PAGE", "denied_no_session", ip_address)
-            return get_access_denied_html()
+            return get_access_denied_html(request)
     except Exception as e:
         logger.debug(f"Success page auth check failed: {e}")
-        return get_access_denied_html()
+        return get_access_denied_html(request)
 
     audit_log(row[0], "SUCCESS_PAGE", "viewed", ip_address)
-    return get_success_html()
+    return get_success_html(request)
 
 @router.post("/api/setup-start", tags=["2fa-setup"])
 async def setup_start(
