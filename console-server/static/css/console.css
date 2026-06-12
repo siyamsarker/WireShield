@@ -84,9 +84,6 @@ nav {
 .brand-logo {
     width: 34px;
     height: 34px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(99, 102, 241, 0.18));
-    border: 1px solid rgba(99, 102, 241, 0.22);
-    border-radius: 9px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2403,7 +2400,7 @@ tbody tr:last-child td {
 .u-ml-auto { margin-left: auto; }
 .section-pad-16 { padding: 16px; }
 
-.brand-logo img { width: 28px; height: 28px; }
+.brand-logo img { width: 32px; height: 32px; display: block; }
 
 .header-action-group {
     display: flex;
