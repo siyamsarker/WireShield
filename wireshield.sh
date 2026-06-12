@@ -271,7 +271,7 @@ function installQuestions() {
 		echo ""
     echo -e "  ╭──────────────────────────────────────────────────────╮"
 		echo -e "  │                                                      │"
-		echo -e "  │                ${WHITE}*  WireShield${NC} ${GRAY}v3.0.10${NC}                  │"
+		echo -e "  │                ${WHITE}*  WireShield${NC} ${GRAY}v3.0.10${NC}                 │"
 		echo -e "  │                                                      │"
 		echo -e "  │           ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}          │"
 		echo -e "  │                                                      │"
