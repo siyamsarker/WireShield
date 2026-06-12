@@ -136,13 +136,13 @@
 <div class="success-wrap">
     <div class="success-card">
         <div class="success-icon-ring">
-            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
                 <polyline points="20 6 9 17 4 12"/>
             </svg>
         </div>
 
         <div class="success-tag">Access Granted</div>
-        <div class="success-title">You're Connected</div>
+        <h1 class="success-title">You're Connected</h1>
         <p class="success-sub">
             Two-factor authentication successful.<br>
             Your VPN connection is now active and secured.
@@ -161,7 +161,7 @@
 
         <div class="info-box">
             <div class="info-box-header">
-                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="12" cy="12" r="10"/>
                     <line x1="12" y1="8" x2="12" y2="12"/>
                     <line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -169,8 +169,9 @@
                 Session Information
             </div>
             <p>
-                Your authenticated session is valid for 24 hours. If you disconnect for more than 1 hour,
-                you'll need to re-authenticate. Your traffic is now encrypted through WireShield VPN.
+                Your authenticated session is time-limited. If you stay disconnected for an
+                extended period, you'll be asked to verify again on your next connection.
+                Your traffic is now encrypted through WireShield VPN.
             </p>
         </div>
 
