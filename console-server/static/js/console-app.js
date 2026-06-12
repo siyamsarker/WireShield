@@ -16,6 +16,26 @@ function _csrfHeaders() {
 }
 
 let activityChart, actionsChart, bandwidthChart;
+
+// ── Chart palette ────────────────────────────────────────────────────────────
+// Single source of truth for chart colors so every visualization draws from the
+// same brand-aligned palette (blue → indigo accents, semantic green/amber/rose).
+const WS_CHART_COLORS = {
+    blue: '#3b82f6',
+    indigo: '#6366f1',
+    green: '#10b981',
+    amber: '#f59e0b',
+    rose: '#f43f5e',
+    violet: '#8b5cf6',
+    cyan: '#06b6d4',
+    slate: '#94a3b8',
+};
+const WS_CHART_SERIES = [
+    WS_CHART_COLORS.blue, WS_CHART_COLORS.indigo, WS_CHART_COLORS.green,
+    WS_CHART_COLORS.amber, WS_CHART_COLORS.rose, WS_CHART_COLORS.violet,
+    WS_CHART_COLORS.cyan,
+];
+
 const autoRefreshState = {
     enabled: false,
     intervalMs: 30000,

@@ -16,7 +16,7 @@
     --accent: #3b82f6;
     --accent-hover: #2563eb;
     --accent-light: #eff6ff;
-    --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
 
     /* Status */
     --success: #10b981;

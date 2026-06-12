@@ -662,7 +662,7 @@
                             {
                                 label: 'RX',
                                 data: m.rx_bytes_per_bucket,
-                                borderColor: '#3b82f6',
+                                borderColor: WS_CHART_COLORS.blue,
                                 backgroundColor: 'rgba(59,130,246,0.10)',
                                 fill: true,
                                 tension: 0.25,
@@ -672,7 +672,7 @@
                             {
                                 label: 'TX',
                                 data: m.tx_bytes_per_bucket,
-                                borderColor: '#10b981',
+                                borderColor: WS_CHART_COLORS.green,
                                 backgroundColor: 'rgba(16,185,129,0.10)',
                                 fill: true,
                                 tension: 0.25,

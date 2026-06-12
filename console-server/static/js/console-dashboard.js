@@ -136,7 +136,7 @@ function loadActivityChart(data) {
                 {
                     label: 'Connections',
                     data: data.map(d => d.connections),
-                    borderColor: '#3b82f6',
+                    borderColor: WS_CHART_COLORS.blue,
                     backgroundColor: gradBlue,
                     tension: 0.4,
                     fill: true,
@@ -148,7 +148,7 @@ function loadActivityChart(data) {
                 {
                     label: 'Active Users',
                     data: data.map(d => d.active_users),
-                    borderColor: '#10b981',
+                    borderColor: WS_CHART_COLORS.green,
                     backgroundColor: gradGreen,
                     tension: 0.4,
                     fill: true,
@@ -228,7 +228,7 @@ function loadActionsChart(data) {
     if (actionsChart) { actionsChart.destroy(); }
 
     const ctx = document.getElementById('actionsChart').getContext('2d');
-    const colors = ['#3b82f6','#10b981','#f59e0b','#f43f5e','#8b5cf6','#06b6d4','#84cc16'];
+    const colors = WS_CHART_SERIES;
     const total  = data.reduce((s, d) => s + d.count, 0);
 
     actionsChart = new Chart(ctx, {
