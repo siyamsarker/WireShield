@@ -109,9 +109,9 @@ nav {
 }
 
 .brand-sub {
-    font-size: 9.5px;
+    font-size: 10px;
     font-weight: 500;
-    color: #475569;
+    color: #8da2b8;
     letter-spacing: 0.07em;
     text-transform: uppercase;
     line-height: 1;
@@ -128,9 +128,9 @@ nav {
 .nav-links::-webkit-scrollbar { width: 0; }
 
 .nav-section-label {
-    font-size: 9.5px;
+    font-size: 10px;
     font-weight: 700;
-    color: #334155;
+    color: #7d8ea3;
     text-transform: uppercase;
     letter-spacing: 1.6px;
     padding: 16px 8px 5px;
@@ -541,73 +541,6 @@ header {
 }
 
 /* ========== Bandwidth Insights Styles ========== */
-.bandwidth-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    padding: 0 4px;
-    flex-wrap: wrap;
-    gap: 16px;
-}
-
-.bandwidth-header-left {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.bandwidth-title {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-main);
-    margin: 0;
-    letter-spacing: -0.5px;
-}
-
-.bandwidth-subtitle {
-    font-size: 14px;
-    color: var(--text-muted);
-}
-
-.bandwidth-header-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-
-.live-indicator {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    background: rgba(16, 185, 129, 0.1);
-    border-radius: 20px;
-    border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.live-dot {
-    width: 8px;
-    height: 8px;
-    background: #10b981;
-    border-radius: 50%;
-    animation: pulse-live 2s ease-in-out infinite;
-}
-
-@keyframes pulse-live {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.8); }
-}
-
-.live-text {
-    font-size: 12px;
-    font-weight: 600;
-    color: #10b981;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
 .time-range-selector {
     display: flex;
     background: var(--bg-card);
@@ -648,35 +581,6 @@ header {
 
 .bandwidth-custom-range .filter-date {
     min-width: 135px;
-}
-
-.export-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-main);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.export-btn:hover {
-    background: var(--bg-card-hover);
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.export-btn svg {
-    opacity: 0.7;
-}
-
-.export-btn:hover svg {
-    opacity: 1;
 }
 
 /* Bandwidth Stats Grid */
@@ -806,8 +710,8 @@ header {
 }
 
 .stat-badge.neutral {
-    background: rgba(148, 163, 184, 0.1);
-    color: #94a3b8;
+    background: rgba(100, 116, 139, 0.1);
+    color: var(--text-muted);
 }
 
 .stat-time-badge {
@@ -905,8 +809,8 @@ header {
 }
 
 .comparison-value.neutral {
-    background: rgba(148, 163, 184, 0.1);
-    color: #94a3b8;
+    background: rgba(100, 116, 139, 0.1);
+    color: var(--text-muted);
 }
 
 .stat-progress-bar {
@@ -1212,16 +1116,6 @@ header {
 }
 
 @media (max-width: 768px) {
-    .bandwidth-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .bandwidth-header-right {
-        width: 100%;
-        justify-content: space-between;
-    }
-
     .bandwidth-stats-grid {
         grid-template-columns: 1fr;
     }
@@ -1308,9 +1202,9 @@ th, td {
 }
 
 th {
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 700;
-    color: var(--text-muted);
+    color: #475569;
     text-transform: uppercase;
     letter-spacing: 0.8px;
     white-space: nowrap;
@@ -1359,13 +1253,14 @@ tbody tr:last-child td {
     border-bottom: none;
 }
 
-/* Status pills */
+/* ── Status pills (single canonical definition) ─────────────── */
 .status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 5px;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    border: 1px solid transparent;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
@@ -1374,11 +1269,16 @@ tbody tr:last-child td {
 }
 
 .status-pill.granted,
-.status-pill.success  { background: rgba(16,185,129,0.1); color: #059669; }
+.status-pill.success  { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
 .status-pill.denied,
-.status-pill.failed   { background: rgba(244,63,94,0.1);  color: #dc2626; }
-.status-pill.warning  { background: rgba(245,158,11,0.1); color: #b45309; }
-.status-pill.info     { background: rgba(59,130,246,0.1); color: #2563eb; }
+.status-pill.failed   { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.status-pill.warning  { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.status-pill.info     { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+
+/* Agent lifecycle variants share the same pill anatomy. */
+.status-pill.agent-pending  { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.status-pill.agent-enrolled { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.status-pill.agent-revoked  { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
 
 /* Action chip */
 .action-chip {
@@ -1537,20 +1437,6 @@ tbody tr:last-child td {
     }
 }
 
-/* Refresh Button Animation */
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-.btn-refresh svg {
-    transition: transform 0.6s ease;
-}
-
-.btn-refresh:hover svg {
-    animation: spin 0.6s ease;
-}
-
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 1200px) {
     .dashboard-grid { grid-template-columns: 1fr; }
@@ -1680,7 +1566,7 @@ tbody tr:last-child td {
 }
 
 .filter-input::placeholder {
-    color: var(--text-light);
+    color: var(--text-muted);
 }
 
 .filter-date-group {
@@ -1858,46 +1744,6 @@ tbody tr:last-child td {
     50% { opacity: 0.45; transform: scale(1.25); }
 }
 
-/* Page Section Container */
-.page-section {
-    padding: 16px;
-    animation: fadeInUp 0.4s ease;
-}
-
-.page-section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-    padding: 0;
-}
-
-.page-section-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-main);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.page-section-title::before {
-    content: '';
-    width: 4px;
-    height: 20px;
-    background: var(--accent-gradient);
-    border-radius: 2px;
-}
-
-.page-section-badge {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 10px;
-    background: var(--accent-light);
-    color: var(--accent);
-    border-radius: 20px;
-}
-
 /* Modern Data Table Container */
 .table-container {
     background: var(--bg-card);
@@ -1958,43 +1804,6 @@ tbody tr:last-child td {
     overflow-x: auto;
 }
 
-/* Status Badges */
-.status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-.status-pill.granted, .status-pill.success {
-    background: var(--success-light);
-    color: var(--success);
-    border: 1px solid var(--success);
-}
-
-.status-pill.denied, .status-pill.failed {
-    background: var(--error-bg);
-    color: var(--error);
-    border: 1px solid var(--error);
-}
-
-.status-pill.warning {
-    background: var(--warning-bg);
-    color: var(--warning);
-    border: 1px solid var(--warning);
-}
-
-.status-pill.info {
-    background: var(--accent-light);
-    color: var(--accent);
-    border: 1px solid var(--accent);
-}
-
 /* Direction Badges */
 .direction-badge {
     display: inline-flex;
@@ -2018,43 +1827,6 @@ tbody tr:last-child td {
     background: var(--accent-light);
     color: var(--accent);
     border: 1px solid var(--accent);
-}
-
-/* Filter Date Group */
-.filter-date-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.date-separator {
-    color: var(--text-muted);
-    font-size: 12px;
-    font-weight: 600;
-    padding: 0 4px;
-}
-
-.filter-date {
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    font-size: 13px;
-    background: var(--bg-card);
-    color: var(--text-main);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: inherit;
-    min-width: 130px;
-}
-
-.filter-date:hover {
-    border-color: var(--border-hover);
-}
-
-.filter-date:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-light);
 }
 
 .direction-badge svg {
@@ -2325,7 +2097,7 @@ tbody tr:last-child td {
 
 .ws-modal-close:hover {
     color: var(--text-main);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-card-hover);
     border-color: var(--border);
 }
 
@@ -2384,11 +2156,6 @@ tbody tr:last-child td {
    Reuses .status-pill / .ws-modal / .data-table for the bulk of the layout;
    the rules below add only what is genuinely agent-specific.
    ─────────────────────────────────────────────────────────────────────────── */
-
-/* Status pill colour variants for the three agent lifecycle states. */
-.status-pill.agent-pending  { background: rgba(245,158,11,0.10); color: #b45309; }
-.status-pill.agent-enrolled { background: rgba(16,185,129,0.10); color: #059669; }
-.status-pill.agent-revoked  { background: rgba(244,63,94,0.10);  color: #dc2626; }
 
 /* Online dot — solid circle prefix on enrolled rows that have a fresh
    heartbeat. Pulse animation matches .nav-status-dot-wg in the sidebar. */
@@ -2551,10 +2318,10 @@ tbody tr:last-child td {
     padding: 1px 6px;
     margin-left: 6px;
     border-radius: 10px;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 600;
     background: rgba(139,92,246,0.10);
-    color: #7c3aed;
+    color: #6d28d9;
     vertical-align: middle;
 }
 .agent-restricted-pill svg { width: 10px; height: 10px; }
@@ -2624,4 +2391,52 @@ tbody tr:last-child td {
 }
 .ws-switch input:checked + .ws-switch-slider::before {
     transform: translateX(16px);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Accessibility primitives
+   Keyboard-visible focus for every interactive element, a skip link for
+   screen-reader / keyboard users, and a global reduced-motion guard.
+   ─────────────────────────────────────────────────────────────────────────── */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.nav-item:focus-visible {
+    outline-offset: -2px;
+    border-radius: 8px;
+}
+
+.filter-input:focus-visible,
+.filter-date:focus-visible,
+.filter-select:focus-visible {
+    outline: none; /* these carry their own box-shadow focus ring */
+}
+
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 2000;
+    background: var(--accent);
+    color: #ffffff;
+    padding: 10px 16px;
+    border-radius: 0 0 8px 0;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.skip-link:focus {
+    left: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }
