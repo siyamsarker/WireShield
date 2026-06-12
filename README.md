@@ -6,7 +6,7 @@
 
 **Zero-trust WireGuard VPN with pre-connection two-factor authentication**
 
-[![Version](https://img.shields.io/badge/Version-3.0.3-2ea44f.svg)](#)
+[![Version](https://img.shields.io/badge/Version-3.0.4-2ea44f.svg)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776ab.svg)](https://www.python.org/)
@@ -608,6 +608,9 @@ flowchart TB
 
 /etc/systemd/system/
 ├── wireshield.service             # 2FA + admin console service unit
+├── wireshield-ipsets.service      # Oneshot: pre-creates the 2FA ipsets before wg-quick starts
+├── wg-quick@wg0.service.d/
+│   └── wireshield-ipsets.conf     # Drop-in ordering wg-quick after the ipset unit
 ├── wireshield-2fa-renew.service   # Let's Encrypt renewal worker (if applicable)
 └── wireshield-2fa-renew.timer     # Let's Encrypt renewal timer (if applicable)
 ```
@@ -1437,11 +1440,13 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
 
 ### 7. WireGuard Service Won't Start After Install
 
-**Symptoms:** `systemctl start wg-quick@wg0` fails. `journalctl -u wg-quick@wg0` shows `Unable to access interface: No such device` or `Cannot find device "wg0"`. The 2FA service health check also fails because the WireGuard interface never came up.
+**Symptoms:** `systemctl start wg-quick@wg0` fails. `journalctl -u wg-quick@wg0` shows `Unable to access interface: No such device` or `Cannot find device "wg0"` — or, on hardened hosts, a PostUp helper dies with `/usr/sbin/ipset: Permission denied` and `status=126` even though the service runs as root. The 2FA service health check also fails because the WireGuard interface never came up.
 
 **Cause:** On most Debian/Ubuntu kernels the `wireguard` module is compiled as a loadable module (`CONFIG_WIREGUARD=m`), not linked into the kernel image (`CONFIG_WIREGUARD=y`) — even on kernel 5.6+. Cloud kernels (AWS/GCP/Azure/Oracle images) go one step further and ship `wireguard.ko` in a separate `linux-modules-extra-*` package that minimal images don't preinstall. If the module is not loaded, `wg-quick` cannot create the virtual interface. Similarly, the `ip6tables -t nat ...` PostUp rules require the `ip6table_nat` module to be loaded.
 
-The installer handles all of this automatically: it installs the matching `linux-modules-extra-<kernel>` (or flavor meta-package) when needed, runs `modprobe` for the required modules, persists them via `/etc/modules-load.d/wireshield.conf`, and falls back to the userspace `wireguard-go` implementation when no kernel module can be provisioned. When `wg-quick` still fails to start, the installer prints the service's last journal lines plus a cause-specific diagnosis instead of a generic error. If you installed an older version of WireShield or your host has unusual kernel restrictions, you may need to fix it by hand.
+A second failure mode appears on hardened releases (observed on Ubuntu 26.04): AppArmor-style exec confinement denies `wg-quick` permission to run the `ipset` binary from its PostUp hooks — `Permission denied`, exit `status=126`, even as root — which tears the interface straight back down.
+
+The installer handles all of this automatically: it installs the matching `linux-modules-extra-<kernel>` (or flavor meta-package) when needed, runs `modprobe` for the required modules, persists them via `/etc/modules-load.d/wireshield.conf`, and falls back to the userspace `wireguard-go` implementation when no kernel module can be provisioned. For the hardened-host case, the 2FA allowlist ipsets are pre-created by a oneshot `wireshield-ipsets.service` ordered before `wg-quick@wg0` (a drop-in ties the two together at boot), and the PostUp `ipset create` lines are tolerant no-ops — `iptables -m set` rules match sets in-kernel without ever exec'ing the ipset binary, so the firewall comes up regardless. When `wg-quick` still fails to start, the installer prints the service's last journal lines plus a cause-specific diagnosis instead of a generic error. If you installed an older version of WireShield or your host has unusual kernel restrictions, you may need to fix it by hand (`systemctl status wireshield-ipsets` is the first thing to check for the permission-denied variant).
 
 **Diagnose:**
 
