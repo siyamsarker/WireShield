@@ -26,7 +26,7 @@
 # Repository
 #   https://github.com/siyamsarker/WireShield
 #
-# Version: 3.0.9
+# Version: 3.0.10
 # ============================================================================
 
 # ── Color System ──────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ function installQuestions() {
 		echo ""
     echo -e "  ╭──────────────────────────────────────────────────────╮"
 		echo -e "  │                                                      │"
-		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.9${NC}                  │"
+		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.10${NC}                  │"
 		echo -e "  │                                                      │"
 		echo -e "  │           ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}          │"
 		echo -e "  │                                                      │"
@@ -1635,7 +1635,7 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 				echo -e "${ORANGE}Cause: iptables-nft (Ubuntu 22.04+/26.04) validates --match-set rules by opening${NC}"
 				echo -e "${ORANGE}       a user-space libipset netlink socket. wg-quick's AppArmor-confined context${NC}"
 				echo -e "${ORANGE}       blocks that socket open (EPERM) even when modules are loaded and sets exist.${NC}"
-				echo -e "${ORANGE}Fix:   WireShield v3.0.9+ moves --match-set rules to wireshield-2fa-rules.service${NC}"
+				echo -e "${ORANGE}Fix:   WireShield v3.0.10+ moves --match-set rules to wireshield-2fa-rules.service${NC}"
 				echo -e "${ORANGE}       which runs after wg-quick in an unconfined context.${NC}"
 				echo -e "${ORANGE}       Check service status: systemctl status wireshield-2fa-rules wireshield-ipsets${NC}"
 				echo -e "${ORANGE}       Restart manually: systemctl restart wireshield-2fa-rules${NC}"
@@ -2573,7 +2573,7 @@ function _ws_header() {
 
 	# Brand line
 	echo ""
-	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.9${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
+	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.10${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
 	_ws_ui_divider
 	echo ""
 
