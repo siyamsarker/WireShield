@@ -77,6 +77,12 @@ fi
 exit 0
 EOF
 
+cat > "${STUB}/systemctl" <<'EOF'
+#!/usr/bin/env bash
+echo "systemctl $*" >> "${WS_STATE}/calls"
+exit 0
+EOF
+
 chmod +x "${STUB}"/*
 
 export WS_STATE="${STATE}"
@@ -192,6 +198,37 @@ _ws_ensure_wireguard_module; rc=$?
 check "returns failure" test "${rc}" -eq 1
 check "backend is unavailable" test "${_WS_WG_BACKEND}" = "unavailable"
 check "never invoked apt-get install for a missing package" not_in_calls "apt-get install"
+
+# ── scenario 6: ipset boot unit (hardened-host fix) ──────────────────────────
+# Regression for Ubuntu 26.04 where exec of /usr/sbin/ipset from wg-quick is
+# denied (status 126) by AppArmor confinement even as root: the sets must be
+# pre-created by a oneshot unit ordered before wg-quick.
+
+echo "Scenario 6: wireshield-ipsets oneshot unit + wg-quick drop-in"
+reset_state
+export WS_TEST_SYSTEMD_DIR="${WORK}/systemd"
+_ws_install_ipset_boot_unit "wg0"
+UNIT="${WS_TEST_SYSTEMD_DIR}/wireshield-ipsets.service"
+DROPIN="${WS_TEST_SYSTEMD_DIR}/wg-quick@wg0.service.d/wireshield-ipsets.conf"
+check "unit file written" test -f "${UNIT}"
+check "unit ordered before wg-quick@wg0" grep -q "^Before=wg-quick@wg0.service$" "${UNIT}"
+check "unit is a oneshot that stays 'active'" grep -q "^RemainAfterExit=yes$" "${UNIT}"
+check "creates the v4 set idempotently" grep -q "ipset create ws_2fa_allowed_v4 hash:ip family inet -exist" "${UNIT}"
+check "creates the v6 set idempotently" grep -q "ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist" "${UNIT}"
+check "drop-in written for wg-quick@wg0" test -f "${DROPIN}"
+check "drop-in wants the ipset unit" grep -q "^Wants=wireshield-ipsets.service$" "${DROPIN}"
+check "drop-in orders after the ipset unit" grep -q "^After=wireshield-ipsets.service$" "${DROPIN}"
+check "systemd reloaded" in_calls "systemctl daemon-reload"
+check "unit enabled and started immediately" in_calls "systemctl enable --now wireshield-ipsets.service"
+unset WS_TEST_SYSTEMD_DIR
+
+# ── static regression guards on the generated wg0.conf PostUp lines ──────────
+
+echo "Static guards: PostUp ipset creation must never be fatal"
+check "v4 PostUp create is exec-denial tolerant" \
+    grep -q 'PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist 2>/dev/null || true' "${ROOT}/wireshield.sh"
+check "v6 PostUp create is exec-denial tolerant" \
+    grep -q 'PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist 2>/dev/null || true' "${ROOT}/wireshield.sh"
 
 # ── summary ──────────────────────────────────────────────────────────────────
 

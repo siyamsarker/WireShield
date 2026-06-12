@@ -26,7 +26,7 @@
 # Repository
 #   https://github.com/siyamsarker/WireShield
 #
-# Version: 3.0.3
+# Version: 3.0.4
 # ============================================================================
 
 # ── Color System ──────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ function installQuestions() {
 		echo ""
     echo -e "  ╭──────────────────────────────────────────────────────╮"
 		echo -e "  │                                                      │"
-		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.3${NC}                  │"
+		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.4${NC}                  │"
 		echo -e "  │                                                      │"
 		echo -e "  │           ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}          │"
 		echo -e "  │                                                      │"
@@ -511,6 +511,52 @@ function _ws_ensure_wireguard_module() {
 	fi
 	_WS_WG_BACKEND="unavailable"
 	return 1
+}
+
+function _ws_install_ipset_boot_unit() {
+	# Pre-create the 2FA allowlist ipsets from a oneshot systemd unit ordered
+	# before wg-quick, so wg-quick never has to exec the ipset binary itself.
+	#
+	# Why: hardened hosts (observed on Ubuntu 26.04, where AppArmor confines
+	# wg-quick's helper execs) deny `/usr/sbin/ipset` with status 126 even as
+	# root, killing the whole PostUp chain. iptables' `-m set --match-set`
+	# rules don't exec ipset — the kernel matches sets by name — so as long as
+	# the sets exist before wg-quick starts, the firewall comes up fine. The
+	# PostUp `ipset create` lines remain in wg0.conf as guarded no-ops for
+	# unhardened systems and manual `wg-quick up` invocations.
+	local iface="$1"
+	local unit_dir="${WS_TEST_SYSTEMD_DIR:-/etc/systemd/system}"
+	local ipset_bin
+	ipset_bin=$(command -v ipset 2>/dev/null || echo /usr/sbin/ipset)
+
+	mkdir -p "${unit_dir}"
+	cat > "${unit_dir}/wireshield-ipsets.service" <<- UNIT_EOF
+		[Unit]
+		Description=WireShield 2FA allowlist ipsets (pre-created for wg-quick)
+		Before=wg-quick@${iface}.service
+
+		[Service]
+		Type=oneshot
+		RemainAfterExit=yes
+		ExecStart=${ipset_bin} create ws_2fa_allowed_v4 hash:ip family inet -exist
+		ExecStart=${ipset_bin} create ws_2fa_allowed_v6 hash:ip family inet6 -exist
+
+		[Install]
+		WantedBy=multi-user.target
+	UNIT_EOF
+
+	# Drop-in so wg-quick@<iface> pulls the ipset unit in and waits for it on
+	# every boot, not just when multi-user.target happens to order them.
+	mkdir -p "${unit_dir}/wg-quick@${iface}.service.d"
+	cat > "${unit_dir}/wg-quick@${iface}.service.d/wireshield-ipsets.conf" <<- 'DROPIN_EOF'
+		[Unit]
+		Wants=wireshield-ipsets.service
+		After=wireshield-ipsets.service
+	DROPIN_EOF
+
+	systemctl daemon-reload 2>/dev/null || true
+	# enable --now creates the sets immediately for the wg-quick start below.
+	systemctl enable --now wireshield-ipsets.service 2>/dev/null || true
 }
 
 # ============================================================================
@@ -1316,8 +1362,8 @@ PostUp = iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 PostUp = iptables -I INPUT -p tcp --dport 80 -j ACCEPT
 PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 443 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:443
 PostUp = iptables -t nat -A PREROUTING -i ${SERVER_WG_NIC} -d ${SERVER_PUB_IP} -p tcp --dport 80 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:80
-PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist
-PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist
+PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist 2>/dev/null || true
+PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist 2>/dev/null || true
 PostUp = iptables -t nat -N WS_2FA_REDIRECT 2>/dev/null || true
 PostUp = iptables -t nat -F WS_2FA_REDIRECT
 PostUp = iptables -t nat -A WS_2FA_REDIRECT -p tcp --dport 80 -j DNAT --to-destination ${PORTAL_DNAT_TARGET}:80
@@ -1452,6 +1498,10 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 	else
 		sysctl --system
 
+		# Pre-create the 2FA ipsets via a boot-ordered oneshot unit so
+		# wg-quick never execs ipset itself (denied on hardened hosts).
+		_ws_install_ipset_boot_unit "${SERVER_WG_NIC}"
+
 		systemctl start "wg-quick@${SERVER_WG_NIC}" || true
 		systemctl enable "wg-quick@${SERVER_WG_NIC}" || true
 		if ! systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}"; then
@@ -1467,6 +1517,13 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 				echo -e "${ORANGE}Cause: no WireGuard data plane is available for the running kernel ($(uname -r)).${NC}"
 				echo -e "${ORANGE}Fix:   install the matching kernel modules package (e.g. linux-modules-extra-$(uname -r))${NC}"
 				echo -e "${ORANGE}       or the 'wireguard-go' package, reboot if the kernel was just upgraded, then rerun the installer.${NC}"
+			elif echo "${_wg_journal}" | grep -qiE "permission denied"; then
+				echo -e "${ORANGE}Cause: the OS denied wg-quick permission to run a helper binary (status 126 — typically${NC}"
+				echo -e "${ORANGE}       AppArmor or similar exec confinement on hardened hosts, even for root).${NC}"
+				echo -e "${ORANGE}Fix:   WireShield pre-creates the 2FA ipsets via wireshield-ipsets.service so wg-quick${NC}"
+				echo -e "${ORANGE}       does not need to exec ipset. Check it with: systemctl status wireshield-ipsets${NC}"
+				echo -e "${ORANGE}       For other denied helpers, inspect the AppArmor log (journalctl | grep -i denied)${NC}"
+				echo -e "${ORANGE}       and rerun the installer.${NC}"
 			elif echo "${_wg_journal}" | grep -qiE "iptables|ip6tables|ipset|nft"; then
 				echo -e "${ORANGE}Cause: a PostUp firewall command failed (see the journal lines above for the exact rule).${NC}"
 				echo -e "${ORANGE}Fix:   ensure iptables, ip6tables, and ipset are installed and the ip6table_nat module loads, then rerun the installer.${NC}"
@@ -2103,6 +2160,9 @@ function uninstallWg() {
 		else
 			systemctl stop "wg-quick@${SERVER_WG_NIC}" 2>/dev/null || true
 			systemctl disable "wg-quick@${SERVER_WG_NIC}" 2>/dev/null || true
+			systemctl disable --now wireshield-ipsets.service 2>/dev/null || true
+			rm -f "/etc/systemd/system/wg-quick@${SERVER_WG_NIC}.service.d/wireshield-ipsets.conf" 2>/dev/null || true
+			rmdir "/etc/systemd/system/wg-quick@${SERVER_WG_NIC}.service.d" 2>/dev/null || true
 		fi
 
 		if [[ ${OS} == 'ubuntu' ]]; then
@@ -2395,7 +2455,7 @@ function _ws_header() {
 
 	# Brand line
 	echo ""
-	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.3${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
+	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.4${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
 	_ws_ui_divider
 	echo ""
 
