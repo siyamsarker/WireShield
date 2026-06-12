@@ -83,6 +83,18 @@ echo "systemctl $*" >> "${WS_STATE}/calls"
 exit 0
 EOF
 
+cat > "${STUB}/iptables" <<'EOF'
+#!/usr/bin/env bash
+echo "iptables $*" >> "${WS_STATE}/calls"
+exit 0
+EOF
+
+cat > "${STUB}/ip6tables" <<'EOF'
+#!/usr/bin/env bash
+echo "ip6tables $*" >> "${WS_STATE}/calls"
+exit 0
+EOF
+
 chmod +x "${STUB}"/*
 
 export WS_STATE="${STATE}"
@@ -224,6 +236,39 @@ check "systemd reloaded" in_calls "systemctl daemon-reload"
 check "unit enabled and started immediately" in_calls "systemctl enable --now wireshield-ipsets.service"
 unset WS_TEST_SYSTEMD_DIR
 
+# ── scenario 7: 2FA rules service (match-set rules run after wg-quick) ───────
+# Regression for Ubuntu 26.04 where iptables-nft's --match-set validation opens
+# a user-space libipset netlink socket that wg-quick's AppArmor context blocks
+# (EPERM) even when ip_set/xt_set are loaded and the sets exist. Moving the four
+# match-set rules to a dedicated service that runs after wg-quick resolves this.
+
+echo "Scenario 7: wireshield-2fa-rules service + firewall helper script"
+reset_state
+export WS_TEST_SYSTEMD_DIR="${WORK}/systemd"
+export WS_TEST_FW_SCRIPT="${WORK}/wireshield-fw.sh"
+_ws_install_2fa_rules_service "wg0"
+FW_UNIT="${WS_TEST_SYSTEMD_DIR}/wireshield-2fa-rules.service"
+FW_DROPIN="${WS_TEST_SYSTEMD_DIR}/wg-quick@wg0.service.d/wireshield-2fa-rules.conf"
+FW_SCRIPT="${WS_TEST_FW_SCRIPT}"
+check "2fa-rules unit file written" test -f "${FW_UNIT}"
+check "2fa-rules ordered after wg-quick@wg0" grep -q "After=.*wg-quick@wg0" "${FW_UNIT}"
+check "2fa-rules is PartOf wg-quick@wg0" grep -q "^PartOf=wg-quick@wg0.service$" "${FW_UNIT}"
+check "2fa-rules ExecStart calls add" grep -q " add$" "${FW_UNIT}"
+check "2fa-rules ExecStop calls del" grep -q " del$" "${FW_UNIT}"
+check "2fa-rules drop-in written" test -f "${FW_DROPIN}"
+check "drop-in wants 2fa-rules service" grep -q "^Wants=wireshield-2fa-rules.service$" "${FW_DROPIN}"
+check "fw script written" test -f "${FW_SCRIPT}"
+check "fw script is executable" test -x "${FW_SCRIPT}"
+check "fw script has add function" grep -q "^add()" "${FW_SCRIPT}"
+check "fw script has del function" grep -q "^del()" "${FW_SCRIPT}"
+check "fw script contains ws_2fa_allowed_v4" grep -q "ws_2fa_allowed_v4" "${FW_SCRIPT}"
+check "fw script contains ws_2fa_allowed_v6" grep -q "ws_2fa_allowed_v6" "${FW_SCRIPT}"
+check "fw script uses -I FORWARD for v4 ACCEPT" grep -q "\-I FORWARD 1.*ws_2fa_allowed_v4.*ACCEPT" "${FW_SCRIPT}"
+check "fw script uses -I FORWARD for v6 ACCEPT" grep -q "\-I FORWARD 1.*ws_2fa_allowed_v6.*ACCEPT" "${FW_SCRIPT}"
+check "systemd reloaded" in_calls "systemctl daemon-reload"
+check "2fa-rules unit enabled" in_calls "systemctl enable wireshield-2fa-rules.service"
+unset WS_TEST_SYSTEMD_DIR WS_TEST_FW_SCRIPT
+
 # ── static regression guards on the generated wg0.conf PostUp lines ──────────
 
 echo "Static guards: PostUp ipset creation must never be fatal"
@@ -231,6 +276,13 @@ check "v4 PostUp create is exec-denial tolerant" \
     grep -q 'PostUp = ipset create ws_2fa_allowed_v4 hash:ip family inet -exist 2>/dev/null || true' "${ROOT}/wireshield.sh"
 check "v6 PostUp create is exec-denial tolerant" \
     grep -q 'PostUp = ipset create ws_2fa_allowed_v6 hash:ip family inet6 -exist 2>/dev/null || true' "${ROOT}/wireshield.sh"
+
+echo "Static guards: --match-set rules must NOT appear in PostUp"
+if ! grep -q '^PostUp.*--match-set' "${ROOT}/wireshield.sh"; then
+    ok "--match-set rules moved out of PostUp (handled by wireshield-2fa-rules.service)"
+else
+    bad "--match-set rules must NOT be in PostUp (breaks on Ubuntu 26.04 AppArmor context)"
+fi
 
 # ── summary ──────────────────────────────────────────────────────────────────
 

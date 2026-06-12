@@ -6,7 +6,7 @@
 
 **Zero-trust WireGuard VPN with pre-connection two-factor authentication**
 
-[![Version](https://img.shields.io/badge/Version-3.0.5-2ea44f.svg)](#)
+[![Version](https://img.shields.io/badge/Version-3.0.6-2ea44f.svg)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776ab.svg)](https://www.python.org/)
@@ -608,9 +608,11 @@ flowchart TB
 
 /etc/systemd/system/
 ├── wireshield.service             # 2FA + admin console service unit
-├── wireshield-ipsets.service      # Oneshot: pre-creates the 2FA ipsets before wg-quick starts
+├── wireshield-ipsets.service      # Oneshot: pre-creates 2FA ipsets + loads ip_set/xt_set (Before=wg-quick)
+├── wireshield-2fa-rules.service   # Oneshot: applies --match-set iptables rules (After=wg-quick, PartOf=wg-quick)
 ├── wg-quick@wg0.service.d/
-│   └── wireshield-ipsets.conf     # Drop-in ordering wg-quick after the ipset unit
+│   ├── wireshield-ipsets.conf     # Drop-in: wg-quick Wants+After wireshield-ipsets
+│   └── wireshield-2fa-rules.conf  # Drop-in: wg-quick Wants wireshield-2fa-rules
 ├── wireshield-2fa-renew.service   # Let's Encrypt renewal worker (if applicable)
 └── wireshield-2fa-renew.timer     # Let's Encrypt renewal timer (if applicable)
 ```
@@ -1448,9 +1450,9 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
 
 2. **AppArmor exec confinement (status=126).** On hardened releases such as Ubuntu 26.04, AppArmor denies `wg-quick` permission to exec the `ipset` binary from its PostUp hooks — `Permission denied`, exit `status=126` — even as root, tearing the interface back down.
 
-3. **`xt_set` kernel module not loaded (status=1).** `iptables-nft`'s `--match-set` extension requires the `xt_set` module at the time the PostUp rule is applied. Ubuntu 26.04's hardened kernel blocks module auto-loading in `wg-quick`'s exec context, so iptables can't open the ipset socket and exits with `Can't open socket to ipset`.
+3. **`iptables-nft` libipset socket blocked (status=1).** On Ubuntu 22.04+ the default `iptables` is the nf_tables backend (`iptables-nft`). When a `--match-set` rule is added it calls into user-space libipset, which opens a `NETLINK_GENERIC` socket to validate set existence. `wg-quick`'s AppArmor-confined exec context on Ubuntu 26.04 returns `EPERM` for that socket open even when `ip_set`/`xt_set` modules are loaded and the sets already exist — producing `Can't open socket to ipset`.
 
-The installer handles all three automatically: it provisions the matching `linux-modules-extra-<kernel>` (or flavor meta-package), falls back to `wireguard-go` when no kernel module is available, and runs a oneshot `wireshield-ipsets.service` ordered before `wg-quick@wg0` (a drop-in ties the two at boot) that pre-loads `ip_set`, `ip_set_hash_ip`, and `xt_set` then pre-creates the 2FA allowlist ipsets — so neither the ipset binary exec nor the `xt_set` module auto-load ever needs to happen inside `wg-quick`'s restricted context. When startup still fails, the installer prints the last journal lines and a cause-specific diagnosis. Run `systemctl status wireshield-ipsets` as the first diagnostic step for all three failure modes.
+The installer handles all three automatically. A oneshot `wireshield-ipsets.service` ordered before `wg-quick@wg0` pre-loads `ip_set`, `ip_set_hash_ip`, `xt_set` and pre-creates the 2FA ipsets (failure modes 2 and 3a). A separate `wireshield-2fa-rules.service` — ordered *after* `wg-quick@wg0`, with `PartOf=` so it stops/restarts in sync — applies the four `--match-set` iptables rules from an unconfined systemd context where the libipset socket open succeeds (failure mode 3b). Both services are tied to `wg-quick@wg0` via drop-ins so they start and stop automatically. When startup still fails, the installer prints the journal and a cause-specific diagnosis.
 
 **Diagnose:**
 
@@ -1475,8 +1477,9 @@ sudo journalctl -u wg-quick@wg0 -n 50 --no-pager
 **Solutions:**
 
 - **Missing wireguard module:** `sudo apt-get install -y wireguard` (Debian/Ubuntu) or the distro equivalent. On cloud kernels also install `linux-modules-extra-$(uname -r)`.
-- **`xt_set` not found:** Install the kernel extras package that contains it: `sudo apt-get install -y linux-modules-extra-$(uname -r)`, then `sudo modprobe xt_set && sudo systemctl restart wireshield-ipsets && sudo systemctl start wg-quick@wg0`.
-- **`wireshield-ipsets` service failed:** Run `sudo modprobe ip_set xt_set && sudo systemctl restart wireshield-ipsets`, then start wg-quick again.
+- **`xt_set` not found:** `sudo apt-get install -y linux-modules-extra-$(uname -r)`, then `sudo modprobe xt_set && sudo systemctl restart wireshield-ipsets && sudo systemctl start wg-quick@wg0`.
+- **`wireshield-ipsets` service failed:** `sudo modprobe ip_set xt_set && sudo systemctl restart wireshield-ipsets`, then start wg-quick again.
+- **`Can't open socket to ipset` (Ubuntu 26.04):** The `--match-set` rules now run via `wireshield-2fa-rules.service` (not PostUp). Check `sudo systemctl status wireshield-2fa-rules` — it starts automatically when wg-quick starts. If it failed, `sudo systemctl restart wireshield-2fa-rules`.
 - Persist the modules across reboots:
   ```bash
   sudo tee /etc/modules-load.d/wireshield.conf >/dev/null <<'EOF'
