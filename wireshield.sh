@@ -428,6 +428,92 @@ function _ws_upgrade_wireguard_packages() {
 }
 
 # ============================================================================
+# WireGuard kernel-module provisioning
+# ============================================================================
+# Cloud kernels (AWS/GCP/Azure/Oracle) ship wireguard.ko in a separate
+# linux-modules-extra package that minimal images do not preinstall. When the
+# module cannot be provisioned at all, wg-quick can still run on the
+# userspace wireguard-go implementation (it execs it automatically when the
+# kernel device type is unavailable). These helpers make that chain explicit
+# and diagnosable instead of failing silently at `systemctl start`.
+
+# Backend selected by _ws_ensure_wireguard_module: kernel | userspace | unavailable
+_WS_WG_BACKEND="kernel"
+
+function _ws_kernel_flavor() {
+	# "6.8.0-31-generic" → "generic", "7.0.0-1004-aws" → "aws", "5.10.0" → ""
+	local krel
+	krel=$(uname -r)
+	case "${krel}" in
+		*-*) echo "${krel##*-}" ;;
+		*) echo "" ;;
+	esac
+}
+
+function _ws_apt_install_if_available() {
+	# Install $1 only when the package index actually knows it. This is what
+	# prevents the noisy `E: Unable to locate package ...` apt failure on
+	# releases/clouds where a given modules-package name does not exist.
+	local pkg="$1"
+	if apt-cache show "${pkg}" >/dev/null 2>&1; then
+		apt-get install -y "${pkg}" && return 0
+	fi
+	return 1
+}
+
+function _ws_ensure_wireguard_module() {
+	# Provision a WireGuard data plane for wg-quick, in order of preference:
+	#   1. the in-kernel module (modprobe, or built-in =y),
+	#   2. the matching linux-modules-extra package for the running kernel,
+	#      then the flavor meta-package (linux-modules-extra-aws and friends),
+	#   3. the userspace wireguard-go binary as a last-resort fallback.
+	# Sets _WS_WG_BACKEND to kernel|userspace|unavailable.
+	# Returns 0 when any backend is usable, 1 when none is.
+	local sys_module_dir="${WS_TEST_SYS_MODULE_DIR:-/sys/module/wireguard}"
+
+	if modprobe wireguard 2>/dev/null || [[ -d "${sys_module_dir}" ]]; then
+		_WS_WG_BACKEND="kernel"
+		return 0
+	fi
+
+	if command -v apt-get >/dev/null 2>&1; then
+		local krel flavor
+		krel=$(uname -r)
+		flavor=$(_ws_kernel_flavor)
+		# Exact package for the running kernel first; the flavor meta-package
+		# second (it resolves the right versioned package on images where the
+		# exact name is not in the index).
+		_ws_apt_install_if_available "linux-modules-extra-${krel}" || true
+		if ! modprobe wireguard 2>/dev/null && [[ -n "${flavor}" ]]; then
+			_ws_apt_install_if_available "linux-modules-extra-${flavor}" || true
+		fi
+		if modprobe wireguard 2>/dev/null; then
+			_WS_WG_BACKEND="kernel"
+			return 0
+		fi
+		# Userspace fallback. wg-quick automatically execs wireguard-go when
+		# `ip link add ... type wireguard` is rejected by the kernel.
+		if command -v wireguard-go >/dev/null 2>&1 || _ws_apt_install_if_available wireguard-go; then
+			_WS_WG_BACKEND="userspace"
+			return 0
+		fi
+	fi
+
+	# Non-apt distros: one more direct attempt, then a preinstalled
+	# wireguard-go if the image happens to ship one.
+	if modprobe wireguard 2>/dev/null; then
+		_WS_WG_BACKEND="kernel"
+		return 0
+	fi
+	if command -v wireguard-go >/dev/null 2>&1; then
+		_WS_WG_BACKEND="userspace"
+		return 0
+	fi
+	_WS_WG_BACKEND="unavailable"
+	return 1
+}
+
+# ============================================================================
 # 2FA (Two-Factor Authentication) Management
 # ============================================================================
 
@@ -1157,23 +1243,9 @@ function installWireGuard() {
 	# Ensure the newest available WireGuard packages are installed
 	_ws_upgrade_wireguard_packages
 
-	# On Debian/Ubuntu, make sure the kernel-extra module package for the
-	# currently running kernel is present. This avoids the common case where
-	# `wireguard.ko` is not available yet after a recent kernel update.
-	if [[ ${OS} == 'ubuntu' || ${OS} == 'debian' ]]; then
-		if command -v apt-cache >/dev/null 2>&1; then
-			local kernel_extra="linux-modules-extra-$(uname -r)"
-			if apt-cache show "${kernel_extra}" >/dev/null 2>&1; then
-				apt-get install -y "${kernel_extra}" || true
-			fi
-			# AWS kernels commonly ship the WireGuard module in the extra package
-			# set, and this fallback keeps the install path resilient on newer
-			# Ubuntu releases/EC2 images.
-			if [[ $(uname -r) == *-aws* ]]; then
-				apt-get install -y linux-modules-extra-aws || true
-			fi
-		fi
-	fi
+	# Kernel-module provisioning (incl. cloud linux-modules-extra packages and
+	# the wireguard-go fallback) happens in _ws_ensure_wireguard_module, called
+	# right before the interface is started further down.
 
 	# Check if WireGuard was installed successfully
 	if ! command -v wg &>/dev/null; then
@@ -1325,32 +1397,50 @@ net.ipv4.tcp_congestion_control = bbr
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 
-	# Pre-load kernel modules needed by wg-quick + the PostUp ruleset.
-	#   wireguard       — virtual interface (loadable on most distros; =m, not =y)
-	#   ip6table_nat    — required for `ip6tables -t nat ...` PostUp rules; not
+	# Provision the WireGuard data plane BEFORE asking the init system to
+	# start wg-quick, and say which backend we got so any failure below is
+	# diagnosable. On cloud kernels this installs the matching
+	# linux-modules-extra package; if no module can be loaded it falls back
+	# to the userspace wireguard-go implementation.
+	if _ws_ensure_wireguard_module; then
+		if [[ "${_WS_WG_BACKEND}" == "userspace" ]]; then
+			_ws_ui_warn "Kernel WireGuard module unavailable for $(uname -r) — using the userspace wireguard-go backend"
+			_ws_ui_info "Throughput is lower than the in-kernel module. If linux-modules-extra-$(uname -r) becomes installable later, install it and reboot to switch back."
+		fi
+	else
+		_ws_ui_warn "Could not load the WireGuard kernel module or provision the wireguard-go fallback"
+		_ws_ui_info "wg-quick will almost certainly fail to start — see the diagnostics below."
+	fi
+	# Pre-load the netfilter modules the PostUp ruleset needs:
+	#   ip6table_nat    — required for `ip6tables -t nat ...` rules; not
 	#                     auto-loaded on minimal Alpine/RHEL images
-	#   nf_conntrack    — required for ESTABLISHED,RELATED FORWARD rule; usually
-	#                     auto-loaded but harmless to assert
-	# All three are no-ops if already loaded or compiled in (=y).
-	modprobe wireguard 2>/dev/null || true
+	#   nf_conntrack    — required for ESTABLISHED,RELATED FORWARD rule
+	# Both are no-ops if already loaded or compiled in (=y).
 	modprobe ip6table_nat 2>/dev/null || true
 	modprobe nf_conntrack 2>/dev/null || true
 
 	# Persist module loading across reboots so wg-quick@wg0 starts cleanly on
-	# every boot without depending on lazy-load by `wg` invocation.
+	# every boot without depending on lazy-load by `wg` invocation. Only list
+	# `wireguard` when the kernel module actually exists — on userspace-backend
+	# hosts the entry would just produce a modules-load error at every boot.
 	if [[ ${OS} == 'alpine' ]]; then
 		# OpenRC: /etc/modules is read by the modules service at boot
 		for _m in wireguard ip6table_nat nf_conntrack; do
+			if [[ "${_m}" == "wireguard" && "${_WS_WG_BACKEND}" != "kernel" ]]; then
+				continue
+			fi
 			grep -qxF "${_m}" /etc/modules 2>/dev/null || echo "${_m}" >>/etc/modules
 		done
 	else
 		# systemd: drop a modules-load.d snippet
 		mkdir -p /etc/modules-load.d
-		cat >/etc/modules-load.d/wireshield.conf <<- 'MOD_EOF'
-			wireguard
-			ip6table_nat
-			nf_conntrack
-		MOD_EOF
+		{
+			if [[ "${_WS_WG_BACKEND}" == "kernel" ]]; then
+				echo "wireguard"
+			fi
+			echo "ip6table_nat"
+			echo "nf_conntrack"
+		} >/etc/modules-load.d/wireshield.conf
 	fi
 
 	if [[ ${OS} == 'alpine' ]]; then
@@ -1366,8 +1456,23 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 		systemctl enable "wg-quick@${SERVER_WG_NIC}" || true
 		if ! systemctl is-active --quiet "wg-quick@${SERVER_WG_NIC}"; then
 			echo -e "\n${RED}WireGuard failed to start after installation.${NC}"
-			echo -e "${ORANGE}This usually means the running kernel has not yet loaded the WireGuard module (for example after a recent kernel upgrade).${NC}"
-			echo -e "${ORANGE}Reboot the server, then rerun the installer. You can confirm with: systemctl status wg-quick@${SERVER_WG_NIC}${NC}"
+			local _wg_journal
+			_wg_journal=$(journalctl -u "wg-quick@${SERVER_WG_NIC}" -n 25 --no-pager 2>/dev/null || true)
+			if [[ -n "${_wg_journal}" ]]; then
+				echo -e "${ORANGE}Last journal lines from wg-quick@${SERVER_WG_NIC}:${NC}"
+				echo "${_wg_journal}" | sed 's/^/    /'
+			fi
+			if [[ "${_WS_WG_BACKEND}" == "unavailable" ]] || \
+			   echo "${_wg_journal}" | grep -qiE "protocol not supported|operation not supported|unknown device type|cannot find device"; then
+				echo -e "${ORANGE}Cause: no WireGuard data plane is available for the running kernel ($(uname -r)).${NC}"
+				echo -e "${ORANGE}Fix:   install the matching kernel modules package (e.g. linux-modules-extra-$(uname -r))${NC}"
+				echo -e "${ORANGE}       or the 'wireguard-go' package, reboot if the kernel was just upgraded, then rerun the installer.${NC}"
+			elif echo "${_wg_journal}" | grep -qiE "iptables|ip6tables|ipset|nft"; then
+				echo -e "${ORANGE}Cause: a PostUp firewall command failed (see the journal lines above for the exact rule).${NC}"
+				echo -e "${ORANGE}Fix:   ensure iptables, ip6tables, and ipset are installed and the ip6table_nat module loads, then rerun the installer.${NC}"
+			else
+				echo -e "${ORANGE}Inspect: systemctl status wg-quick@${SERVER_WG_NIC} && journalctl -xeu wg-quick@${SERVER_WG_NIC}${NC}"
+			fi
 			return 1
 		fi
 	fi
