@@ -239,7 +239,7 @@ A successful install ends with a "Subsystem status" panel that lists each compon
 
 | Distribution    | Minimum Version | Notes                                            |
 | :-------------- | :-------------- | :----------------------------------------------- |
-| Ubuntu          | 18.04 (Bionic)  | Tested through 24.04 LTS and 26.04               |
+| Ubuntu          | 18.04 (Bionic)  | Tested through 24.04 LTS and 26.04, incl. EC2 cloud kernels |
 | Debian          | 10 (Buster)     | 11/12 use the standard apt path                  |
 | Fedora          | 32              |                                                  |
 | CentOS Stream   | 8               | v9 supported (EPEL auto-installed for ipset)     |
@@ -249,7 +249,7 @@ A successful install ends with a "Subsystem status" panel that lists each compon
 | Arch Linux      | Rolling         |                                                  |
 | Alpine Linux    | 3.14            |                                                  |
 
-> The installer auto-loads the required kernel modules (`wireguard`, `ip6table_nat`, `nf_conntrack`) and persists them across reboots via `/etc/modules-load.d/wireshield.conf` (or `/etc/modules` on Alpine).
+> The installer auto-loads the required kernel modules (`wireguard`, `ip6table_nat`, `nf_conntrack`) and persists them across reboots via `/etc/modules-load.d/wireshield.conf` (or `/etc/modules` on Alpine). On cloud kernels (AWS/GCP/Azure/Oracle images) where `wireguard.ko` ships in a separate package, it automatically installs the matching `linux-modules-extra-<kernel>` package — or the flavor meta-package when the exact name isn't indexed — and, if no kernel module can be provisioned at all, falls back to the userspace `wireguard-go` implementation so the install still completes (at reduced throughput).
 
 ### Client
 
@@ -1439,9 +1439,9 @@ sudo sqlite3 /etc/wireshield/2fa/auth.db \
 
 **Symptoms:** `systemctl start wg-quick@wg0` fails. `journalctl -u wg-quick@wg0` shows `Unable to access interface: No such device` or `Cannot find device "wg0"`. The 2FA service health check also fails because the WireGuard interface never came up.
 
-**Cause:** On most Debian/Ubuntu kernels the `wireguard` module is compiled as a loadable module (`CONFIG_WIREGUARD=m`), not linked into the kernel image (`CONFIG_WIREGUARD=y`) — even on kernel 5.6+. If the module is not loaded, `wg-quick` cannot create the virtual interface. Similarly, the `ip6tables -t nat ...` PostUp rules require the `ip6table_nat` module to be loaded.
+**Cause:** On most Debian/Ubuntu kernels the `wireguard` module is compiled as a loadable module (`CONFIG_WIREGUARD=m`), not linked into the kernel image (`CONFIG_WIREGUARD=y`) — even on kernel 5.6+. Cloud kernels (AWS/GCP/Azure/Oracle images) go one step further and ship `wireguard.ko` in a separate `linux-modules-extra-*` package that minimal images don't preinstall. If the module is not loaded, `wg-quick` cannot create the virtual interface. Similarly, the `ip6tables -t nat ...` PostUp rules require the `ip6table_nat` module to be loaded.
 
-The installer now handles this automatically (it runs `modprobe` for the required modules and persists them via `/etc/modules-load.d/wireshield.conf`). If you installed an older version of WireShield or your host has unusual kernel restrictions, you may need to fix it by hand.
+The installer handles all of this automatically: it installs the matching `linux-modules-extra-<kernel>` (or flavor meta-package) when needed, runs `modprobe` for the required modules, persists them via `/etc/modules-load.d/wireshield.conf`, and falls back to the userspace `wireguard-go` implementation when no kernel module can be provisioned. When `wg-quick` still fails to start, the installer prints the service's last journal lines plus a cause-specific diagnosis instead of a generic error. If you installed an older version of WireShield or your host has unusual kernel restrictions, you may need to fix it by hand.
 
 **Diagnose:**
 
@@ -1639,9 +1639,15 @@ cd agent
 make test
 ```
 
-#### Bash integration tests
+#### Bash tests
 
-These run against a live WireGuard + server stack — for use in CI or manual smoke-testing:
+The installer's WireGuard module-provisioning logic has its own scenario suite. It needs no root, network, or Linux — every external command is PATH-stubbed — so it runs anywhere bash does:
+
+```bash
+bash tests/test-installer-functions.sh   # 21 assertions: kernel module, cloud extras, wireguard-go fallback
+```
+
+These two run against a live WireGuard + server stack — for use in CI or manual smoke-testing:
 
 ```bash
 bash tests/test-2fa-access.sh
@@ -1668,6 +1674,7 @@ WireShield/
 │   ├── test_rate_limit.py        # Sliding-window rate limiter
 │   ├── test_activity_logs_api.py # Activity log DNS join query
 │   ├── test_bandwidth_usage_api.py # Bandwidth user/date filters
+│   ├── test-installer-functions.sh # Bash: installer module-provisioning scenarios (stubbed, no root)
 │   ├── test-2fa-access.sh        # Bash: live 2FA captive portal smoke test
 │   └── test-integration.sh       # Bash: end-to-end integration test
 ├── agent/                        # Go agent daemon
