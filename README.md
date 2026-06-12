@@ -6,7 +6,7 @@
 
 **Zero-trust WireGuard VPN with pre-connection two-factor authentication**
 
-[![Version](https://img.shields.io/badge/Version-3.0.6-2ea44f.svg)](#)
+[![Version](https://img.shields.io/badge/Version-3.0.7-2ea44f.svg)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776ab.svg)](https://www.python.org/)

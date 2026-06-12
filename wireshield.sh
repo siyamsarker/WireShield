@@ -26,7 +26,7 @@
 # Repository
 #   https://github.com/siyamsarker/WireShield
 #
-# Version: 3.0.6
+# Version: 3.0.7
 # ============================================================================
 
 # ── Color System ──────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ function installQuestions() {
 		echo ""
     echo -e "  ╭──────────────────────────────────────────────────────╮"
 		echo -e "  │                                                      │"
-		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.6${NC}                  │"
+		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.7${NC}                  │"
 		echo -e "  │                                                      │"
 		echo -e "  │           ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}          │"
 		echo -e "  │                                                      │"
@@ -1090,9 +1090,37 @@ EOF
 	fi
 	if [[ -f /etc/wireshield/2fa/requirements.txt ]]; then
 		"${VENV_PATH}/bin/pip" install -q --upgrade pip setuptools wheel 2>/dev/null || true
-		"${VENV_PATH}/bin/pip" install -q -r /etc/wireshield/2fa/requirements.txt 2>/dev/null || {
+
+		# --prefer-binary avoids source compilation (e.g. cryptography needs Rust
+		# on Python 3.13 when only an sdist is available for that pinned version).
+		local _pip_out _pip_rc
+		_pip_out=$("${VENV_PATH}/bin/pip" install --prefer-binary \
+			-r /etc/wireshield/2fa/requirements.txt 2>&1)
+		_pip_rc=$?
+
+		if [[ ${_pip_rc} -ne 0 ]]; then
+			# Install build tools and retry once — covers packages that genuinely
+			# have no wheel and need compilation (e.g. on custom or very new kernels).
+			_ws_ui_warn "pip install failed — installing build tools and retrying..."
+			if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
+				apt-get install -y python3-dev build-essential libssl-dev libffi-dev \
+					>/dev/null 2>&1 || true
+			elif [[ ${OS} == 'fedora' ]] || [[ ${OS} == 'centos' ]] || \
+			     [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]] || \
+			     [[ ${OS} == 'oracle' ]]; then
+				dnf install -y python3-devel gcc openssl-devel libffi-devel \
+					>/dev/null 2>&1 || true
+			fi
+			_pip_out=$("${VENV_PATH}/bin/pip" install --prefer-binary \
+				-r /etc/wireshield/2fa/requirements.txt 2>&1)
+			_pip_rc=$?
+		fi
+
+		if [[ ${_pip_rc} -ne 0 ]]; then
 			_ws_ui_warn "Some Python dependencies may not have installed correctly"
-		}
+			echo "${_pip_out}" | grep -iE "^(error|ERROR|could not|No matching)" \
+				| head -8 | sed 's/^/    /'
+		fi
 	fi
 	
 	# SSL certificates already configured during _ws_configure_2fa_ssl
@@ -1607,7 +1635,7 @@ net.ipv4.tcp_mtu_probing = 1" >/etc/sysctl.d/wg.conf
 				echo -e "${ORANGE}Cause: iptables-nft (Ubuntu 22.04+/26.04) validates --match-set rules by opening${NC}"
 				echo -e "${ORANGE}       a user-space libipset netlink socket. wg-quick's AppArmor-confined context${NC}"
 				echo -e "${ORANGE}       blocks that socket open (EPERM) even when modules are loaded and sets exist.${NC}"
-				echo -e "${ORANGE}Fix:   WireShield v3.0.6+ moves --match-set rules to wireshield-2fa-rules.service${NC}"
+				echo -e "${ORANGE}Fix:   WireShield v3.0.7+ moves --match-set rules to wireshield-2fa-rules.service${NC}"
 				echo -e "${ORANGE}       which runs after wg-quick in an unconfined context.${NC}"
 				echo -e "${ORANGE}       Check service status: systemctl status wireshield-2fa-rules wireshield-ipsets${NC}"
 				echo -e "${ORANGE}       Restart manually: systemctl restart wireshield-2fa-rules${NC}"
@@ -2545,7 +2573,7 @@ function _ws_header() {
 
 	# Brand line
 	echo ""
-	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.6${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
+	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.7${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
 	_ws_ui_divider
 	echo ""
 
