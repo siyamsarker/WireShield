@@ -26,7 +26,7 @@
 # Repository
 #   https://github.com/siyamsarker/WireShield
 #
-# Version: 3.0.2
+# Version: 3.0.3
 # ============================================================================
 
 # ── Color System ──────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ function installQuestions() {
 		echo ""
     echo -e "  ╭──────────────────────────────────────────────────────╮"
 		echo -e "  │                                                      │"
-		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.2${NC}                  │"
+		echo -e "  │                ${WHITE}✻  WireShield${NC} ${GRAY}v3.0.3${NC}                  │"
 		echo -e "  │                                                      │"
 		echo -e "  │           ${GRAY}Zero-trust WireGuard VPN with 2FA${NC}          │"
 		echo -e "  │                                                      │"
@@ -2395,7 +2395,7 @@ function _ws_header() {
 
 	# Brand line
 	echo ""
-	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.2${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
+	echo -e "  ${WHITE}✻  WireShield${NC}  ${GRAY}v3.0.3${NC}   ${DIM}Zero-trust WireGuard VPN${NC}"
 	_ws_ui_divider
 	echo ""
 
