@@ -22,6 +22,29 @@ const autoRefreshState = {
     intervalId: null
 };
 
+// ── View preferences (persisted to localStorage) ────────────────────────────
+// Lightweight key/value store so operator choices (auto-refresh, bandwidth
+// range, chart type) survive a reload instead of resetting every visit.
+const WS_PREFS_KEY = 'ws_console_prefs_v1';
+
+function wsLoadPrefs() {
+    try {
+        return JSON.parse(localStorage.getItem(WS_PREFS_KEY)) || {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function wsSavePref(key, value) {
+    const prefs = wsLoadPrefs();
+    prefs[key] = value;
+    try {
+        localStorage.setItem(WS_PREFS_KEY, JSON.stringify(prefs));
+    } catch (e) {
+        /* storage unavailable (private mode / quota) — preferences just won't persist */
+    }
+}
+
 // Pagination state
 let usersPage = 1;
 let usersPages = 1;
@@ -247,8 +270,9 @@ function updateLastRefreshTimestamp() {
 
 // ── Auto-refresh ────────────────────────────────────────────────────────────
 
-function setAutoRefreshEnabled(enabled) {
+function setAutoRefreshEnabled(enabled, persist = true) {
     autoRefreshState.enabled = enabled;
+    if (persist) wsSavePref('autoRefresh', enabled);
 
     const defaultToggle = document.getElementById('auto-refresh-toggle-default');
     const bandwidthToggle = document.getElementById('auto-refresh-toggle-bandwidth');
@@ -384,7 +408,8 @@ function renderLoadingSkeleton(tbody, cols) {
 
 document.addEventListener('DOMContentLoaded', function() {
     initBandwidthEvents();
-    setAutoRefreshEnabled(false);
+    // Restore the operator's persisted auto-refresh choice (default off).
+    setAutoRefreshEnabled(wsLoadPrefs().autoRefresh === true, false);
     showSection(getSectionFromHash(), null, true);
 
     window.addEventListener('hashchange', () => {

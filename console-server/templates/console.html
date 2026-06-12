@@ -230,7 +230,7 @@
                                 <circle cx="11" cy="11" r="8"/>
                                 <path d="m21 21-4.35-4.35"/>
                             </svg>
-                            <input type="text" id="users-search" class="filter-input" placeholder="Search client ID..." oninput="reloadUsers()">
+                            <input type="text" id="users-search" class="filter-input" placeholder="Search client ID..." oninput="debouncedReloadUsers()">
                         </div>
                     </div>
                     <div class="filter-group u-ml-auto">
@@ -546,7 +546,7 @@
                                 <circle cx="11" cy="11" r="8"/>
                                 <path d="m21 21-4.35-4.35"/>
                             </svg>
-                            <input type="text" id="audit-search" class="filter-input" placeholder="Search client, action, or IP address..." oninput="reloadAuditLogs()">
+                            <input type="text" id="audit-search" class="filter-input" placeholder="Search client, action, or IP address..." oninput="debouncedReloadAuditLogs()">
                         </div>
                     </div>
 
@@ -621,7 +621,7 @@
                                 <circle cx="11" cy="11" r="8"/>
                                 <path d="m21 21-4.35-4.35"/>
                             </svg>
-                            <input type="text" id="activity-search" class="filter-input" placeholder="Search client, IP, or protocol..." oninput="reloadActivityLogs()">
+                            <input type="text" id="activity-search" class="filter-input" placeholder="Search client, IP, or protocol..." oninput="debouncedReloadActivityLogs()">
                         </div>
                     </div>
 

@@ -4,6 +4,22 @@
 let allAuditLogs = [];
 let allActivityLogs = [];
 
+// Server-reported total row counts (across all pages) for the current filter
+// set. The count badges use these so they never disagree with pagination.
+let auditTotal = 0;
+let activityTotal = 0;
+
+// Render a record-count badge that reflects the authoritative server total and,
+// when the visible page shows fewer rows than that total, makes the distinction
+// explicit instead of implying the page count is the whole result set.
+function _renderCountBadge(badge, shown, total) {
+    if (!badge) return;
+    const plural = total === 1 ? '' : 's';
+    badge.textContent = (shown < total)
+        ? `${shown} shown · ${total} record${plural}`
+        : `${total} record${plural}`;
+}
+
 function _usersEscape(s) {
     if (s === null || s === undefined) return '';
     return String(s)
@@ -337,6 +353,7 @@ async function loadAuditLogs(page = 1) {
         const response = await fetch(`/api/console/audit-logs?${params.toString()}`, { cache: 'no-store' });
         const data = await response.json();
         auditPages = data.pages || 1;
+        auditTotal = data.total || 0;
 
         // Store logs for filtering
         allAuditLogs = data.logs || [];
@@ -376,6 +393,7 @@ async function loadActivityLogs(page = 1) {
         const response = await fetch(`/api/console/activity-logs?${params.toString()}`, { cache: 'no-store' });
         const data = await response.json();
         activityPages = data.pages || 1;
+        activityTotal = data.total || 0;
 
         // Store logs for filtering
         allActivityLogs = (data.logs || []).map(log => {
@@ -474,10 +492,9 @@ function displayAuditLogs(logs) {
     const tbody = document.getElementById('audit-logs');
     const countBadge = document.getElementById('audit-count');
 
-    // Update count badge
-    if (countBadge) {
-        countBadge.textContent = `${logs.length} record${logs.length !== 1 ? 's' : ''}`;
-    }
+    // Reflect the server's filtered total, distinguishing it from the
+    // rows visible on the current page.
+    _renderCountBadge(countBadge, logs.length, Math.max(auditTotal, logs.length));
 
     if (!logs || logs.length === 0) {
         tbody.innerHTML = `
@@ -531,10 +548,9 @@ function displayActivityLogs(logs) {
     const tbody = document.getElementById('activity-logs');
     const countBadge = document.getElementById('activity-count');
 
-    // Update count badge
-    if (countBadge) {
-        countBadge.textContent = `${logs.length} record${logs.length !== 1 ? 's' : ''}`;
-    }
+    // Reflect the server's filtered total, distinguishing it from the
+    // rows visible on the current page.
+    _renderCountBadge(countBadge, logs.length, Math.max(activityTotal, logs.length));
 
     if (!logs || logs.length === 0) {
         tbody.innerHTML = `
@@ -598,3 +614,9 @@ function reloadAuditLogs() {
 function reloadActivityLogs() {
     loadActivityLogs(1);
 }
+
+// Debounced variants wired to the search inputs' oninput handlers so a query
+// fires a single request after the user pauses typing, not one per keystroke.
+const debouncedReloadUsers = wsDebounce(reloadUsers, 300);
+const debouncedReloadAuditLogs = wsDebounce(reloadAuditLogs, 300);
+const debouncedReloadActivityLogs = wsDebounce(reloadActivityLogs, 300);

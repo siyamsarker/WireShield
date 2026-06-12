@@ -19,6 +19,23 @@ function initBandwidthEvents() {
         return;
     }
 
+    // Restore persisted range + chart-type choices before binding handlers so
+    // the active button and rendered chart reflect the operator's last visit.
+    const savedDays = (typeof wsLoadPrefs === 'function') ? wsLoadPrefs().bandwidthDays : null;
+    const savedChartType = (typeof wsLoadPrefs === 'function') ? wsLoadPrefs().bandwidthChartType : null;
+    if (savedDays && [1, 7, 30].includes(savedDays)) {
+        bandwidthState.currentDays = savedDays;
+        document.querySelectorAll('.time-range-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.days === String(savedDays));
+        });
+    }
+    if (savedChartType === 'line' || savedChartType === 'bar') {
+        bandwidthState.chartType = savedChartType;
+        document.querySelectorAll('.chart-type-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.type === savedChartType);
+        });
+    }
+
     // Time range selector
     document.querySelectorAll('.time-range-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -37,6 +54,7 @@ function initBandwidthEvents() {
             bandwidthState.rangeMode = 'preset';
             bandwidthState.currentDays = parseInt(this.dataset.days, 10);
             bandwidthState.previousData = null;
+            if (typeof wsSavePref === 'function') wsSavePref('bandwidthDays', bandwidthState.currentDays);
 
             const customRange = document.getElementById('bandwidth-custom-range');
             if (customRange) {
@@ -53,6 +71,7 @@ function initBandwidthEvents() {
             document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             bandwidthState.chartType = this.dataset.type;
+            if (typeof wsSavePref === 'function') wsSavePref('bandwidthChartType', bandwidthState.chartType);
             loadBandwidthData();
         });
     });
