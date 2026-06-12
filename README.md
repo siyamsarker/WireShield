@@ -575,6 +575,8 @@ flowchart TB
 | DNS + TLS SNI sniffer         | Continuous   | Auto-recovering sniffer; waits for `wg0` to come back up before resuming after interface drops                                                                                    |
 | Agent housekeeping            | 1h           | Purges expired/used enrollment tokens and prunes `agent_heartbeats` older than the retention window                                                                               |
 | Agent ACL iptables sync       | 30s          | Rebuilds the `WS_AGENT_ACL` iptables chain to match the current per-user allowlist for all restricted agents; also triggered immediately on every grant/revoke                    |
+| WireGuard peer reconcile      | 60s          | Re-adds enrolled agent peers missing from the running `wg0` and rewrites stale `AllowedIPs`, healing drift from a failed sync or an out-of-band interface restart                 |
+| Unresolved-IP resolver        | 60s          | Reverse-resolves activity-log destination IPs that are missing from the DNS cache, enriching the Traffic Activity view                                                            |
 
 ### File Layout
 
@@ -655,8 +657,8 @@ flowchart TB
 | Method   | Path                                | Description                                                                                |
 | :------- | :---------------------------------- | :----------------------------------------------------------------------------------------- |
 | `POST`   | `/api/agents/enroll`                | Exchange a single-use token for a WG peer config (public/keyless endpoint, rate-limited)   |
-| `POST`   | `/api/agents/heartbeat`             | Periodic liveness + bandwidth report (auth: WG tunnel source IP)                           |
-| `GET`    | `/api/agents/revocation-check`      | Agent polls this to self-disable when revoked (auth: bearer token)                         |
+| `POST`   | `/api/agents/heartbeat`             | Periodic liveness + bandwidth report (auth: bearer token + optional HMAC signature)        |
+| `GET`    | `/api/agents/revocation-check`      | Agent polls this to self-disable when revoked (auth: bearer token + optional HMAC signature) |
 | `GET`    | `/api/agents/install`               | **Legacy** Bash installer (kept for backward compatibility)                                |
 | `GET`    | `/api/agents/install-go`            | Bash bootstrap that downloads the Go binary                                                |
 | `GET`    | `/api/agents/binary/{arch}`         | Pre-built agent binary (`linux-amd64`, `linux-arm64`)                                      |
@@ -668,7 +670,7 @@ flowchart TB
 
 ## Agents
 
-Agents are statically-linked Go daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use, IP-bound tokens (SHA-256 hashed at rest) and authenticated on every heartbeat by matching the decrypted tunnel's source IP to the allocated WG address.
+Agents are statically-linked Go daemons deployed on remote Linux servers. They connect **outbound** to the WireShield VPN and register themselves as a special WireGuard peer whose `AllowedIPs` include the LAN CIDRs they advertise. Any VPN client can then route traffic for those CIDRs through the agent, with the VPN server enforcing the same zero-trust policies. Agents are enrolled with single-use tokens (1-hour TTL, SHA-256 hashed at rest); thereafter every heartbeat and revocation check is authenticated by a per-agent bearer secret issued at enrollment, with an optional HMAC signature that blocks captured-token replay.
 
 > [!TIP]
 > The happy path: register an agent in the console, run the install one-liner on the remote host, verify the heartbeat, route VPN clients through the agent's advertised CIDRs.
@@ -1056,8 +1058,8 @@ The server enforces ±60s clock skew and a per-agent nonce LRU; replayed nonces 
 
 | Control                       | Mechanism                                                                                                                                                       |
 | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Enrollment token              | 32-byte `secrets.token_urlsafe`, SHA-256 hashed in DB, single-use (atomic `UPDATE ... WHERE used_at IS NULL`), 1-hour TTL, IP-bound                             |
-| Heartbeat / revocation-check auth | Source IP must match the agent's allocated WG address — only reachable through the decrypted tunnel                                                          |
+| Enrollment token              | 32-byte `secrets.token_urlsafe`, SHA-256 hashed in DB, single-use (atomic `UPDATE ... WHERE used_at IS NULL`), 1-hour TTL, consuming IP recorded for audit     |
+| Heartbeat / revocation-check auth | `Authorization: Bearer <heartbeat_secret>` issued at enrollment (SHA-256 hashed at rest), plus an optional `X-Agent-Ts`/`X-Agent-Nonce`/`X-Agent-Sig` HMAC that enforces clock skew and per-agent nonce replay protection |
 | CIDR escalation defence       | Admin-pre-declared CIDRs take precedence over agent-declared CIDRs at enrollment                                                                                |
 | Replay / enumeration          | Rate-limited public endpoints; generic `401 Invalid or expired enrollment token` for all token-related failures                                                 |
 | Config hygiene                | Atomic `wg0.conf` writes (`tmp + os.replace`); idempotent peer-add/remove; hourly purge of stale tokens + old heartbeats                                        |
@@ -1098,10 +1100,11 @@ The installer generates a WG keypair, enrolls the agent, writes `/etc/wireguard/
 ```bash
 curl -sS -X POST https://VPN_HOST/api/agents/heartbeat \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <heartbeat-secret>" \
   -d '{"agent_version":"1.0.0","rx_bytes":1024,"tx_bytes":2048}'
 ```
 
-Authentication is implicit: this call only succeeds through the WireGuard tunnel, where the source IP matches the agent's allocated WG address. The VPN server rejects callers whose source IP isn't an enrolled agent.
+The agent daemon authenticates with the bearer secret it received at enrollment (and, on modern builds, signs the request with the `X-Agent-Ts`/`X-Agent-Nonce`/`X-Agent-Sig` HMAC headers). The server rejects any caller whose token does not match an enrolled agent.
 
 **4. Admin updates advertised CIDRs**
 
@@ -1738,7 +1741,7 @@ WireShield/
 | Agent daemon   | Go 1.25+ (single static binary, Curve25519 via `golang.org/x/crypto`)                   |
 | Database       | SQLite                                                                                  |
 | Frontend       | Jinja2, vanilla JavaScript, Chart.js                                                    |
-| Auth           | pyotp (TOTP), pyqrcode                                                                  |
+| Auth           | pyotp (TOTP), qrcode                                                                    |
 | Firewall       | iptables, ip6tables, ipset                                                              |
 | DNS            | scapy, tldextract                                                                       |
 | Service        | systemd                                                                                 |
