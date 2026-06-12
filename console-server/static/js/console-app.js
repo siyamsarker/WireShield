@@ -59,21 +59,21 @@ function showSection(section, event, fromHash = false) {
     // Hide all sections
     document.querySelectorAll('[id$="-section"]').forEach(el => el.style.display = 'none');
 
-    // Remove active class from nav items
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    // Remove active state (visual + assistive) from nav items
+    document.querySelectorAll('.nav-item').forEach(el => {
+        el.classList.remove('active');
+        el.removeAttribute('aria-current');
+    });
 
     // Show selected section
     document.getElementById(section + '-section').style.display = 'block';
 
-    // Add active class to clicked nav item
+    // Add active state to the matching nav item
     const clickedItem = event ? event.target.closest('.nav-item') : null;
-    if (clickedItem) {
-        clickedItem.classList.add('active');
-    } else {
-        const navItem = document.querySelector(`.nav-item[data-section="${section}"]`);
-        if (navItem) {
-            navItem.classList.add('active');
-        }
+    const activeItem = clickedItem || document.querySelector(`.nav-item[data-section="${section}"]`);
+    if (activeItem) {
+        activeItem.classList.add('active');
+        activeItem.setAttribute('aria-current', 'page');
     }
 
     // Update page title

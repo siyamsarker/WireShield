@@ -2394,6 +2394,109 @@ tbody tr:last-child td {
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
+   Layout & form utilities
+   Single-purpose classes that replace repeated inline style attributes in
+   console.html so spacing, hints, and alerts stay on the token system.
+   ─────────────────────────────────────────────────────────────────────────── */
+.u-section-pad { margin: 16px 16px 0 16px; }
+.u-table-pad { margin: 12px 16px 16px 16px; }
+.u-ml-auto { margin-left: auto; }
+.section-pad-16 { padding: 16px; }
+
+.brand-logo img { width: 28px; height: 28px; }
+
+.header-action-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-select-wide { min-width: 150px; }
+
+.pagination-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-card);
+}
+
+.form-input-full { width: 100%; padding: 9px 12px; }
+
+.mono-textarea {
+    min-height: 78px;
+    font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+}
+
+.mono-textarea--tall { min-height: 96px; }
+
+.form-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    display: block;
+}
+
+.form-label-optional { color: var(--text-muted); font-weight: 400; }
+
+.form-label-required {
+    color: var(--error);
+    font-weight: 500;
+    font-size: 11px;
+}
+
+.form-alert-error {
+    color: var(--error);
+    font-size: 13px;
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: var(--error-light);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+}
+
+.checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.table-meta { font-size: 12px; color: var(--text-muted); }
+
+/* Modal width modifiers */
+.ws-modal--md { max-width: 520px; }
+.ws-modal--lg { max-width: 560px; }
+.ws-modal--xl { max-width: 640px; }
+
+/* Manage-access modal rows */
+.access-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.access-toggle-title { font-weight: 600; font-size: 13px; }
+.access-toggle-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.access-allowlist { margin-top: 12px; }
+.access-allowlist-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.access-user-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.access-add-row { display: flex; gap: 6px; align-items: center; }
+.access-add-input { flex: 1; padding: 8px 10px; font-size: 12px; }
+
+/* ───────────────────────────────────────────────────────────────────────────
    Accessibility primitives
    Keyboard-visible focus for every interactive element, a skip link for
    screen-reader / keyboard users, and a global reduced-motion guard.
