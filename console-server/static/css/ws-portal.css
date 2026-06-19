@@ -1,0 +1,368 @@
+/* ════════════════════════════════════════════════════════════════════
+   WireShield Portal Pages — Shared Stylesheet
+   Used by: access_denied.html, success.html
+   Body background differentiated via :has() — no markup changes needed.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Tokens ──────────────────────────────────────────────────────── */
+:root {
+  --wp-blue:         #0055DC;
+
+  --wp-green:        #14804A;
+  --wp-green-bg:     #EBFAF2;
+  --wp-green-bd:     #A8DFC1;
+
+  --wp-red:          #C42B1C;
+  --wp-red-bg:       rgba(239,68,68,0.08);
+  --wp-red-bd:       rgba(239,68,68,0.18);
+
+  --wp-sky-bg:       #F0F9FF;
+  --wp-sky-bd:       #BAE6FD;
+  --wp-sky-text:     #0369A1;
+  --wp-sky-dark:     #0C4A6E;
+
+  --wp-border:       #E5E7EB;
+  --wp-surface:      #FFFFFF;
+  --wp-body-light:   #F2F3F5;
+  --wp-body-dark:    #0B0F17;
+
+  --wp-card-dark:    #111827;
+  --wp-card-dark-bd: rgba(255,255,255,0.08);
+
+  --wp-text:         #111827;
+  --wp-text-sec:     #374151;
+  --wp-text-muted:   #6B7280;
+  --wp-text-subtle:  #94A3B8;
+  --wp-text-dim:     #64748B;
+  --wp-text-light:   #CBD5E1;
+  --wp-text-ghost:   #3A4F6F;
+
+  --wp-radius-lg:    10px;
+  --wp-radius-xl:    12px;
+  --wp-radius-2xl:   16px;
+  --wp-radius-pill:  9999px;
+
+  --wp-shadow-dark:  0 12px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(239,68,68,0.05);
+  --wp-shadow-sm:    0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.04);
+}
+
+/* ── Reset ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+:focus-visible { outline: 2px solid var(--wp-blue); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Body backgrounds (differentiated by page) ───────────────────── */
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* access_denied.html — dark */
+body:has(.page-wrap) {
+  background: var(--wp-body-dark);
+  padding: 24px;
+}
+
+/* success.html — light */
+body:has(.success-wrap) {
+  background: var(--wp-body-light);
+  padding: 24px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   access_denied.html — Dark security denial page
+   ═══════════════════════════════════════════════════════════════════ */
+
+.page-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 460px;
+}
+
+/* Brand row */
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.brand-logo img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+.brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--wp-text-light);
+  letter-spacing: -0.015em;
+}
+
+/* Main deny card */
+.deny-card {
+  background: var(--wp-card-dark);
+  border: 1px solid var(--wp-card-dark-bd);
+  border-radius: var(--wp-radius-2xl);
+  padding: 40px 36px;
+  text-align: center;
+  width: 100%;
+  box-shadow: var(--wp-shadow-dark);
+}
+
+/* Shield icon ring */
+.shield-wrap {
+  width: 68px;
+  height: 68px;
+  background: var(--wp-red-bg);
+  border: 1px solid var(--wp-red-bd);
+  border-radius: var(--wp-radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 22px;
+}
+.shield-wrap svg {
+  width: 32px;
+  height: 32px;
+  color: #F87171;
+}
+
+/* Error badge */
+.error-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #F87171;
+  background: var(--wp-red-bg);
+  border: 1px solid var(--wp-red-bd);
+  border-radius: var(--wp-radius-pill);
+  padding: 4px 12px;
+  margin-bottom: 14px;
+}
+
+.deny-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #F1F5F9;
+  letter-spacing: -0.025em;
+  margin-bottom: 10px;
+}
+
+.deny-sub {
+  font-size: 14px;
+  color: var(--wp-text-subtle);
+  line-height: 1.6;
+  margin-bottom: 26px;
+}
+
+/* Warning row */
+.warning-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.14);
+  border-radius: var(--wp-radius-lg);
+  padding: 13px 16px;
+  margin-bottom: 22px;
+  text-align: left;
+}
+.warning-row svg {
+  width: 17px;
+  height: 17px;
+  color: #FB923C;
+  flex-shrink: 0;
+}
+.warning-row span {
+  font-size: 13px;
+  color: #E2E8F0;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.info-text {
+  font-size: 13px;
+  color: #64748B;
+  line-height: 1.65;
+}
+.info-text strong {
+  color: var(--wp-text-subtle);
+  font-weight: 600;
+}
+
+.footer-note {
+  margin-top: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wp-text-ghost);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   success.html — Light access-granted page
+   ═══════════════════════════════════════════════════════════════════ */
+
+.success-wrap {
+  width: 100%;
+  max-width: 440px;
+  padding: 8px 0;
+}
+
+.success-card {
+  background: var(--wp-surface);
+  border: 1px solid var(--wp-border);
+  border-radius: var(--wp-radius-2xl);
+  padding: 40px 32px;
+  text-align: center;
+  box-shadow: var(--wp-shadow-sm);
+}
+
+/* Animated icon ring */
+.success-icon-ring {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--wp-green-bg);
+  border: 2px solid var(--wp-green-bd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  animation: successPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes successPop {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+.success-icon-ring svg {
+  width: 36px;
+  height: 36px;
+  color: var(--wp-green);
+}
+
+/* Success badge */
+.success-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wp-green);
+  background: var(--wp-green-bg);
+  border: 1px solid var(--wp-green-bd);
+  border-radius: var(--wp-radius-pill);
+  padding: 4px 12px;
+  margin-bottom: 14px;
+}
+
+.success-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--wp-text);
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+}
+
+.success-sub {
+  font-size: 14px;
+  color: var(--wp-text-dim);
+  line-height: 1.6;
+  margin-bottom: 28px;
+}
+
+/* Status grid */
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.status-item {
+  background: var(--wp-body-light);
+  border: 1px solid var(--wp-border);
+  border-radius: var(--wp-radius-lg);
+  padding: 14px 12px;
+}
+.status-item .label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--wp-text-subtle);
+  margin-bottom: 5px;
+}
+.status-item .value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--wp-green);
+}
+
+/* Info box */
+.info-box {
+  background: var(--wp-sky-bg);
+  border: 1px solid var(--wp-sky-bd);
+  border-radius: var(--wp-radius-lg);
+  padding: 16px;
+  text-align: left;
+  margin-bottom: 20px;
+}
+.info-box-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wp-sky-text);
+  margin-bottom: 8px;
+}
+.info-box-header svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.info-box p {
+  font-size: 13px;
+  color: var(--wp-sky-dark);
+  line-height: 1.55;
+}
+
+.close-note {
+  font-size: 12px;
+  color: var(--wp-text-subtle);
+  line-height: 1.5;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 520px) {
+  body:has(.page-wrap) { padding: 16px; }
+  body:has(.success-wrap) { padding: 16px; }
+  .deny-card { padding: 28px 20px; }
+  .success-card { padding: 28px 20px; }
+  .status-grid { grid-template-columns: 1fr; }
+}
