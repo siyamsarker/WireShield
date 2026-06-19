@@ -1,0 +1,541 @@
+/* ════════════════════════════════════════════════════════════════════
+   WireShield Auth Pages — Shared Stylesheet
+   Used by: 2fa_setup.html, 2fa_verify.html
+   All JS-bound IDs and class names are preserved.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Tokens (self-contained — auth pages don't load design system) ── */
+:root {
+  --wa-blue:        #0055DC;
+  --wa-blue-hov:    #0041AC;
+  --wa-blue-light:  #EEF2FF;
+  --wa-blue-border: #BFCFFF;
+
+  --wa-green:       #14804A;
+  --wa-green-bg:    #EBFAF2;
+  --wa-green-bd:    #A8DFC1;
+
+  --wa-red:         #C42B1C;
+  --wa-red-bg:      #FEF0EE;
+  --wa-red-bd:      #F5B3AD;
+
+  --wa-amber:       #9A5B13;
+  --wa-amber-bg:    #FEF5E7;
+  --wa-amber-bd:    #F5CC86;
+
+  --wa-border:      #E5E7EB;
+  --wa-surface:     #FFFFFF;
+  --wa-body-bg:     #F2F3F5;
+
+  --wa-text:        #111827;
+  --wa-text-sec:    #374151;
+  --wa-text-muted:  #6B7280;
+  --wa-text-light:  #9CA3AF;
+
+  /* Dark left panel */
+  --wa-left-bg:     #1D2025;
+  --wa-left-bd:     rgba(255,255,255,0.08);
+  --wa-left-text:   #CDD5E0;
+  --wa-left-muted:  #4B5563;
+  --wa-left-accent: rgba(0,85,220,0.15);
+  --wa-left-acbd:   rgba(0,85,220,0.28);
+
+  --wa-radius-md:   6px;
+  --wa-radius-lg:   8px;
+  --wa-radius-xl:   12px;
+  --wa-radius-pill: 9999px;
+
+  --wa-shadow-sm:   0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.04);
+  --wa-shadow-md:   0 4px 8px -2px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.04);
+}
+
+/* ── Reset ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  background: var(--wa-body-bg);
+}
+
+:focus-visible { outline: 2px solid var(--wa-blue); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Split Layout ────────────────────────────────────────────────── */
+.auth-split {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* ── Left Panel (dark branding) ──────────────────────────────────── */
+.auth-left {
+  width: 360px;
+  flex-shrink: 0;
+  background: var(--wa-left-bg);
+  display: flex;
+  flex-direction: column;
+  padding: 48px 36px;
+  border-right: 1px solid var(--wa-left-bd);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 52px;
+}
+
+.auth-brand-logo {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.auth-brand-logo img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.auth-brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.02em;
+}
+
+.auth-left-content { flex: 1; }
+
+.auth-left-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #FFFFFF;
+  line-height: 1.35;
+  margin-bottom: 10px;
+  letter-spacing: -0.02em;
+}
+
+.auth-left-sub {
+  font-size: 13px;
+  color: var(--wa-left-muted);
+  line-height: 1.6;
+  margin-bottom: 36px;
+}
+
+/* Setup steps (2fa_setup.html) */
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.setup-step {
+  display: flex;
+  gap: 14px;
+  position: relative;
+}
+.setup-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 30px;
+  bottom: -8px;
+  width: 1px;
+  background: var(--wa-left-acbd);
+}
+
+.setup-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--wa-left-accent);
+  border: 1px solid var(--wa-left-acbd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #93B4F5;
+}
+
+.setup-step-body { padding-bottom: 24px; }
+.setup-step-body strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wa-left-text);
+  margin-bottom: 4px;
+}
+.setup-step-body span {
+  font-size: 12px;
+  color: var(--wa-left-muted);
+  line-height: 1.45;
+}
+
+/* Feature list (2fa_verify.html) */
+.auth-features {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.auth-feature-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--wa-radius-lg);
+  background: var(--wa-left-accent);
+  border: 1px solid var(--wa-left-acbd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.auth-feature-icon svg {
+  width: 16px;
+  height: 16px;
+  color: #93B4F5;
+}
+
+.auth-feature-text strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wa-left-text);
+  margin-bottom: 3px;
+}
+.auth-feature-text span {
+  font-size: 12px;
+  color: var(--wa-left-muted);
+  line-height: 1.45;
+}
+
+.auth-left-footer {
+  margin-top: 16px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.18);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── Right Panel (light form area) ───────────────────────────────── */
+.auth-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+  background: var(--wa-body-bg);
+  overflow-y: auto;
+}
+
+/* ── Form Inner Containers ───────────────────────────────────────── */
+.setup-form-inner,
+.auth-form-inner {
+  width: 100%;
+  max-width: 460px;
+}
+
+.setup-form-header { margin-bottom: 24px; }
+
+.setup-form-title,
+.auth-form-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--wa-text);
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+  line-height: 1.2;
+}
+
+.setup-form-sub,
+.auth-form-sub {
+  font-size: 13px;
+  color: var(--wa-text-muted);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+/* Required badge */
+.required-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--wa-blue-light);
+  border: 1px solid var(--wa-blue-border);
+  border-radius: var(--wa-radius-pill);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wa-blue);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* Client ID badge */
+.client-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wa-surface);
+  border: 1px solid var(--wa-border);
+  border-radius: var(--wa-radius-lg);
+  padding: 9px 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--wa-text-sec);
+  margin-bottom: 20px;
+  box-shadow: var(--wa-shadow-sm);
+}
+
+.client-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wa-amber);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--wa-amber-bg);
+}
+/* Verify page: dot is green (session active) */
+.client-badge-dot.active,
+.auth-verify .client-badge-dot {
+  background: var(--wa-green);
+  box-shadow: 0 0 0 2px var(--wa-green-bg);
+}
+
+/* Setup card */
+.setup-card {
+  background: var(--wa-surface);
+  border: 1px solid var(--wa-border);
+  border-radius: var(--wa-radius-xl);
+  padding: 22px;
+  margin-bottom: 14px;
+  box-shadow: var(--wa-shadow-sm);
+}
+
+/* Step label inside card */
+.step-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--wa-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.step-label-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wa-text);
+}
+
+/* QR code area */
+.qr-area {
+  background: var(--wa-body-bg);
+  border: 1px solid var(--wa-border);
+  border-radius: var(--wa-radius-lg);
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+#qrPlaceholder {
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 12px;
+  border: 1.5px dashed var(--wa-border);
+  border-radius: var(--wa-radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wa-text-light);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+#qrCode { display: none; }
+#qrCode img {
+  max-width: 180px;
+  border-radius: var(--wa-radius-lg);
+  border: 1px solid var(--wa-border);
+}
+
+/* ── Input Group ─────────────────────────────────────────────────── */
+.input-group { margin-bottom: 14px; }
+.input-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wa-text-sec);
+  margin-bottom: 6px;
+}
+.input-group input {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid var(--wa-border);
+  border-radius: var(--wa-radius-md);
+  font-size: 14px;
+  background: var(--wa-surface);
+  color: var(--wa-text);
+  font-family: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  outline: none;
+}
+.input-group input:hover { border-color: #D1D5DB; }
+.input-group input:focus {
+  border-color: var(--wa-blue);
+  box-shadow: 0 0 0 3px rgba(0,85,220,0.1);
+}
+.input-group input::placeholder { color: var(--wa-text-light); }
+
+/* TOTP code input (2fa_verify.html) — #authCode */
+.code-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--wa-border);
+  border-radius: var(--wa-radius-md);
+  font-size: 26px;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.25em;
+  background: var(--wa-surface);
+  color: var(--wa-text);
+  transition: border-color 0.12s, box-shadow 0.12s;
+  outline: none;
+  margin-bottom: 14px;
+}
+.code-input:focus {
+  border-color: var(--wa-blue);
+  box-shadow: 0 0 0 3px rgba(0,85,220,0.1);
+}
+.code-input::placeholder {
+  letter-spacing: 0.15em;
+  color: var(--wa-text-light);
+  font-size: 22px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+/* .btn (setup) and .btn-verify (verify) — same visual */
+.btn,
+.btn-verify {
+  width: 100%;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--wa-radius-lg);
+  cursor: pointer;
+  background: var(--wa-blue);
+  color: #fff;
+  font-family: inherit;
+  transition: background 0.12s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  line-height: 1;
+}
+.btn:hover:not(:disabled),
+.btn-verify:hover:not(:disabled) {
+  background: var(--wa-blue-hov);
+}
+.btn:active:not(:disabled),
+.btn-verify:active:not(:disabled) {
+  transform: scale(0.99);
+}
+.btn:disabled,
+.btn-verify:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Spinner (injected by JS) */
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: wa-spin 0.7s linear infinite;
+}
+@keyframes wa-spin { to { transform: rotate(360deg); } }
+
+/* ── Status Messages — #statusMessage ───────────────────────────── */
+/* JS writes innerHTML into this element; class toggled via innerHTML */
+.status {
+  margin: 14px 0 0;
+  padding: 11px 14px;
+  border-radius: var(--wa-radius-lg);
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+.status.success {
+  background: var(--wa-green-bg);
+  border-color: var(--wa-green-bd);
+  color: var(--wa-green);
+}
+.status.error {
+  background: var(--wa-red-bg);
+  border-color: var(--wa-red-bd);
+  color: var(--wa-red);
+}
+.status.warning {
+  background: var(--wa-amber-bg);
+  border-color: var(--wa-amber-bd);
+  color: var(--wa-amber);
+}
+
+/* Verify section (hidden until QR generated) — #verifySection */
+#verifySection { display: none; }
+
+/* Help text (verify page) */
+.help-text {
+  font-size: 12px;
+  color: var(--wa-text-light);
+  text-align: center;
+  margin-top: 18px;
+  line-height: 1.6;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .auth-left { display: none; }
+  .auth-right { padding: 32px 16px; background: var(--wa-body-bg); }
+  .setup-form-inner, .auth-form-inner { max-width: 100%; }
+}
