@@ -1630,7 +1630,7 @@ python run.py
 
 ### Tests
 
-The project ships a full Python test suite (101 tests) plus two bash integration scripts.
+The project ships a full Python test suite (154 tests) plus two bash integration scripts.
 
 #### Python tests
 
@@ -1652,6 +1652,10 @@ python3 -m pytest tests/ -v
 | `tests/test_activity_logs_api.py` | 1 | Activity log query with LEFT JOIN DNS cache, unambiguous ORDER BY |
 | `tests/test_bandwidth_usage_api.py` | 1 | Bandwidth usage user + date filter |
 | `tests/test_rate_limit.py` | 2 | Sliding-window rate limiter: burst blocking, window expiry |
+| `tests/test_dashboard_api.py` | 13 | Dashboard stats (user count, active/expired sessions, 24h failure window, bandwidth aggregation, new users) and activity metrics (total logs, oldest/newest timestamps) |
+| `tests/test_console_crud.py` | 18 | Agent list/get/patch/delete and user create/delete via direct async invocation; covers 404 propagation, CIDR validation, revoke idempotency |
+| `tests/test_agent_router.py` | 11 | Agent enrollment (401/400/500 paths), heartbeat (auth, revoked rejection), revocation-check — via HTTP TestClient with wg/ipset mocked |
+| `tests/test_template_rendering.py` | 9 | Template rendering smoke-tests: captive portal root, success page, CSS static asset delivery (ws-auth.css, ws-portal.css, ws-design-system.css) |
 
 #### Go agent tests
 
@@ -1695,6 +1699,10 @@ WireShield/
 │   ├── test_rate_limit.py        # Sliding-window rate limiter
 │   ├── test_activity_logs_api.py # Activity log DNS join query
 │   ├── test_bandwidth_usage_api.py # Bandwidth user/date filters
+│   ├── test_dashboard_api.py     # Dashboard stats + activity metrics endpoints
+│   ├── test_console_crud.py      # Agent/user CRUD endpoints
+│   ├── test_agent_router.py      # Agent enroll/heartbeat/revocation-check HTTP tests
+│   ├── test_template_rendering.py # Template rendering + CSS static asset smoke-tests
 │   ├── test-installer-functions.sh # Bash: installer module-provisioning scenarios (stubbed, no root)
 │   ├── test-2fa-access.sh        # Bash: live 2FA captive portal smoke test
 │   └── test-integration.sh       # Bash: end-to-end integration test
@@ -1755,7 +1763,7 @@ WireShield/
     │   ├── success.html
     │   └── access_denied.html
     └── static/
-        ├── css/                  # Console stylesheets
+        ├── css/                  # Stylesheets: ws-design-system.css, ws-auth.css, ws-portal.css
         ├── js/                   # Dashboard, tables, charts
         └── fonts/                # Inter font family
 ```
@@ -1765,7 +1773,7 @@ WireShield/
 | Layer          | Technology                                                                              |
 | :------------- | :-------------------------------------------------------------------------------------- |
 | VPN            | WireGuard                                                                               |
-| Backend        | Python 3.8+, FastAPI 0.104, Uvicorn                                                     |
+| Backend        | Python 3.8+, FastAPI 0.115+, Uvicorn                                                    |
 | Agent daemon   | Go 1.25+ (single static binary, Curve25519 via `golang.org/x/crypto`)                   |
 | Database       | SQLite                                                                                  |
 | Frontend       | Jinja2, vanilla JavaScript, Chart.js                                                    |
