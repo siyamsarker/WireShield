@@ -230,7 +230,7 @@ async def setup_verify(
         expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
         c.execute(
             "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) VALUES (?, ?, ?, ?)",
-            (client_id, hash_session_token(session_token), expires_at, ip_address)
+            (client_id, hash_session_token(session_token), expires_at.strftime("%Y-%m-%d %H:%M:%S"), ip_address)
         )
         
         conn.commit()
@@ -314,7 +314,7 @@ async def verify_code(
         expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
         c.execute(
             "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) VALUES (?, ?, ?, ?)",
-            (client_id, hash_session_token(session_token), expires_at, ip_address)
+            (client_id, hash_session_token(session_token), expires_at.strftime("%Y-%m-%d %H:%M:%S"), ip_address)
         )
         
         conn.commit()
