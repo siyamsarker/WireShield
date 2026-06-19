@@ -6,11 +6,11 @@
 
 **Zero-trust WireGuard VPN with pre-connection two-factor authentication**
 
-[![Version](https://img.shields.io/badge/Version-3.0.10-2ea44f.svg)](#)
+[![Version](https://img.shields.io/badge/Version-3.1.0-2ea44f.svg)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![WireGuard](https://img.shields.io/badge/WireGuard-Compatible-88171a.svg)](https://www.wireguard.com/)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776ab.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688.svg)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev/)
 
 WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authentication at the connection layer. Every client must verify through a captive portal before any traffic is allowed through the tunnel. A built-in agent system lets remote Linux servers register as WireGuard peers — authenticated VPN clients can then route traffic to private LANs on those servers with no extra client-side configuration.
