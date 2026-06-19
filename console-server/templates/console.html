@@ -24,17 +24,17 @@
         <div class="nav-section-label">Monitor</div>
 
         <a href="#dashboard" class="nav-item active" data-section="dashboard" onclick="showSection('dashboard', event)">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <rect x="3" y="3" width="7" height="7" rx="1"/>
-                <rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/>
-                <rect x="14" y="14" width="7" height="7" rx="1"/>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="9" rx="1"/>
+                <rect x="14" y="3" width="7" height="5" rx="1"/>
+                <rect x="14" y="12" width="7" height="5" rx="1"/>
+                <rect x="3" y="16" width="7" height="5" rx="1"/>
             </svg>
             Overview
         </a>
 
         <a href="#bandwidth" class="nav-item" data-section="bandwidth" onclick="showSection('bandwidth', event)">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
             </svg>
             Bandwidth Insights
@@ -43,7 +43,7 @@
         <div class="nav-section-label">Security</div>
 
         <a href="#users" class="nav-item" data-section="users" onclick="showSection('users', event)">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                 <circle cx="9" cy="7" r="4"/>
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
@@ -53,27 +53,31 @@
         </a>
 
         <a href="#agents" class="nav-item" data-section="agents" onclick="showSection('agents', event)">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <rect x="2" y="3" width="20" height="6" rx="1.5"/>
-                <rect x="2" y="15" width="20" height="6" rx="1.5"/>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
                 <line x1="6" y1="6" x2="6.01" y2="6"/>
                 <line x1="6" y1="18" x2="6.01" y2="18"/>
-                <path d="M12 9v6"/>
             </svg>
             Agents
         </a>
 
         <a href="#logs" class="nav-item" data-section="logs" onclick="showSection('logs', event)">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path d="M9 11l3 3L22 4"/>
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+                <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+                <path d="M10 9H8"/>
+                <path d="M16 13H8"/>
+                <path d="M16 17H8"/>
             </svg>
             Audit Trail
         </a>
 
         <a href="#activity" class="nav-item" data-section="activity" onclick="showSection('activity', event)">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <line x1="18" y1="20" x2="18" y2="10"/>
+                <line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
             </svg>
             Traffic Activity
         </a>
