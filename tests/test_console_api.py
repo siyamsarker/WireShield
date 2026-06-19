@@ -416,13 +416,13 @@ def test_get_users_pagination(tmp_db):
 
 def test_get_users_active_session_status(tmp_db):
     """Users with live sessions must show session_status='Active'."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     conn = database.get_db()
     conn.execute(
         "INSERT INTO users (client_id, enabled, wg_ipv4) VALUES (?, ?, ?)",
         ("active_user", 1, "10.66.66.2"),
     )
-    expires = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) "
         "VALUES (?, ?, ?, ?)",

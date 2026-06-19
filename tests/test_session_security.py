@@ -8,7 +8,7 @@ Key scenarios:
 import asyncio
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -52,9 +52,9 @@ def _make_user(conn, client_id, wg_ip, console_access=True):
 
 def _make_session(conn, client_id, wg_ip, expired=False):
     if expired:
-        expires = (datetime.utcnow() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        expires = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     else:
-        expires = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) "
         "VALUES (?, ?, ?, ?)",
@@ -155,7 +155,7 @@ def test_multiple_sessions_all_deleted_on_remove(tmp_db):
     """All sessions for a client are deleted, not just the most recent."""
     conn = database.get_db()
     _make_user(conn, "multi", "10.66.66.9")
-    expires = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     for i in range(3):
         conn.execute(
             "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) "

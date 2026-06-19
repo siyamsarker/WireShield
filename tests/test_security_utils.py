@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -107,7 +107,7 @@ def test_totp_different_clients_independent(tmp_db):
 def test_totp_stale_code_reusable(tmp_db):
     """A code older than the replay window is pruned and can be reused."""
     conn = database.get_db()
-    stale_ts = (datetime.utcnow() - timedelta(seconds=100)).strftime("%Y-%m-%d %H:%M:%S")
+    stale_ts = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=100)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         "INSERT INTO totp_used_codes (client_id, code, used_at) VALUES (?, ?, ?)",
         ("charlie", "000000", stale_ts),
@@ -121,7 +121,7 @@ def test_totp_stale_code_reusable(tmp_db):
 def test_totp_within_window_rejected(tmp_db):
     """A code used 30 s ago (inside 90 s window) is still rejected as replay."""
     conn = database.get_db()
-    recent_ts = (datetime.utcnow() - timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
+    recent_ts = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         "INSERT INTO totp_used_codes (client_id, code, used_at) VALUES (?, ?, ?)",
         ("diana", "555555", recent_ts),
@@ -213,7 +213,7 @@ def test_remove_client_by_id_deletes_session_rows(tmp_db):
         "INSERT INTO users (client_id, wg_ipv4, enabled) VALUES (?, ?, ?)",
         ("alice", "10.66.66.2", 1),
     )
-    expires = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) "
         "VALUES (?, ?, ?, ?)",
@@ -248,7 +248,7 @@ def test_remove_client_by_id_does_not_touch_other_clients_sessions(tmp_db):
         "INSERT INTO users (client_id, wg_ipv4, enabled) VALUES (?, ?, ?)",
         ("bob", "10.66.66.3", 1),
     )
-    expires = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) "
         "VALUES (?, ?, ?, ?)",

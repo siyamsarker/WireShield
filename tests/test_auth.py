@@ -1,7 +1,7 @@
 """Integration tests for the auth router: 2FA setup, verify, validate-session."""
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -165,7 +165,7 @@ def test_verify_invalidates_old_sessions(client, tmp_db):
         "INSERT INTO users (client_id, totp_secret, enabled, wg_ipv4) VALUES (?, ?, ?, ?)",
         ("eve", secret, 1, "testclient"),
     )
-    old_exp = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    old_exp = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         "INSERT INTO sessions (client_id, session_token, expires_at, device_ip) "
         "VALUES (?, ?, ?, ?)",
@@ -226,7 +226,7 @@ def test_verify_not_configured_returns_403(client, tmp_db):
 
 def test_validate_session_valid(client, tmp_db):
     token = generate_session_token()
-    expires = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     conn = database.get_db()
     conn.execute("INSERT INTO users (client_id, enabled) VALUES (?, ?)", ("grace", 1))
     conn.execute(
@@ -247,7 +247,7 @@ def test_validate_session_valid(client, tmp_db):
 
 def test_validate_session_expired_returns_401(client, tmp_db):
     token = generate_session_token()
-    expired = (datetime.utcnow() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    expired = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     conn = database.get_db()
     conn.execute("INSERT INTO users (client_id, enabled) VALUES (?, ?)", ("henry", 1))
     conn.execute(
@@ -267,7 +267,7 @@ def test_validate_session_expired_returns_401(client, tmp_db):
 
 def test_validate_session_wrong_token_returns_401(client, tmp_db):
     token = generate_session_token()
-    expires = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     conn = database.get_db()
     conn.execute("INSERT INTO users (client_id, enabled) VALUES (?, ?)", ("ivan", 1))
     conn.execute(
