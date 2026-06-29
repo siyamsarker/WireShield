@@ -755,19 +755,25 @@ EOFSERVICE
 	fi
 	
 	# Self-signed certificate (for IP or localhost)
-	read -rp "$(echo -ne "  ${GRAY}IP or hostname${NC} > ")" -e -i "${SERVER_WG_IPV4}" WS_HOSTNAME_2FA
+	read -rp "$(echo -ne "  ${GRAY}IP or hostname${NC} > ")" -e -i "${SERVER_PUB_IP}" WS_HOSTNAME_2FA
 
 	if [[ -z "${WS_HOSTNAME_2FA}" ]]; then
-		WS_HOSTNAME_2FA="${SERVER_WG_IPV4}"
+		WS_HOSTNAME_2FA="${SERVER_PUB_IP}"
 	fi
 
 	_ws_ui_info "Generating self-signed certificate for ${WS_HOSTNAME_2FA}..."
 	
+	if [[ "${WS_HOSTNAME_2FA}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+		_ws_san="IP:${WS_HOSTNAME_2FA}"
+	else
+		_ws_san="DNS:${WS_HOSTNAME_2FA}"
+	fi
 	openssl req -x509 -newkey rsa:4096 \
 		-keyout /etc/wireshield/2fa/key.pem \
 		-out /etc/wireshield/2fa/cert.pem \
 		-days 365 -nodes \
-		-subj "/C=US/ST=State/L=City/O=WireShield/CN=${WS_HOSTNAME_2FA}" 2>/dev/null || true
+		-subj "/C=US/ST=State/L=City/O=WireShield/CN=${WS_HOSTNAME_2FA}" \
+		-addext "subjectAltName=${_ws_san}" 2>/dev/null || true
 	
 	chmod 600 /etc/wireshield/2fa/key.pem
 	chmod 644 /etc/wireshield/2fa/cert.pem
@@ -1019,7 +1025,7 @@ WS_2FA_DISCONNECT_GRACE_SECONDS=3600
 WS_2FA_SSL_ENABLED=false
 WS_2FA_SSL_TYPE=none
 WS_2FA_DOMAIN=
-WS_HOSTNAME_2FA=${SERVER_WG_IPV4}
+WS_HOSTNAME_2FA=${SERVER_PUB_IP}
 EOF
 	)
 	chmod 600 /etc/wireshield/2fa/config.env
