@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="WireShield 2FA",
-    version="3.1.0",
+    version="3.2.0",
     lifespan=lifespan,
     docs_url=None, # Disable Swagger UI in production
     redoc_url=None

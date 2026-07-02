@@ -77,7 +77,7 @@ let activityPages = 1;
 
 function getSectionFromHash() {
     const raw = (window.location.hash || '').replace('#', '').trim();
-    const allowed = ['dashboard', 'users', 'agents', 'logs', 'activity', 'bandwidth'];
+    const allowed = ['dashboard', 'users', 'agents', 'logs', 'activity', 'bandwidth', 'settings'];
     return allowed.includes(raw) ? raw : 'dashboard';
 }
 
@@ -86,7 +86,7 @@ function showSection(section, event, fromHash = false) {
         event.preventDefault();
     }
 
-    const allowed = ['dashboard', 'users', 'agents', 'logs', 'activity', 'bandwidth'];
+    const allowed = ['dashboard', 'users', 'agents', 'logs', 'activity', 'bandwidth', 'settings'];
     if (!allowed.includes(section)) {
         section = 'dashboard';
     }
@@ -126,7 +126,8 @@ function showSection(section, event, fromHash = false) {
         'agents': 'Agents',
         'logs': 'Audit Trail',
         'activity': 'Traffic Activity',
-        'bandwidth': 'Bandwidth Insights'
+        'bandwidth': 'Bandwidth Insights',
+        'settings': 'Settings'
     };
     document.getElementById('page-title').textContent = titles[section] || 'Dashboard';
 
@@ -163,6 +164,8 @@ function showSection(section, event, fromHash = false) {
         loadActivityLogs();
     } else if (section === 'bandwidth') {
         loadBandwidthData();
+    } else if (section === 'settings') {
+        if (typeof loadSettings === 'function') loadSettings();
     } else {
         loadDashboardData();
     }

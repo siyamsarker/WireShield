@@ -26,7 +26,7 @@
 # Repository
 #   https://github.com/siyamsarker/WireShield
 #
-# Version: 3.1.0
+# Version: 3.2.0
 # ============================================================================
 
 # ── Color System ──────────────────────────────────────────────────────────────
@@ -1020,6 +1020,7 @@ WS_2FA_HTTP_PORT=80
 WS_2FA_LOG_LEVEL=INFO
 WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
 WS_2FA_RATE_LIMIT_WINDOW=60
+WS_2FA_SESSION_TIMEOUT=1440
 WS_2FA_SESSION_IDLE_TIMEOUT=3600
 WS_2FA_DISCONNECT_GRACE_SECONDS=3600
 WS_2FA_SSL_ENABLED=false
@@ -1177,17 +1178,12 @@ Type=simple
 User=root
 WorkingDirectory=/etc/wireshield/2fa
 EnvironmentFile=-/etc/wireshield/2fa/config.env
-# Use WS_* variables to satisfy systemd's environment parser
-Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
-Environment=WS_2FA_HOST=0.0.0.0
-Environment=WS_2FA_PORT=443
-Environment=WS_2FA_HTTP_PORT=80
-Environment=WS_2FA_SSL_ENABLED=${WS_2FA_SSL_ENABLED:-false}
-Environment=WS_2FA_SSL_TYPE=${WS_2FA_SSL_TYPE:-self-signed}
-Environment=WS_2FA_DOMAIN=${WS_2FA_DOMAIN:-}
-Environment=WS_HOSTNAME_2FA=${WS_HOSTNAME_2FA:-127.0.0.1}
-Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=${WS_2FA_RATE_LIMIT_MAX_REQUESTS:-30}
-Environment=WS_2FA_RATE_LIMIT_WINDOW=${WS_2FA_RATE_LIMIT_WINDOW:-60}
+# All settings come from config.env above — do not hardcode Environment=
+# lines here for keys config.env already sets (DB_PATH/HOST/PORT/HTTP_PORT/
+# SSL_*/DOMAIN/HOSTNAME_2FA/RATE_LIMIT_*): systemd applies Environment=
+# after EnvironmentFile=, so a hardcoded line here permanently shadows any
+# later edit to config.env for that key, including from the console's
+# Settings page.
 ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/run.py
 Restart=on-failure
 RestartSec=5
@@ -1208,12 +1204,6 @@ Type=simple
 User=root
 WorkingDirectory=/etc/wireshield/2fa
 EnvironmentFile=-/etc/wireshield/2fa/config.env
-Environment=WS_2FA_DB_PATH=/etc/wireshield/2fa/auth.db
-Environment=WS_2FA_HOST=0.0.0.0
-Environment=WS_2FA_PORT=443
-Environment=WS_2FA_HTTP_PORT=80
-Environment=WS_2FA_RATE_LIMIT_MAX_REQUESTS=30
-Environment=WS_2FA_RATE_LIMIT_WINDOW=60
 ExecStart=${VENV_PATH}/bin/python /etc/wireshield/2fa/run.py
 Restart=on-failure
 RestartSec=5

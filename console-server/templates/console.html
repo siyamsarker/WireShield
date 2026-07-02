@@ -82,6 +82,16 @@
             Traffic Activity
         </a>
 
+        <div class="nav-section-label">System</div>
+
+        <a href="#settings" class="nav-item" data-section="settings" onclick="showSection('settings', event)">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            Settings
+        </a>
+
     </div>
 
     <div class="nav-footer">
@@ -897,6 +907,41 @@
                 </div>
             </div>
         </div>
+
+        <!-- Settings Section -->
+        <div id="settings-section" class="section-pad-16" style="display: none;">
+            <div id="settings-loading" class="chart-loading">
+                <div class="chart-loader"></div>
+                <span>Loading settings...</span>
+            </div>
+            <div id="settings-categories" style="display: none;"></div>
+
+            <div class="chart-card" id="settings-ssl-card" style="display: none; margin-top: 14px;">
+                <div class="chart-card-header">
+                    <div>
+                        <h3 class="chart-title">SSL / TLS</h3>
+                        <div class="chart-subtitle">Switching between self-signed and Let's Encrypt is a CLI-only operation (<code>sudo ./wireshield.sh</code>) — not available here.</div>
+                    </div>
+                </div>
+                <div style="padding: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <div id="settings-ssl-status"></div>
+                    </div>
+                    <div id="settings-ssl-regen-row">
+                        <div class="form-group">
+                            <label class="form-label">
+                                New Hostname / IP <span class="form-label-optional">(optional — leave empty to keep the current one)</span>
+                            </label>
+                            <input type="text" id="settings-cert-hostname" class="filter-input form-input-full" placeholder="e.g. 13.201.45.75 or vpn.example.com" autocomplete="off">
+                            <span class="form-hint">Regenerates the self-signed certificate with a fresh subjectAltName and restarts the service to load it.</span>
+                        </div>
+                        <div id="settings-ssl-error" class="form-alert-error" style="display:none;" role="alert"></div>
+                        <button type="button" class="btn btn-danger" id="settings-regen-cert-btn" onclick="regenerateCertificate()">Regenerate Certificate</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </main>
 {% endblock %}
@@ -909,4 +954,5 @@
 <script src="/static/js/console-tables.js"></script>
 <script src="/static/js/console-bandwidth.js"></script>
 <script src="/static/js/console-agents.js"></script>
+<script src="/static/js/console-settings.js"></script>
 {% endblock %}

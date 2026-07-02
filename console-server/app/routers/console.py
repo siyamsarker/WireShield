@@ -28,9 +28,21 @@ class AgentPatchRequest(BaseModel):
     description: Optional[str] = None
     is_restricted: Optional[bool] = None
 
+
+class SettingsUpdateRequest(BaseModel):
+    changes: Dict[str, Any]
+
+
+class CertRegenRequest(BaseModel):
+    hostname: Optional[str] = None
+
 from app.core.database import get_db
 from app.core.security import audit_log
-from app.core.config import LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS, SSL_TYPE, SECRET_KEY
+from app.core.config import (
+    LOG_LEVEL, ACTIVITY_LOG_RETENTION_DAYS, SSL_TYPE, SECRET_KEY,
+    SSL_ENABLED, TFA_HOSTNAME, TFA_DOMAIN,
+)
+from app.core import settings as ws_settings
 
 
 def _build_agent_install_command(token: str, server_base_url: str) -> str:
@@ -1397,3 +1409,94 @@ async def agent_metrics_endpoint(
         "rx_bytes_per_bucket": rx_delta,
         "tx_bytes_per_bucket": tx_delta,
     }
+
+
+# ----------------------------------------------------------------------------
+# Settings
+# ----------------------------------------------------------------------------
+@router.get("/api/console/settings")
+async def get_settings(client_id: str = Depends(_check_console_access)):
+    """Current values + schema metadata for every editable server setting,
+    plus read-only SSL/TLS info (not editable via write_settings — switching
+    SSL on/off or between self-signed/Let's Encrypt is a provisioning
+    operation, not a field edit)."""
+    return {
+        "settings": ws_settings.read_current_settings(),
+        "ssl_info": {
+            "enabled": SSL_ENABLED,
+            "type": SSL_TYPE,
+            "hostname": TFA_HOSTNAME,
+            "domain": TFA_DOMAIN,
+        },
+    }
+
+
+@router.post("/api/console/settings")
+async def update_settings(
+    body: SettingsUpdateRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    """Validate, persist, and (if needed) schedule a restart for one or
+    more settings changes. Nothing is written until every changed field
+    passes validation."""
+    ip_address = request.client.host if request and request.client else "unknown"
+
+    try:
+        result = ws_settings.write_settings(body.changes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("write_settings unexpected error")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
+    if result["applied"]:
+        summary = ", ".join(f"{k}: {v[0]}→{v[1]}" for k, v in result["applied"].items())
+        audit_log(client_id, "SETTINGS_UPDATE", summary, ip_address)
+
+    restart_scheduled = False
+    if result["restart_required"]:
+        restart_scheduled = ws_settings.restart_service()
+        if not restart_scheduled:
+            logger.error("Settings saved but restart scheduling failed — manual restart required")
+
+    return {
+        "success": True,
+        "applied": result["applied"],
+        "restart_scheduled": restart_scheduled,
+        "restart_required": result["restart_required"],
+    }
+
+
+@router.post("/api/console/settings/regenerate-cert")
+async def regenerate_cert(
+    body: CertRegenRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    """Regenerate the self-signed SSL certificate and restart the service to
+    load it — uvicorn only reads cert files once at process start, so a
+    regenerated cert has no effect until restart."""
+    if (SSL_TYPE or "").strip().lower() not in ("self-signed", "selfsigned"):
+        raise HTTPException(
+            status_code=400,
+            detail="Certificate regeneration is only available for self-signed certificates.",
+        )
+
+    ip_address = request.client.host if request and request.client else "unknown"
+
+    try:
+        result = ws_settings.regenerate_self_signed_cert(body.hostname)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    audit_log(client_id, "SETTINGS_UPDATE", f"regenerated self-signed cert (hostname={body.hostname or 'auto'})", ip_address)
+    restart_scheduled = ws_settings.restart_service()
+    if not restart_scheduled:
+        logger.error("Certificate regenerated but restart scheduling failed — manual restart required")
+
+    return {"success": True, "restart_scheduled": restart_scheduled, "output": result["output"]}

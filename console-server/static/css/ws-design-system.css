@@ -1853,7 +1853,8 @@ tbody tr:hover { background: var(--ws-bg-surface-alt); }
 
 /* Chart loading/empty states */
 #bandwidth-chart-loading,
-#bandwidth-chart-empty {
+#bandwidth-chart-empty,
+#settings-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1862,6 +1863,16 @@ tbody tr:hover { background: var(--ws-bg-surface-alt); }
   color: var(--ws-text-muted);
   font-size: 13px;
   gap: 10px;
+}
+
+/* Loading spinner used by .chart-loader (Bandwidth + Settings loading states) */
+.chart-loader {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--ws-border);
+  border-top-color: var(--ws-blue);
+  border-radius: 50%;
+  animation: ws-spin 0.7s linear infinite;
 }
 
 /* Bandwidth chart footer (summary stats + last-updated, below chart) */
