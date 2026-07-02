@@ -129,6 +129,11 @@ body:has(.success-wrap) {
   text-align: center;
   width: 100%;
   box-shadow: var(--wp-shadow-dark);
+  animation: wp-card-in 0.4s ease-out;
+}
+@keyframes wp-card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Shield icon ring */
@@ -200,7 +205,7 @@ body:has(.success-wrap) {
 .warning-row span {
   font-size: 13px;
   color: #E2E8F0;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.45;
 }
 

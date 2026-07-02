@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.responses import Response
 
 from app.core.config import LOG_LEVEL
 from app.core.database import init_db
@@ -66,10 +67,34 @@ from pathlib import Path
 # Resolve static path relative to this file
 # app/main.py -> app/ -> console-server/ -> static
 static_path = Path(__file__).parent.parent / "static"
-app.mount("/static", StaticFiles(directory=str(static_path), check_dir=False), name="static")
+
+class CachedStaticFiles(StaticFiles):
+    """StaticFiles with a Cache-Control header so repeat page loads (e.g. a
+    captive-portal denial page hit by repeated OS connectivity probes) skip
+    the conditional-GET round trip instead of re-validating every request.
+    # ponytail: filenames aren't content-hashed, so max-age is capped at a
+    # day rather than marked immutable; add hashed filenames if longer wanted.
+    """
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers.setdefault("Cache-Control", "public, max-age=86400")
+        return response
+
+app.mount("/static", CachedStaticFiles(directory=str(static_path), check_dir=False), name="static")
 
 # Make templates available to routers
 app.state.templates = templates
+
+@app.middleware("http")
+async def no_cache_console(request, call_next):
+    """The admin console (page + /api/console/* data) must never be cached —
+    a stale dashboard/bandwidth/user read is a correctness and security bug,
+    unlike the static assets above which are safe to cache."""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/console" or path.startswith("/api/console"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 # Include Routers
 app.include_router(auth.router)
