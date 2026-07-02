@@ -445,11 +445,12 @@ sudo certbot certificates                          # View cert details
 # Check expiry
 sudo openssl x509 -in /etc/wireshield/2fa/cert.pem -noout -dates
 
-# Regenerate (365 days)
-sudo openssl req -x509 -newkey rsa:4096 \
-  -keyout /etc/wireshield/2fa/key.pem \
-  -out /etc/wireshield/2fa/cert.pem \
-  -days 365 -nodes -subj "/CN=<your-ip>"
+# Regenerate (auto-detects hostname/IP from config.env, 365 days)
+sudo /etc/wireshield/2fa/generate-certs.sh
+
+# Or override explicitly: generate-certs.sh <days> <hostname-or-ip>
+sudo /etc/wireshield/2fa/generate-certs.sh 365 <your-ip-or-domain>
+
 sudo systemctl restart wireshield.service
 ```
 
