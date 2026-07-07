@@ -24,8 +24,10 @@ import subprocess
 from typing import Any, Dict, List, Optional
 
 from app.core import config as cfg
-from app.core.wireguard import _load_params as _load_wg_params
-from app.core.wireguard import WG_PARAMS_PATH
+# Module reference (not copied bindings) so wireguard.WG_PARAMS_PATH stays
+# the single source of truth for the params path.
+from app.core import wireguard as _wireguard
+_load_wg_params = _wireguard._load_params
 
 CONFIG_ENV_PATH = "/etc/wireshield/2fa/config.env"
 
@@ -268,7 +270,7 @@ def write_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
             restart_required = restart_required or field["restart_required"]
 
     if wg_params_updates:
-        _upsert_env_lines(WG_PARAMS_PATH, wg_params_updates)
+        _upsert_env_lines(_wireguard.WG_PARAMS_PATH, wg_params_updates)
     if config_env_updates:
         _upsert_env_lines(CONFIG_ENV_PATH, config_env_updates)
 

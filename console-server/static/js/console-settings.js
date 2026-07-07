@@ -184,11 +184,20 @@ async function saveSettingsCategory(categoryKey) {
 
             Object.entries(data.applied || {}).forEach(([key, pair]) => {
                 if (_settingsByKey[key]) _settingsByKey[key].value = pair[1];
+                const el = document.getElementById(`setting-${key}`);
+                if (el) el.value = pair[1];
             });
 
             if (data.restart_scheduled) {
-                wsToast('Settings saved — restarting service…', 'info', 0);
-                _pollHealthUntilBackUp(() => wsToast('Service restarted successfully.', 'success'));
+                const dismissRestarting = wsToast('Settings saved — restarting service…', 'info', 0);
+                _pollHealthUntilBackUp(backUp => {
+                    dismissRestarting();
+                    if (backUp) {
+                        wsToast('Service restarted successfully.', 'success');
+                    } else {
+                        wsToast('Service restart is taking longer than expected — refresh the page shortly.', 'error');
+                    }
+                });
             } else if (data.restart_required) {
                 wsToast('Settings saved, but the automatic restart could not be scheduled — restart the service manually for this change to take effect.', 'error', 0);
             } else {
@@ -233,8 +242,19 @@ async function regenerateCertificate() {
         .then(({ ok, data }) => {
             if (!ok) throw new Error((data && data.detail) || 'Failed to regenerate certificate.');
             if (data.restart_scheduled) {
-                wsToast('Certificate regenerated — restarting service…', 'info', 0);
-                _pollHealthUntilBackUp(() => wsToast('Service restarted successfully.', 'success'));
+                const dismissRestarting = wsToast('Certificate regenerated — restarting service…', 'info', 0);
+                _pollHealthUntilBackUp(backUp => {
+                    dismissRestarting();
+                    if (backUp) {
+                        wsToast('Service restarted with the new certificate.', 'success');
+                        loadSettings();
+                    } else {
+                        // Expected after a cert change: the browser refuses the
+                        // new self-signed cert until the user re-accepts it, so
+                        // the poll can never succeed from this page.
+                        wsToast('Service restarted with the new certificate, but this page can no longer reach it — reload the page and re-accept the certificate warning if your browser shows one.', 'info', 0);
+                    }
+                });
             } else {
                 wsToast('Certificate regenerated, but the automatic restart could not be scheduled — restart the service manually to load it.', 'error', 0);
             }
@@ -249,29 +269,33 @@ async function regenerateCertificate() {
         });
 }
 
-// Polls /health every ~1s for up to ~15s. A restarting service typically
-// refuses connections or fails the TLS handshake (if a cert just changed)
-// before it's back — both are network-level fetch rejections, not HTTP
-// error responses, so only a *successful* fetch means "back up".
-function _pollHealthUntilBackUp(onSuccess, onTimeout, attempt = 0) {
-    const maxAttempts = 15;
-    fetch('/health', { cache: 'no-store' })
-        .then(r => {
-            if (r.ok) {
-                if (onSuccess) onSuccess();
-            } else if (attempt < maxAttempts) {
-                setTimeout(() => _pollHealthUntilBackUp(onSuccess, onTimeout, attempt + 1), 1000);
-            } else if (onTimeout) {
-                onTimeout();
-            }
-        })
-        .catch(() => {
-            if (attempt < maxAttempts) {
-                setTimeout(() => _pollHealthUntilBackUp(onSuccess, onTimeout, attempt + 1), 1000);
-            } else if (onTimeout) {
-                onTimeout();
-            } else {
-                wsToast('Service restart is taking longer than expected — refresh the page shortly.', 'error');
-            }
-        });
+// Polls /health until the service is back up, then calls onDone(true) —
+// or onDone(false) after ~20s of failures. Two subtleties:
+//   - The restart fires ~2s AFTER the save response (systemd-run
+//     --on-active=2), so polling immediately would hit the OLD process
+//     and report success for a restart that hasn't happened yet. The
+//     first poll therefore waits 4s.
+//   - A restarting service refuses connections / fails the TLS handshake
+//     (especially right after a cert regen) — network-level rejections,
+//     not HTTP errors. Only a successful fetch means "back up".
+function _pollHealthUntilBackUp(onDone) {
+    const maxAttempts = 20;
+    let attempt = 0;
+
+    function retry() {
+        attempt += 1;
+        if (attempt >= maxAttempts) {
+            onDone(false);
+            return;
+        }
+        setTimeout(poll, 1000);
+    }
+
+    function poll() {
+        fetch('/health', { cache: 'no-store' })
+            .then(r => { r.ok ? onDone(true) : retry(); })
+            .catch(retry);
+    }
+
+    setTimeout(poll, 4000);
 }
