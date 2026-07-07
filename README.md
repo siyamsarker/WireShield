@@ -194,6 +194,7 @@ Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forward
 | Admin Console          | Traffic activity                            | Logs with DNS resolution and protocol analysis                                                                                       |
 | Admin Console          | Bandwidth insights                          | Per-client daily upload/download tracking                                                                                            |
 | Admin Console          | Audit trail                                 | All security events (2FA setup, verification, failures)                                                                              |
+| Admin Console          | Settings                                    | Edit server config in the browser (client DNS/AllowedIPs defaults, session, rate limits, logging) with automatic apply/restart; regenerate self-signed certificate |
 | Operational Features   | One-command installation                    | Interactive CLI wizard                                                                                                               |
 | Operational Features   | Nine Linux distributions supported          | Ubuntu, Debian, Fedora, CentOS, Alma, Rocky, Oracle, Arch, Alpine                                                                    |
 | Operational Features   | Systemd integration                         | Hardened service configuration                                                                                                       |
@@ -345,7 +346,9 @@ Enter the `client_id` (e.g. `alice`) when prompted. Once granted, that client ca
 
 ## Configuration
 
-Edit `/etc/wireshield/2fa/config.env` and restart the service:
+The most common settings — WireGuard client defaults (DNS, Allowed IPs), session lifetime/idle/grace, rate limiting, log level, and activity-log retention — can be changed directly from the admin console's **Settings** page (`https://<server-ip>/console` → Settings). Changes are validated, written to the config files, and applied automatically (live for WireGuard client defaults; via a brief automatic service restart for the rest). No SSH needed.
+
+For everything else, edit `/etc/wireshield/2fa/config.env` and restart the service:
 
 ```bash
 sudo systemctl restart wireshield.service
@@ -506,6 +509,7 @@ The console provides:
 - **User Management** with status, IPs, access control — plus in-browser **Create User**, per-row **Download Config** (`.conf` file) and **Revoke** buttons
 - **Audit Trail** for security events
 - **Traffic Activity** with connection logs, DNS resolution, and filtering
+- **Settings** for editing server configuration in the browser: WireGuard client defaults (DNS, Allowed IPs — applied to newly created clients immediately), session lifetime/idle/grace, rate limiting, log level, and activity-log retention (applied via an automatic service restart). Also shows SSL/TLS status and can regenerate the self-signed certificate with a new hostname/IP. Every change is validated server-side and recorded in the audit trail with before→after values. Sensitive values (secret key, ports, SSL mode switching) are deliberately not editable here.
 
 ---
 
@@ -1748,6 +1752,7 @@ WireShield/
     │   │   ├── config.py         # Environment configuration
     │   │   ├── database.py       # SQLite schema and migrations
     │   │   ├── security.py       # Auth, rate limiting, ipset
+    │   │   ├── settings.py       # Settings page schema + validated config.env/params writes + service restart
     │   │   ├── wireguard.py      # Client lifecycle: create/revoke/download .conf (Python mirror of ws_add_client)
     │   │   ├── tasks.py          # Background monitors + interface watchdog
     │   │   └── sniffer.py        # DNS + TLS SNI packet capture (auto-recovering)
@@ -1765,7 +1770,7 @@ WireShield/
     │   └── access_denied.html
     └── static/
         ├── css/                  # Stylesheets: ws-design-system.css, ws-auth.css, ws-portal.css
-        ├── js/                   # Dashboard, tables, charts
+        ├── js/                   # Dashboard, tables, charts, settings
         └── fonts/                # Inter font family
 ```
 
