@@ -12,19 +12,96 @@
         @font-face { font-family: 'Inter'; font-weight: 600; src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2'); font-display: swap; }
         @font-face { font-family: 'Inter'; font-weight: 700; src: url('/static/fonts/Inter-Bold.woff2') format('woff2'); font-display: swap; }
         @font-face { font-family: 'Inter'; font-weight: 800; src: url('/static/fonts/Inter-Black.woff2') format('woff2'); font-display: swap; }
-        @font-face { font-family: 'Inter'; font-weight: 900; src: url('/static/fonts/Inter-Black.woff2') format('woff2'); font-display: swap; }
         :root {
-            --bg: #f1f5f9;
-            --card: #ffffff;
-            --card-alt: #f8fafc;
-            --text: #1e293b;
-            --muted: #64748b;
-            --accent: #3b82f6;
-            --accent-hover: #2563eb;
-            --success: #16a34a;
-            --error: #dc2626;
-            --border: #e2e8f0;
-            --radius: 12px;
+            /* ── Cloudflare-aligned design tokens ─────────────────────────
+               Single source of truth for every page (console, auth, portal).
+               Loaded first via base.html so ws-design-system.css / ws-auth.css /
+               ws-portal.css all resolve the same values. */
+            --ws-bg-body:        #F2F3F5;
+            --ws-bg-surface:     #FFFFFF;
+            --ws-bg-surface-alt: #F7F8FA;
+            --ws-bg-surface-hov: #F0F1F3;
+
+            --ws-nav-bg:         #FFFFFF;
+            --ws-nav-border:     #E5E7EB;
+            --ws-nav-text:       #374151;
+            --ws-nav-text-hov:   #111827;
+            --ws-nav-text-act:   #0055DC;
+            --ws-nav-item-hov:   #F3F4F6;
+            --ws-nav-item-act:   #EEF2FF;
+            --ws-nav-pill-act:   #0055DC;
+
+            --ws-border:         #E5E7EB;
+            --ws-border-hov:     #D1D5DB;
+            --ws-border-focus:   #0055DC;
+
+            --ws-text-primary:   #111827;
+            --ws-text-secondary: #374151;
+            --ws-text-muted:     #6B7280;
+            --ws-text-light:     #9CA3AF;
+
+            --ws-blue:           #0055DC;
+            --ws-blue-hov:       #0041AC;
+            --ws-blue-light:     #EEF2FF;
+            --ws-blue-border:    #BFCFFF;
+
+            --ws-orange:         #F6821F;
+
+            --ws-green:          #14804A;
+            --ws-green-bg:       #EBFAF2;
+            --ws-green-border:   #A8DFC1;
+
+            --ws-amber:          #9A5B13;
+            --ws-amber-bg:       #FEF5E7;
+            --ws-amber-border:   #F5CC86;
+
+            --ws-red:            #C42B1C;
+            --ws-red-bg:         #FEF0EE;
+            --ws-red-border:     #F5B3AD;
+
+            --ws-gray-text:      #6B7280;
+            --ws-gray-bg:        #F3F4F6;
+            --ws-gray-border:    #D1D5DB;
+
+            --ws-violet:         #6D28D9;
+            --ws-violet-bg:      #EDE9FE;
+            --ws-violet-border:  #C4B5FD;
+
+            --ws-shadow-xs:    0 1px 2px 0 rgba(0,0,0,0.04);
+            --ws-shadow-sm:    0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.04);
+            --ws-shadow-md:    0 4px 8px -2px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.04);
+            --ws-shadow-lg:    0 12px 24px -4px rgba(0,0,0,0.10), 0 4px 8px -2px rgba(0,0,0,0.04);
+            --ws-shadow-modal: 0 0 0 1px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.16);
+
+            --ws-nav-width:    260px;
+            --ws-header-h:     60px;
+
+            --ws-radius-sm:    4px;
+            --ws-radius-md:    6px;
+            --ws-radius-lg:    8px;
+            --ws-radius-xl:    12px;
+            --ws-radius-2xl:   16px;
+            --ws-radius-pill:  9999px;
+
+            /* ── Legacy names kept as aliases (still read directly by some
+               inline JS styles / older CSS) so nothing breaks when this
+               block moved here from console.css / ws-design-system.css. */
+            --bg: var(--ws-bg-body);
+            --card: var(--ws-bg-surface);
+            --card-alt: var(--ws-bg-surface-alt);
+            --text: var(--ws-text-primary);
+            --muted: var(--ws-text-muted);
+            --accent: var(--ws-blue);
+            --accent-hover: var(--ws-blue-hov);
+            --success: var(--ws-green);
+            --success-light: var(--ws-green-bg);
+            --warning: var(--ws-amber);
+            --error: var(--ws-red);
+            --border: var(--ws-border);
+            --radius: var(--ws-radius-xl);
+            --text-main: var(--ws-text-primary);
+            --text-muted: var(--ws-text-muted);
+            --bg-body: var(--ws-bg-body);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {

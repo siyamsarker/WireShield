@@ -5,87 +5,8 @@
    ════════════════════════════════════════════════════════════════════ */
 
 /* ── 1. Design Tokens ─────────────────────────────────────────────── */
-:root {
-  /* App surfaces */
-  --ws-bg-body:        #F2F3F5;
-  --ws-bg-surface:     #FFFFFF;
-  --ws-bg-surface-alt: #F7F8FA;
-  --ws-bg-surface-hov: #F0F1F3;
-
-  /* Sidebar (light — Cloudflare dashboard pattern) */
-  --ws-nav-bg:         #FFFFFF;
-  --ws-nav-border:     #E5E7EB;
-  --ws-nav-text:       #374151;
-  --ws-nav-text-hov:   #111827;
-  --ws-nav-text-act:   #0055DC;
-  --ws-nav-item-hov:   #F3F4F6;
-  --ws-nav-item-act:   #EEF2FF;
-  --ws-nav-pill-act:   #0055DC;
-
-  /* Borders */
-  --ws-border:         #E5E7EB;
-  --ws-border-hov:     #D1D5DB;
-  --ws-border-focus:   #0055DC;
-
-  /* Typography */
-  --ws-text-primary:   #111827;
-  --ws-text-secondary: #374151;
-  --ws-text-muted:     #6B7280;
-  --ws-text-light:     #9CA3AF;
-
-  /* Primary blue (Cloudflare) */
-  --ws-blue:           #0055DC;
-  --ws-blue-hov:       #0041AC;
-  --ws-blue-light:     #EEF2FF;
-  --ws-blue-border:    #BFCFFF;
-
-  /* Accent orange (sparingly) */
-  --ws-orange:         #F6821F;
-
-  /* Status: success */
-  --ws-green:          #14804A;
-  --ws-green-bg:       #EBFAF2;
-  --ws-green-border:   #A8DFC1;
-
-  /* Status: warning */
-  --ws-amber:          #9A5B13;
-  --ws-amber-bg:       #FEF5E7;
-  --ws-amber-border:   #F5CC86;
-
-  /* Status: error */
-  --ws-red:            #C42B1C;
-  --ws-red-bg:         #FEF0EE;
-  --ws-red-border:     #F5B3AD;
-
-  /* Status: neutral */
-  --ws-gray-text:      #6B7280;
-  --ws-gray-bg:        #F3F4F6;
-  --ws-gray-border:    #D1D5DB;
-
-  /* Status: violet (restricted agents) */
-  --ws-violet:         #6D28D9;
-  --ws-violet-bg:      #EDE9FE;
-  --ws-violet-border:  #C4B5FD;
-
-  /* Shadows */
-  --ws-shadow-xs:    0 1px 2px 0 rgba(0,0,0,0.04);
-  --ws-shadow-sm:    0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.04);
-  --ws-shadow-md:    0 4px 8px -2px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.04);
-  --ws-shadow-lg:    0 12px 24px -4px rgba(0,0,0,0.10), 0 4px 8px -2px rgba(0,0,0,0.04);
-  --ws-shadow-modal: 0 0 0 1px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.16);
-
-  /* Layout */
-  --ws-nav-width:    260px;
-  --ws-header-h:     60px;
-
-  /* Radii */
-  --ws-radius-sm:    4px;
-  --ws-radius-md:    6px;
-  --ws-radius-lg:    8px;
-  --ws-radius-xl:    12px;
-  --ws-radius-2xl:   16px;
-  --ws-radius-pill:  9999px;
-}
+/* Moved to base.html's inline <style> so every page (console, auth,
+   portal) shares one --ws-* source of truth instead of three copies. */
 
 /* ── 2. Reset & Base ──────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
@@ -449,7 +370,7 @@ header {
   padding: 0 14px;
   font-size: 13px;
   font-weight: 600;
-  border-radius: var(--ws-radius-lg);
+  border-radius: var(--ws-radius-md);
   border: 1px solid transparent;
   cursor: pointer;
   white-space: nowrap;
@@ -780,12 +701,14 @@ header {
   outline-offset: 2px;
 }
 
-/* ws-switch (agent access restriction toggle in modals) */
+/* ws-switch (agent access restriction toggle in modals) — same visual
+   language as .toggle-switch above: blue-when-on, matching Cloudflare's
+   toggle. Kept as a separate class since JS targets it by name. */
 .ws-switch {
   position: relative;
   display: inline-block;
-  width: 36px;
-  height: 20px;
+  width: 34px;
+  height: 18px;
   flex-shrink: 0;
 }
 .ws-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
@@ -800,8 +723,8 @@ header {
 .ws-switch-slider::before {
   content: '';
   position: absolute;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   left: 3px;
   top: 3px;
   background: #fff;
@@ -809,7 +732,7 @@ header {
   transition: transform 0.2s;
   box-shadow: var(--ws-shadow-xs);
 }
-.ws-switch input:checked + .ws-switch-slider { background: var(--ws-green); }
+.ws-switch input:checked + .ws-switch-slider { background: var(--ws-blue); }
 .ws-switch input:checked + .ws-switch-slider::before { transform: translateX(16px); }
 
 /* Auto-refresh toggle wrapper */
@@ -855,10 +778,14 @@ header {
 }
 
 /* ── 13. Time Range / Chart Type Tabs ─────────────────────────────── */
+/* Cloudflare-style pill tabs: gray track, white active pill + shadow. */
 .time-range-selector {
   display: inline-flex;
   align-items: center;
-  border-bottom: 1px solid var(--ws-border);
+  gap: 2px;
+  background: var(--ws-gray-bg);
+  border-radius: var(--ws-radius-lg);
+  padding: 3px;
 }
 
 .time-range-btn,
@@ -868,11 +795,10 @@ header {
   font-weight: 500;
   color: var(--ws-text-muted);
   background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-md);
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
+  transition: color 0.12s, background 0.12s, box-shadow 0.12s;
   white-space: nowrap;
 }
 .time-range-btn:hover,
@@ -883,7 +809,9 @@ header {
 .chart-type-btn.active {
   color: var(--ws-text-primary);
   font-weight: 600;
-  border-bottom-color: var(--ws-blue);
+  background: var(--ws-bg-surface);
+  border-color: var(--ws-border);
+  box-shadow: var(--ws-shadow-xs);
 }
 
 /* Custom date range */
@@ -1125,6 +1053,12 @@ td {
   vertical-align: middle;
 }
 
+/* Cloudflare renders missing values as a muted em-dash, not a blank cell. */
+td:empty::after {
+  content: '—';
+  color: var(--ws-text-light);
+}
+
 tbody tr:last-child td { border-bottom: none; }
 
 tbody tr:hover { background: var(--ws-bg-surface-alt); }
@@ -1269,6 +1203,16 @@ tbody tr:hover { background: var(--ws-bg-surface-alt); }
   padding: 20px 24px;
   overflow-y: auto;
   flex: 1;
+}
+
+/* Cloudflare lays short paired fields (e.g. Type + Name) on one row. */
+.ws-form-row {
+  display: flex;
+  gap: 12px;
+}
+.ws-form-row > .form-group {
+  flex: 1;
+  min-width: 0;
 }
 
 .ws-modal-footer {

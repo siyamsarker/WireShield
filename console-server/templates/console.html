@@ -303,21 +303,23 @@
                 </div>
                 <div class="ws-modal-body">
                     <div id="create-user-form-fields">
-                        <div class="form-group">
-                            <label class="form-label">Client Name</label>
-                            <input type="text" id="new-user-name" class="filter-input form-input-full"
-                                placeholder="e.g. alice" maxlength="15" autocomplete="off">
-                            <span class="form-hint">
-                                Letters, digits, underscore, and dash only. 1–15 characters.
-                            </span>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">
-                                Session Expiry
-                                <span class="form-label-optional">(optional)</span>
-                            </label>
-                            <input type="number" id="new-user-expiry" class="filter-input form-input-full"
-                                placeholder="Days until client expires — leave empty for no expiration" min="1" max="36500">
+                        <div class="ws-form-row">
+                            <div class="form-group">
+                                <label class="form-label">Client Name</label>
+                                <input type="text" id="new-user-name" class="filter-input form-input-full"
+                                    placeholder="e.g. alice" maxlength="15" autocomplete="off">
+                                <span class="form-hint">
+                                    Letters, digits, underscore, and dash only. 1–15 characters.
+                                </span>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    Session Expiry
+                                    <span class="form-label-optional">(optional)</span>
+                                </label>
+                                <input type="number" id="new-user-expiry" class="filter-input form-input-full"
+                                    placeholder="Days — leave empty for none" min="1" max="36500">
+                            </div>
                         </div>
                     </div>
                     <div id="create-user-error" class="form-alert-error" style="display:none;" role="alert"></div>
