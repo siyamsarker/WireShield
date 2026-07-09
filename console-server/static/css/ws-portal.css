@@ -16,6 +16,10 @@
   --wp-red-bg:       rgba(239,68,68,0.08);
   --wp-red-bd:       rgba(239,68,68,0.18);
 
+  --wp-amber:        #B45309;
+  --wp-amber-bg:     #FFFBEB;
+  --wp-amber-bd:     #FDE68A;
+
   --wp-sky-bg:       #F0F9FF;
   --wp-sky-bd:       #BAE6FD;
   --wp-sky-text:     #0369A1;
@@ -70,9 +74,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* access_denied.html — dark */
+/* access_denied.html — light */
 body:has(.page-wrap) {
-  background: var(--wp-body-dark);
+  background: var(--wp-body-light);
   padding: 24px;
 }
 
@@ -83,7 +87,7 @@ body:has(.success-wrap) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   access_denied.html — Dark security denial page
+   access_denied.html — Light "one more step" gate page
    ═══════════════════════════════════════════════════════════════════ */
 
 .page-wrap {
@@ -116,19 +120,19 @@ body:has(.success-wrap) {
 .brand-name {
   font-size: 20px;
   font-weight: 700;
-  color: var(--wp-text-light);
+  color: var(--wp-text);
   letter-spacing: -0.015em;
 }
 
 /* Main deny card */
 .deny-card {
-  background: var(--wp-card-dark);
-  border: 1px solid var(--wp-card-dark-bd);
+  background: var(--wp-surface);
+  border: 1px solid var(--wp-border);
   border-radius: var(--wp-radius-2xl);
   padding: 40px 36px;
   text-align: center;
   width: 100%;
-  box-shadow: var(--wp-shadow-dark);
+  box-shadow: var(--wp-shadow-sm);
   animation: wp-card-in 0.4s ease-out;
 }
 @keyframes wp-card-in {
@@ -136,61 +140,84 @@ body:has(.success-wrap) {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Shield icon ring */
+/* Shield icon — idle "searching for a tunnel" pulse instead of a static
+   alarm glyph. Two rings breathe outward at staggered offsets. */
 .shield-wrap {
+  position: relative;
   width: 68px;
   height: 68px;
-  background: var(--wp-red-bg);
-  border: 1px solid var(--wp-red-bd);
+  margin: 0 auto 22px;
+}
+.shield-wrap .pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--wp-radius-xl);
+  border: 1.5px solid var(--wp-blue);
+  opacity: 0;
+  animation: shield-pulse 2.4s ease-out infinite;
+}
+.shield-wrap .pulse-ring.delay {
+  animation-delay: 1.2s;
+}
+@keyframes shield-pulse {
+  0%   { transform: scale(0.85); opacity: 0.55; }
+  70%  { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.shield-wrap .shield-badge {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--wp-sky-bg);
+  border: 1px solid var(--wp-sky-bd);
   border-radius: var(--wp-radius-xl);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 22px;
 }
 .shield-wrap svg {
-  width: 32px;
-  height: 32px;
-  color: #F87171;
+  width: 30px;
+  height: 30px;
+  color: var(--wp-blue);
 }
 
-/* Error badge */
+/* Eyebrow badge */
 .error-tag {
   display: inline-block;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #F87171;
-  background: var(--wp-red-bg);
-  border: 1px solid var(--wp-red-bd);
+  color: var(--wp-amber);
+  background: var(--wp-amber-bg);
+  border: 1px solid var(--wp-amber-bd);
   border-radius: var(--wp-radius-pill);
   padding: 4px 12px;
   margin-bottom: 14px;
 }
 
 .deny-title {
-  font-size: 28px;
-  font-weight: 800;
-  color: #F1F5F9;
-  letter-spacing: -0.025em;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--wp-text);
+  letter-spacing: -0.02em;
   margin-bottom: 10px;
 }
 
 .deny-sub {
   font-size: 14px;
-  color: var(--wp-text-subtle);
+  color: var(--wp-text-dim);
   line-height: 1.6;
-  margin-bottom: 26px;
+  margin-bottom: 24px;
 }
 
-/* Warning row */
+/* Info row — states the fact plainly, calm amber not alarm red */
 .warning-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(239,68,68,0.06);
-  border: 1px solid rgba(239,68,68,0.14);
+  background: var(--wp-amber-bg);
+  border: 1px solid var(--wp-amber-bd);
   border-radius: var(--wp-radius-lg);
   padding: 13px 16px;
   margin-bottom: 22px;
@@ -199,31 +226,165 @@ body:has(.success-wrap) {
 .warning-row svg {
   width: 17px;
   height: 17px;
-  color: #FB923C;
+  color: var(--wp-amber);
   flex-shrink: 0;
 }
 .warning-row span {
   font-size: 13px;
-  color: #E2E8F0;
+  color: var(--wp-text-sec);
   font-weight: 600;
   line-height: 1.45;
 }
 
 .info-text {
   font-size: 13px;
-  color: #64748B;
+  color: var(--wp-text-dim);
   line-height: 1.65;
+  margin-bottom: 28px;
 }
 .info-text strong {
-  color: var(--wp-text-subtle);
+  color: var(--wp-text);
   font-weight: 600;
+}
+
+/* Retry module — the signature element. A real countdown ring that
+   reloads the page on a timer (re-checking the gate), plus a manual
+   override. Not decorative: reconnecting the VPN and sitting on this
+   tab is the common case, so the page should notice on its own. */
+.retry-module {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--wp-body-light);
+  border: 1px solid var(--wp-border);
+  border-radius: var(--wp-radius-lg);
+  padding: 14px 18px;
+  margin-bottom: 28px;
+}
+.retry-ring-wrap {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+.retry-ring-wrap svg { width: 40px; height: 40px; transform: rotate(-90deg); }
+.retry-ring-track { fill: none; stroke: var(--wp-border); stroke-width: 3; }
+.retry-ring-progress {
+  fill: none;
+  stroke: var(--wp-blue);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 107; /* 2 * PI * r(17) */
+  animation: retry-countdown 15s linear infinite;
+}
+@keyframes retry-countdown {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 107; }
+}
+.retry-ring-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wp-text-sec);
+}
+.retry-copy {
+  text-align: left;
+  flex: 1;
+}
+.retry-label {
+  font-size: 12.5px;
+  color: var(--wp-text-dim);
+  margin-bottom: 6px;
+}
+.retry-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--wp-blue);
+  border: none;
+  border-radius: var(--wp-radius-lg);
+  cursor: pointer;
+  transition: background 0.12s, transform 0.08s;
+}
+.retry-btn:hover { background: #0041AC; }
+.retry-btn:active { transform: scale(0.97); }
+.retry-btn:focus-visible { outline: 2px solid var(--wp-blue); outline-offset: 2px; }
+
+/* Troubleshooting checklist — tappable, not a fake progress gate.
+   Just something concrete to work through while the ring counts down. */
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  text-align: left;
+}
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  background: transparent;
+  border: none;
+  border-radius: var(--wp-radius-lg);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  font-family: inherit;
+}
+.check-item:hover { background: var(--wp-body-light); }
+.check-item:focus-visible { outline: 2px solid var(--wp-blue); outline-offset: 2px; }
+.check-item-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--wp-border);
+  border-radius: 6px;
+  color: transparent;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.check-item-box svg { width: 12px; height: 12px; }
+.check-item[aria-checked="true"] .check-item-box {
+  background: var(--wp-green);
+  border-color: var(--wp-green);
+  color: #fff;
+  animation: check-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes check-pop {
+  0%   { transform: scale(0.7); }
+  60%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.check-item-label {
+  font-size: 13px;
+  color: var(--wp-text-sec);
+  font-weight: 500;
+}
+.check-item[aria-checked="true"] .check-item-label {
+  color: var(--wp-text-dim);
+  text-decoration: line-through;
+  text-decoration-color: var(--wp-border);
 }
 
 .footer-note {
   margin-top: 28px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--wp-text-ghost);
+  color: var(--wp-text-subtle);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
