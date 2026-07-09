@@ -25,10 +25,17 @@ def get_success_html(request: Request):
         name="success.html",
     )
 
-def get_access_denied_html(request: Request):
+def get_access_denied_html(request: Request, reason: str = "vpn"):
+    """403 gate page. `reason` picks the message + behaviour:
+      - "vpn":     device isn't a recognized VPN peer (connectivity).
+      - "portal":  no active session — sign in through the portal first.
+      - "console": authenticated peer, but not cleared for the admin console.
+    Unknown values fall back to "vpn" in the template.
+    """
     return templates.TemplateResponse(
         request=request,
         name="access_denied.html",
+        context={"reason": reason},
         status_code=403,
     )
 

@@ -71,17 +71,21 @@ router = APIRouter()
 # ----------------------------------------------------------------------------
 # Console Access (restricted to admins)
 # ----------------------------------------------------------------------------
-async def _check_console_access(request: Request) -> str:
-    """Dependency: require console_access=1 AND a non-expired 2FA session.
+def _console_access_state(request: Request):
+    """Resolve why (or whether) this request may reach the console.
 
-    Previously only the `console_access` flag was checked, which meant a
-    user whose 2FA session had expired (but whose IP was still cached in
-    the users table) could still reach /console. Now the join with sessions
-    enforces that the user has a live authenticated session.
+    Returns (client_id, state) where state is one of:
+      - "ok":      live 2FA session AND console_access=1 → allow.
+      - "console": live session but console_access=0 → authenticated peer
+                   that simply isn't cleared for the admin console.
+      - "portal":  no live session for this IP (not a peer, or the session
+                   expired) → they must sign in through the portal first.
+
+    The distinction drives the 403 page's message: "portal" and "console"
+    denials are NOT connectivity problems, so they must not show the
+    "connect to the VPN and wait" copy.
     """
     ip_address = request.client.host if request and request.client else "unknown"
-    client_id = None
-
     try:
         conn = get_db()
         c = conn.cursor()
@@ -99,14 +103,25 @@ async def _check_console_access(request: Request) -> str:
         )
         row = c.fetchone()
         conn.close()
-
         if row:
-            client_id = row[0]
-            has_access = row[1]
-            if has_access:
-                return client_id
+            return row[0], ("ok" if row[1] else "console")
     except Exception:
         pass
+    return None, "portal"
+
+
+async def _check_console_access(request: Request) -> str:
+    """Dependency: require console_access=1 AND a non-expired 2FA session.
+
+    Previously only the `console_access` flag was checked, which meant a
+    user whose 2FA session had expired (but whose IP was still cached in
+    the users table) could still reach /console. Now the join with sessions
+    enforces that the user has a live authenticated session.
+    """
+    ip_address = request.client.host if request and request.client else "unknown"
+    client_id, state = _console_access_state(request)
+    if state == "ok":
+        return client_id
 
     audit_log(client_id, "CONSOLE_ACCESS", "denied", ip_address)
     raise HTTPException(status_code=403, detail="Console access denied")
@@ -175,14 +190,17 @@ async def _check_csrf_token(request: Request) -> None:
 @router.get("/console", response_class=HTMLResponse, tags=["console"])
 async def console_dashboard(request: Request):
     """Admin console dashboard."""
-    try:
-        client_id = await _check_console_access(request)
-    except HTTPException:
-        return get_access_denied_html(request)
-
     client_host = request.client.host if request and request.client else "unknown"
-    audit_log(client_id, "CONSOLE_ACCESS", "granted", client_host)
+    client_id, state = _console_access_state(request)
 
+    if state != "ok":
+        audit_log(client_id, "CONSOLE_ACCESS", "denied", client_host)
+        # "console" = authenticated but not an admin; "portal" = not signed
+        # in. Neither is a VPN-connectivity problem, so pass the reason
+        # through so the page shows the right message (not "connect the VPN").
+        return get_access_denied_html(request, reason=state)
+
+    audit_log(client_id, "CONSOLE_ACCESS", "granted", client_host)
     return get_console_html(request, csrf_token=_csrf_token_for_ip(client_host))
 
 @router.get("/api/console/users")

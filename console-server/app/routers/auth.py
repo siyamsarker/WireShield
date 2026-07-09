@@ -96,10 +96,10 @@ async def success_page(request: Request, client_id: Optional[str] = None):
         conn.close()
         if not row:
             audit_log(client_id, "SUCCESS_PAGE", "denied_no_session", ip_address)
-            return get_access_denied_html(request)
+            return get_access_denied_html(request, reason="portal")
     except Exception as e:
         logger.debug(f"Success page auth check failed: {e}")
-        return get_access_denied_html(request)
+        return get_access_denied_html(request, reason="portal")
 
     audit_log(row[0], "SUCCESS_PAGE", "viewed", ip_address)
     return get_success_html(request)

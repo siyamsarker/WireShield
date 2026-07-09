@@ -85,6 +85,10 @@ class TestCaptivePortalRoot:
         assert "ws-portal.css" in body
         assert "Access Denied" in body
         assert "deny-card" in body
+        # Root portal denial = connectivity → the VPN "listening" variant.
+        assert 'data-reason="vpn"' in body
+        assert "Connect to WireShield VPN" in body
+        assert "Listening for your connection" in body
 
     def test_user_without_totp_renders_setup_page(self, client, tmp_db):
         """User exists with matching IP but no TOTP configured → 2FA setup."""
@@ -143,6 +147,11 @@ class TestSuccessPage:
         body = resp.text
         assert "ws-portal.css" in body
         assert "Access Denied" in body
+        # No session (not a connectivity problem) → the "sign in" variant,
+        # never the VPN "listening" copy.
+        assert 'data-reason="portal"' in body
+        assert "sign in through the WireShield portal" in body
+        assert "Listening for your connection" not in body
 
     def test_user_with_live_session_renders_success(self, client, tmp_db):
         conn = database.get_db()
@@ -157,6 +166,62 @@ class TestSuccessPage:
         assert "success-card" in body
         assert "Access Granted" in body
         assert "close-note" in body
+
+
+# ---------------------------------------------------------------------------
+# GET /console — the admin gate, one denial page but three distinct reasons
+# ---------------------------------------------------------------------------
+
+class TestConsoleGate:
+    def test_no_session_renders_portal_reason(self, client, tmp_db):
+        """Peer with no live session → 'portal' (sign in), not the VPN copy."""
+        conn = database.get_db()
+        _insert_user(conn, "admin_user", totp_secret="JBSWY3DPEHPK3PXP",
+                     enabled=1, console_access=1)  # authorized, but no session
+        conn.close()
+
+        resp = client.get("/console")
+        assert resp.status_code == 403
+        body = resp.text
+        assert "Access Denied" in body and "deny-card" in body
+        assert 'data-reason="portal"' in body
+        assert "Go to the portal" in body
+        # Must NOT show the VPN-connectivity copy or the listening poll.
+        assert "Connect to WireShield VPN" not in body
+        assert "Listening for your connection" not in body
+
+    def test_authenticated_but_unauthorized_renders_console_reason(self, client, tmp_db):
+        """Live session but console_access=0 → 'console' (ask an admin)."""
+        conn = database.get_db()
+        _insert_user(conn, "plain_user", totp_secret="JBSWY3DPEHPK3PXP",
+                     enabled=1, console_access=0)
+        _insert_session(conn, "plain_user", expired=False)
+        conn.close()
+
+        resp = client.get("/console")
+        assert resp.status_code == 403
+        body = resp.text
+        assert "Access Denied" in body and "deny-card" in body
+        assert 'data-reason="console"' in body
+        assert "isn't cleared for the admin console" in body
+        assert "administrator" in body
+        # Authorization problem — never the "connect the VPN and wait" copy.
+        assert "Connect to WireShield VPN" not in body
+        assert "Listening for your connection" not in body
+
+    def test_authorized_with_session_renders_console(self, client, tmp_db):
+        """Live session + console_access=1 → the real console (200)."""
+        conn = database.get_db()
+        _insert_user(conn, "real_admin", totp_secret="JBSWY3DPEHPK3PXP",
+                     enabled=1, console_access=1)
+        _insert_session(conn, "real_admin", expired=False)
+        conn.close()
+
+        resp = client.get("/console")
+        assert resp.status_code == 200
+        body = resp.text
+        assert "ws-design-system.css" in body
+        assert "Access Denied" not in body
 
 
 # ---------------------------------------------------------------------------

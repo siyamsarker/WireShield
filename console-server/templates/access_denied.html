@@ -8,6 +8,7 @@
 {% endblock %}
 
 {% block content %}
+{% set reason = reason if reason in ['vpn', 'portal', 'console'] else 'vpn' %}
 <div class="page-wrap">
     <div class="brand-row">
         <div class="brand-logo">
@@ -16,23 +17,33 @@
         <span class="brand-name">WireShield</span>
     </div>
 
-    <div class="deny-card" id="gateCard">
+    <div class="deny-card" id="gateCard" data-reason="{{ reason }}">
         <div class="shield-wrap">
+            {% if reason == 'vpn' %}
             <div class="pulse-ring" aria-hidden="true"></div>
             <div class="pulse-ring d2" aria-hidden="true"></div>
             <div class="pulse-ring d3" aria-hidden="true"></div>
+            {% endif %}
             <div class="shield-badge">
                 <svg class="icon-shield" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 3 L18 5.5 V11 C18 15.5 15.5 19 12 20.5 C8.5 19 6 15.5 6 11 V5.5 Z"/>
                 </svg>
+                {% if reason == 'vpn' %}
                 <svg class="icon-check" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true">
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
+                {% endif %}
             </div>
         </div>
 
         <h1 class="deny-title" id="gateTitle">Access Denied</h1>
+        {% if reason == 'console' %}
+        <p class="deny-sub" id="gateSub">You're connected to WireShield, but this account isn't cleared for the admin console.</p>
+        {% elif reason == 'portal' %}
+        <p class="deny-sub" id="gateSub">You'll need to sign in through the WireShield portal before this page will open.</p>
+        {% else %}
         <p class="deny-sub" id="gateSub">This page only opens for devices connected through the WireShield VPN.</p>
+        {% endif %}
 
         <div class="warning-row">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -40,9 +51,16 @@
                 <line x1="12" y1="8" x2="12" y2="12"/>
                 <line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
+            {% if reason == 'console' %}
+            <span>Ask a WireShield administrator to turn on admin console access for your account.</span>
+            {% elif reason == 'portal' %}
+            <span>Your session isn't active. Open the WireShield portal to verify, then head back here.</span>
+            {% else %}
             <span>Connect to WireShield VPN, then come back to this tab — we'll let you through automatically.</span>
+            {% endif %}
         </div>
 
+        {% if reason == 'vpn' %}
         <div class="gate-status">
             <span class="gate-status-dot" aria-hidden="true"></span>
             <div class="gate-status-copy">
@@ -51,6 +69,11 @@
             </div>
             <button type="button" class="gate-status-btn" id="checkNowBtn">Check now</button>
         </div>
+        {% elif reason == 'portal' %}
+        <a class="gate-action-btn" href="/">Go to the portal</a>
+        {% else %}
+        <a class="gate-link" href="/">Return to portal</a>
+        {% endif %}
     </div>
 
     <div class="footer-note">WireShield Security</div>
@@ -58,6 +81,7 @@
 {% endblock %}
 
 {% block scripts %}
+{% if reason == 'vpn' %}
 <script>
 (function () {
     "use strict";
@@ -137,4 +161,5 @@
     scheduleNext();
 })();
 </script>
+{% endif %}
 {% endblock %}
