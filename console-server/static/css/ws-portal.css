@@ -181,21 +181,6 @@ body:has(.success-wrap) {
   color: var(--wp-blue);
 }
 
-/* Eyebrow badge */
-.error-tag {
-  display: inline-block;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--wp-amber);
-  background: var(--wp-amber-bg);
-  border: 1px solid var(--wp-amber-bd);
-  border-radius: var(--wp-radius-pill);
-  padding: 4px 12px;
-  margin-bottom: 14px;
-}
-
 .deny-title {
   font-size: 26px;
   font-weight: 700;
@@ -234,17 +219,6 @@ body:has(.success-wrap) {
   color: var(--wp-text-sec);
   font-weight: 600;
   line-height: 1.45;
-}
-
-.info-text {
-  font-size: 13px;
-  color: var(--wp-text-dim);
-  line-height: 1.65;
-  margin-bottom: 28px;
-}
-.info-text strong {
-  color: var(--wp-text);
-  font-weight: 600;
 }
 
 /* Retry module — the signature element. A real countdown ring that
@@ -319,66 +293,6 @@ body:has(.success-wrap) {
 .retry-btn:hover { background: #0041AC; }
 .retry-btn:active { transform: scale(0.97); }
 .retry-btn:focus-visible { outline: 2px solid var(--wp-blue); outline-offset: 2px; }
-
-/* Troubleshooting checklist — tappable, not a fake progress gate.
-   Just something concrete to work through while the ring counts down. */
-.checklist {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-  text-align: left;
-}
-.check-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  background: transparent;
-  border: none;
-  border-radius: var(--wp-radius-lg);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.12s;
-  font-family: inherit;
-}
-.check-item:hover { background: var(--wp-body-light); }
-.check-item:focus-visible { outline: 2px solid var(--wp-blue); outline-offset: 2px; }
-.check-item-box {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 19px;
-  height: 19px;
-  flex-shrink: 0;
-  border: 1.5px solid var(--wp-border);
-  border-radius: 6px;
-  color: transparent;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.check-item-box svg { width: 12px; height: 12px; }
-.check-item[aria-checked="true"] .check-item-box {
-  background: var(--wp-green);
-  border-color: var(--wp-green);
-  color: #fff;
-  animation: check-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-@keyframes check-pop {
-  0%   { transform: scale(0.7); }
-  60%  { transform: scale(1.12); }
-  100% { transform: scale(1); }
-}
-.check-item-label {
-  font-size: 13px;
-  color: var(--wp-text-sec);
-  font-weight: 500;
-}
-.check-item[aria-checked="true"] .check-item-label {
-  color: var(--wp-text-dim);
-  text-decoration: line-through;
-  text-decoration-color: var(--wp-border);
-}
 
 .footer-note {
   margin-top: 28px;

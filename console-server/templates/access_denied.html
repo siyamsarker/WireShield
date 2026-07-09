@@ -27,7 +27,6 @@
             </div>
         </div>
 
-        <div class="error-tag">One more step</div>
         <h1 class="deny-title">Access Denied</h1>
         <p class="deny-sub">This page only opens for devices connected through the WireShield VPN.</p>
 
@@ -37,13 +36,8 @@
                 <line x1="12" y1="8" x2="12" y2="12"/>
                 <line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
-            <span>We didn't see an active WireShield VPN connection from this device.</span>
+            <span>Connect to WireShield VPN, then come back to this tab — we'll let you through automatically.</span>
         </div>
-
-        <p class="info-text">
-            Connect to <strong>WireShield VPN</strong> and this page will let you through —
-            no need to type anything, just come back to this tab.
-        </p>
 
         <div class="retry-module">
             <div class="retry-ring-wrap">
@@ -57,27 +51,6 @@
                 <div class="retry-label" id="retryLabel">Checking again in <span id="retrySeconds">15</span>s</div>
                 <button type="button" class="retry-btn" id="retryNowBtn">Check now</button>
             </div>
-        </div>
-
-        <div class="checklist" role="group" aria-label="Troubleshooting steps">
-            <button type="button" class="check-item" role="checkbox" aria-checked="false" data-key="app">
-                <span class="check-item-box" aria-hidden="true">
-                    <svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span class="check-item-label">Open the WireShield app</span>
-            </button>
-            <button type="button" class="check-item" role="checkbox" aria-checked="false" data-key="toggle">
-                <span class="check-item-box" aria-hidden="true">
-                    <svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span class="check-item-label">Turn the VPN connection on</span>
-            </button>
-            <button type="button" class="check-item" role="checkbox" aria-checked="false" data-key="wait">
-                <span class="check-item-box" aria-hidden="true">
-                    <svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span class="check-item-label">Come back to this tab — we'll pick it up automatically</span>
-            </button>
         </div>
     </div>
 
@@ -111,38 +84,6 @@
 
     document.getElementById("retryNowBtn").addEventListener("click", function () {
         window.location.reload();
-    });
-
-    // Troubleshooting checklist — purely a scratchpad for the visitor,
-    // not a gate. State survives the auto-reload via localStorage.
-    var STORAGE_KEY = "ws-access-denied-checklist";
-    var items = Array.prototype.slice.call(document.querySelectorAll(".check-item"));
-    var saved = {};
-    try {
-        saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}");
-    } catch (e) {
-        saved = {};
-    }
-
-    function persist() {
-        var state = {};
-        items.forEach(function (item) {
-            state[item.dataset.key] = item.getAttribute("aria-checked") === "true";
-        });
-        try {
-            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        } catch (e) { /* localStorage unavailable — checklist just won't persist */ }
-    }
-
-    items.forEach(function (item) {
-        if (saved[item.dataset.key]) {
-            item.setAttribute("aria-checked", "true");
-        }
-        item.addEventListener("click", function () {
-            var checked = item.getAttribute("aria-checked") === "true";
-            item.setAttribute("aria-checked", checked ? "false" : "true");
-            persist();
-        });
     });
 })();
 </script>
