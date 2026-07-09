@@ -16,19 +16,23 @@
         <span class="brand-name">WireShield</span>
     </div>
 
-    <div class="deny-card">
+    <div class="deny-card" id="gateCard">
         <div class="shield-wrap">
             <div class="pulse-ring" aria-hidden="true"></div>
-            <div class="pulse-ring delay" aria-hidden="true"></div>
+            <div class="pulse-ring d2" aria-hidden="true"></div>
+            <div class="pulse-ring d3" aria-hidden="true"></div>
             <div class="shield-badge">
-                <svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true">
+                <svg class="icon-shield" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 3 L18 5.5 V11 C18 15.5 15.5 19 12 20.5 C8.5 19 6 15.5 6 11 V5.5 Z"/>
+                </svg>
+                <svg class="icon-check" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12"/>
                 </svg>
             </div>
         </div>
 
-        <h1 class="deny-title">Access Denied</h1>
-        <p class="deny-sub">This page only opens for devices connected through the WireShield VPN.</p>
+        <h1 class="deny-title" id="gateTitle">Access Denied</h1>
+        <p class="deny-sub" id="gateSub">This page only opens for devices connected through the WireShield VPN.</p>
 
         <div class="warning-row">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -39,18 +43,13 @@
             <span>Connect to WireShield VPN, then come back to this tab — we'll let you through automatically.</span>
         </div>
 
-        <div class="retry-module">
-            <div class="retry-ring-wrap">
-                <svg viewBox="0 0 40 40" aria-hidden="true">
-                    <circle class="retry-ring-track" cx="20" cy="20" r="17"/>
-                    <circle class="retry-ring-progress" id="retryRingProgress" cx="20" cy="20" r="17"/>
-                </svg>
-                <div class="retry-ring-num" id="retryCountdown" aria-hidden="true">15</div>
+        <div class="gate-status">
+            <span class="gate-status-dot" aria-hidden="true"></span>
+            <div class="gate-status-copy">
+                <div class="gate-status-line" id="gateStatusLine" role="status" aria-live="polite">Listening for your connection</div>
+                <div class="gate-status-hint">This tab checks itself every few seconds.</div>
             </div>
-            <div class="retry-copy">
-                <div class="retry-label" id="retryLabel">Checking again in <span id="retrySeconds">15</span>s</div>
-                <button type="button" class="retry-btn" id="retryNowBtn">Check now</button>
-            </div>
+            <button type="button" class="gate-status-btn" id="checkNowBtn">Check now</button>
         </div>
     </div>
 
@@ -63,28 +62,79 @@
 (function () {
     "use strict";
 
-    // Auto-retry countdown: the CSS ring animation runs on its own 15s
-    // loop; this just keeps the number in sync and reloads at zero so
-    // reconnecting the VPN and waiting on this tab actually works.
-    var DURATION = 15;
-    var remaining = DURATION;
-    var countdownEl = document.getElementById("retryCountdown");
-    var secondsEl = document.getElementById("retrySeconds");
+    // The gate silently re-probes itself instead of blindly reloading:
+    // GET this same URL returns 403 while the device isn't a recognized
+    // WireShield peer, and 200 the moment its tunnel is up. So we poll,
+    // and when the status flips we morph the card to "connected" and
+    // navigate through — no reload flash, reacts the instant the VPN
+    // comes online.
+    var POLL_MS = 3000;
+    var card = document.getElementById("gateCard");
+    var statusLine = document.getElementById("gateStatusLine");
+    var title = document.getElementById("gateTitle");
+    var sub = document.getElementById("gateSub");
+    var btn = document.getElementById("checkNowBtn");
 
-    var tick = window.setInterval(function () {
-        remaining -= 1;
-        if (remaining <= 0) {
-            window.clearInterval(tick);
-            window.location.reload();
-            return;
-        }
-        countdownEl.textContent = String(remaining);
-        secondsEl.textContent = String(remaining);
-    }, 1000);
+    var settled = false;   // stop polling once we've detected the tunnel
+    var inFlight = false;  // don't stack overlapping probes
+    var timer = null;
 
-    document.getElementById("retryNowBtn").addEventListener("click", function () {
-        window.location.reload();
+    function onConnected() {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        card.classList.add("is-connected");
+        title.textContent = "You're connected";
+        sub.textContent = "Tunnel detected — taking you through…";
+        statusLine.textContent = "Connected";
+        // Let the morph play, then load the real page for this device.
+        window.setTimeout(function () { window.location.reload(); }, 950);
+    }
+
+    function probe() {
+        if (settled || inFlight) return;
+        inFlight = true;
+        fetch(window.location.href, { method: "GET", cache: "no-store" })
+            .then(function (res) {
+                // 403 = still not a recognized VPN peer; anything else
+                // (200 / redirect to the 2FA page) = the tunnel is up.
+                if (res.status !== 403) {
+                    onConnected();
+                }
+            })
+            .catch(function () {
+                // Network blip while the VPN reconnects — keep listening.
+            })
+            .finally(function () {
+                inFlight = false;
+            });
+    }
+
+    function scheduleNext() {
+        if (settled) return;
+        timer = window.setTimeout(function () {
+            probe();
+            scheduleNext();
+        }, POLL_MS);
+    }
+
+    btn.addEventListener("click", function () {
+        if (settled) return;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spin" aria-hidden="true"></span>Checking';
+        // Probe immediately; restore the button shortly if still denied.
+        window.setTimeout(function () {
+            probe();
+            window.setTimeout(function () {
+                if (!settled) {
+                    btn.disabled = false;
+                    btn.textContent = "Check now";
+                }
+            }, 900);
+        }, 150);
     });
+
+    scheduleNext();
 })();
 </script>
 {% endblock %}

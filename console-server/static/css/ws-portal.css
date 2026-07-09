@@ -20,6 +20,11 @@
   --wp-amber-bg:     #FFFBEB;
   --wp-amber-bd:     #FDE68A;
 
+  --wp-indigo:       #4F46E5;
+  --wp-indigo-hov:   #4338CA;
+  --wp-indigo-bg:    #EEF0FE;
+  --wp-indigo-bd:    #C7CCFB;
+
   --wp-sky-bg:       #F0F9FF;
   --wp-sky-bd:       #BAE6FD;
   --wp-sky-text:     #0369A1;
@@ -74,9 +79,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* access_denied.html — light */
+/* access_denied.html — light, with a soft indigo aura for depth */
 body:has(.page-wrap) {
-  background: var(--wp-body-light);
+  background:
+    radial-gradient(62% 48% at 50% -4%, rgba(79, 70, 229, 0.07), transparent 72%),
+    var(--wp-body-light);
   padding: 24px;
 }
 
@@ -87,7 +94,10 @@ body:has(.success-wrap) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   access_denied.html — Light "one more step" gate page
+   access_denied.html — the VPN gate. Not a rejection: the page is
+   waiting for the device's tunnel to come up, listens for it in the
+   background (sonar beacon), and lets the visitor through the moment
+   the handshake lands (.is-connected morph). Brand indigo throughout.
    ═══════════════════════════════════════════════════════════════════ */
 
 .page-wrap {
@@ -95,7 +105,7 @@ body:has(.success-wrap) {
   flex-direction: column;
   align-items: center;
   width: 100%;
-  max-width: 460px;
+  max-width: 440px;
 }
 
 /* Brand row */
@@ -103,7 +113,7 @@ body:has(.success-wrap) {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 32px;
+  margin-bottom: 30px;
 }
 .brand-logo {
   width: 34px;
@@ -124,68 +134,89 @@ body:has(.success-wrap) {
   letter-spacing: -0.015em;
 }
 
-/* Main deny card */
+/* Main card */
 .deny-card {
+  position: relative;
   background: var(--wp-surface);
   border: 1px solid var(--wp-border);
   border-radius: var(--wp-radius-2xl);
-  padding: 40px 36px;
+  padding: 44px 40px 36px;
   text-align: center;
   width: 100%;
-  box-shadow: var(--wp-shadow-sm);
-  animation: wp-card-in 0.4s ease-out;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04),
+    0 14px 36px -10px rgba(16, 24, 40, 0.12);
+  animation: wp-card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes wp-card-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Shield icon — idle "searching for a tunnel" pulse instead of a static
-   alarm glyph. Two rings breathe outward at staggered offsets. */
+/* ── Sonar beacon: the signature. Concentric rings breathe outward
+   from a shield, reading as "listening for your connection". Rings
+   pause and the badge flips green when the tunnel is detected. ── */
 .shield-wrap {
   position: relative;
-  width: 68px;
-  height: 68px;
-  margin: 0 auto 22px;
-}
-.shield-wrap .pulse-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--wp-radius-xl);
-  border: 1.5px solid var(--wp-blue);
-  opacity: 0;
-  animation: shield-pulse 2.4s ease-out infinite;
-}
-.shield-wrap .pulse-ring.delay {
-  animation-delay: 1.2s;
-}
-@keyframes shield-pulse {
-  0%   { transform: scale(0.85); opacity: 0.55; }
-  70%  { transform: scale(1.35); opacity: 0; }
-  100% { transform: scale(1.35); opacity: 0; }
-}
-.shield-wrap .shield-badge {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: var(--wp-sky-bg);
-  border: 1px solid var(--wp-sky-bd);
-  border-radius: var(--wp-radius-xl);
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 24px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.shield-wrap svg {
+.shield-wrap .pulse-ring {
+  position: absolute;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 1.5px solid var(--wp-indigo);
+  opacity: 0;
+  animation: shield-pulse 2.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.shield-wrap .pulse-ring.d2 { animation-delay: 0.9s; }
+.shield-wrap .pulse-ring.d3 { animation-delay: 1.8s; }
+@keyframes shield-pulse {
+  0%   { transform: scale(0.7); opacity: 0.5; }
+  80%  { transform: scale(1.55); opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+.shield-badge {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  background: var(--wp-indigo-bg);
+  border: 1px solid var(--wp-indigo-bd);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.5s ease, border-color 0.5s ease;
+}
+.shield-badge .icon-shield,
+.shield-badge .icon-check {
+  position: absolute;
   width: 30px;
   height: 30px;
-  color: var(--wp-blue);
+  transition: opacity 0.4s ease, transform 0.4s ease;
 }
+.shield-badge .icon-shield { color: var(--wp-indigo); opacity: 1; }
+.shield-badge .icon-check  { color: var(--wp-green); opacity: 0; transform: scale(0.6); }
+
+/* Connected state — handshake landed */
+.deny-card.is-connected .pulse-ring { animation: none; opacity: 0; }
+.deny-card.is-connected .shield-badge {
+  background: var(--wp-green-bg);
+  border-color: var(--wp-green-bd);
+}
+.deny-card.is-connected .icon-shield { opacity: 0; transform: scale(0.6); }
+.deny-card.is-connected .icon-check  { opacity: 1; transform: scale(1); }
 
 .deny-title {
-  font-size: 26px;
+  font-size: 27px;
   font-weight: 700;
   color: var(--wp-text);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   margin-bottom: 10px;
 }
 
@@ -193,24 +224,28 @@ body:has(.success-wrap) {
   font-size: 14px;
   color: var(--wp-text-dim);
   line-height: 1.6;
-  margin-bottom: 24px;
+  margin-bottom: 26px;
 }
 
-/* Info row — states the fact plainly, calm amber not alarm red */
+/* Instruction row — what to do, calm amber (not alarm red) */
 .warning-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   background: var(--wp-amber-bg);
   border: 1px solid var(--wp-amber-bd);
   border-radius: var(--wp-radius-lg);
   padding: 13px 16px;
-  margin-bottom: 22px;
+  margin-bottom: 16px;
+  max-height: 140px;
+  overflow: hidden;
   text-align: left;
+  transition: opacity 0.3s ease, max-height 0.4s ease, margin 0.4s ease,
+              padding 0.4s ease, border-width 0.4s ease;
 }
 .warning-row svg {
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
   color: var(--wp-amber);
   flex-shrink: 0;
 }
@@ -220,87 +255,121 @@ body:has(.success-wrap) {
   font-weight: 600;
   line-height: 1.45;
 }
+.deny-card.is-connected .warning-row {
+  opacity: 0;
+  max-height: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 0;
+  pointer-events: none;
+}
 
-/* Retry module — the signature element. A real countdown ring that
-   reloads the page on a timer (re-checking the gate), plus a manual
-   override. Not decorative: reconnecting the VPN and sitting on this
-   tab is the common case, so the page should notice on its own. */
-.retry-module {
+/* ── Live status: the page probing for the tunnel in the background,
+   with a manual "Check now" override. Honest — it really is polling. ── */
+.gate-status {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
+  gap: 13px;
   background: var(--wp-body-light);
   border: 1px solid var(--wp-border);
   border-radius: var(--wp-radius-lg);
-  padding: 14px 18px;
-  margin-bottom: 28px;
+  padding: 13px 16px;
+  text-align: left;
+  transition: background 0.4s ease, border-color 0.4s ease;
 }
-.retry-ring-wrap {
+.gate-status-dot {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 10px;
+  height: 10px;
   flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--wp-indigo);
 }
-.retry-ring-wrap svg { width: 40px; height: 40px; transform: rotate(-90deg); }
-.retry-ring-track { fill: none; stroke: var(--wp-border); stroke-width: 3; }
-.retry-ring-progress {
-  fill: none;
-  stroke: var(--wp-blue);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-dasharray: 107; /* 2 * PI * r(17) */
-  animation: retry-countdown 15s linear infinite;
-}
-@keyframes retry-countdown {
-  from { stroke-dashoffset: 0; }
-  to   { stroke-dashoffset: 107; }
-}
-.retry-ring-num {
+.gate-status-dot::after {
+  content: '';
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--wp-indigo);
+  opacity: 0;
+  animation: dot-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes dot-ping {
+  0%   { transform: scale(0.6); opacity: 0.6; }
+  80%, 100% { transform: scale(1.5); opacity: 0; }
+}
+.gate-status-copy { flex: 1; min-width: 0; }
+.gate-status-line {
+  font-size: 13px;
   font-weight: 600;
   color: var(--wp-text-sec);
+  margin-bottom: 3px;
 }
-.retry-copy {
-  text-align: left;
-  flex: 1;
-}
-.retry-label {
-  font-size: 12.5px;
+.gate-status-hint {
+  font-size: 12px;
   color: var(--wp-text-dim);
-  margin-bottom: 6px;
 }
-.retry-btn {
+.gate-status-btn {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  height: 30px;
-  padding: 0 12px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
   font-size: 12.5px;
   font-weight: 600;
   color: #fff;
-  background: var(--wp-blue);
+  background: var(--wp-indigo);
   border: none;
   border-radius: var(--wp-radius-lg);
   cursor: pointer;
   transition: background 0.12s, transform 0.08s;
 }
-.retry-btn:hover { background: #0041AC; }
-.retry-btn:active { transform: scale(0.97); }
-.retry-btn:focus-visible { outline: 2px solid var(--wp-blue); outline-offset: 2px; }
+.gate-status-btn:hover { background: var(--wp-indigo-hov); }
+.gate-status-btn:active { transform: scale(0.97); }
+.gate-status-btn:focus-visible { outline: 2px solid var(--wp-indigo); outline-offset: 2px; }
+.gate-status-btn:disabled { opacity: 0.6; cursor: default; }
+.gate-status-btn .spin {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: wp-spin 0.7s linear infinite;
+}
+@keyframes wp-spin { to { transform: rotate(360deg); } }
+
+/* Connected state — status turns green and calm */
+.deny-card.is-connected .gate-status {
+  background: var(--wp-green-bg);
+  border-color: var(--wp-green-bd);
+}
+.deny-card.is-connected .gate-status-dot { background: var(--wp-green); }
+.deny-card.is-connected .gate-status-dot::after { animation: none; opacity: 0; }
+.deny-card.is-connected .gate-status-line { color: var(--wp-green); }
+.deny-card.is-connected .gate-status-hint { display: none; }
+.deny-card.is-connected .gate-status-btn { display: none; }
 
 .footer-note {
-  margin-top: 28px;
+  margin-top: 26px;
   font-size: 11px;
   font-weight: 600;
   color: var(--wp-text-subtle);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* Reduced motion — kill the ambient loops, keep the state transitions */
+@media (prefers-reduced-motion: reduce) {
+  .shield-wrap .pulse-ring,
+  .gate-status-dot::after { animation: none; opacity: 0; }
+}
+
+@media (max-width: 480px) {
+  .deny-card { padding: 34px 22px 28px; }
+  .gate-status { flex-wrap: wrap; }
+  .gate-status-btn { width: 100%; justify-content: center; margin-top: 4px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
