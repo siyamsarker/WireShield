@@ -1045,6 +1045,35 @@ th {
   border-bottom: 1px solid var(--ws-border);
 }
 
+/* Sortable column headers: click/keyboard to sort, chevron shows direction.
+   A faint idle chevron on hover signals the column can be sorted. */
+th.th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+th.th-sortable:hover { color: var(--ws-text-secondary); }
+th.th-sortable:focus-visible {
+  outline: 2px solid var(--ws-border-focus);
+  outline-offset: -2px;
+}
+th.th-sortable::after {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-bottom: 4px solid currentColor;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+th.th-sortable:hover::after { opacity: 0.35; }
+th.th-sortable.sort-asc::after,
+th.th-sortable.sort-desc::after { opacity: 1; color: var(--ws-blue); }
+th.th-sortable.sort-desc::after { transform: rotate(180deg); }
+
 td {
   padding: 11px 16px;
   font-size: 13px;

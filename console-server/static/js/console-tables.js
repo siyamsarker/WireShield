@@ -36,6 +36,10 @@ async function loadUsers(page = 1) {
         const searchTerm = searchEl ? searchEl.value.trim() : '';
         const params = new URLSearchParams({ page: String(page), limit: '20' });
         if (searchTerm) params.append('search', searchTerm);
+        if (typeof usersSort !== 'undefined' && usersSort) {
+            params.append('sort', usersSort.key);
+            params.append('dir', usersSort.dir);
+        }
 
         const response = await fetch(`/api/console/users?${params.toString()}`, { cache: 'no-store' });
         const data = await response.json();
@@ -349,6 +353,10 @@ async function loadAuditLogs(page = 1) {
         if (statusFilter && statusFilter !== 'all') params.append('status_filter', statusFilter);
         if (dateFrom) params.append('start_date', dateFrom);
         if (dateTo) params.append('end_date', dateTo);
+        if (typeof auditSort !== 'undefined' && auditSort) {
+            params.append('sort', auditSort.key);
+            params.append('dir', auditSort.dir);
+        }
 
         const response = await fetch(`/api/console/audit-logs?${params.toString()}`, { cache: 'no-store' });
         const data = await response.json();
@@ -389,6 +397,10 @@ async function loadActivityLogs(page = 1) {
         if (directionFilter && directionFilter !== 'all') params.append('direction_filter', directionFilter);
         if (dateFrom) params.append('start_date', dateFrom);
         if (dateTo) params.append('end_date', dateTo);
+        if (typeof activitySort !== 'undefined' && activitySort) {
+            params.append('sort', activitySort.key);
+            params.append('dir', activitySort.dir);
+        }
 
         const response = await fetch(`/api/console/activity-logs?${params.toString()}`, { cache: 'no-store' });
         const data = await response.json();

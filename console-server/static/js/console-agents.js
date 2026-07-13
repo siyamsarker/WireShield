@@ -8,6 +8,33 @@
 
 (function () {
     let _agentsCache = [];
+    let _agentsSort = null;  // {key, dir} or null (default: server order)
+
+    // Client-side sort — the full agent list is already in memory, so no
+    // re-fetch. Called by wireTableSorting() in console-app.js via window.
+    function setAgentsSort(key, dir) {
+        _agentsSort = { key, dir };
+        renderAgents();
+    }
+
+    // Compare two agents on a sortable column. Numeric columns (traffic) and
+    // dates (last_seen) compare on their raw values; the rest compare as
+    // case-insensitive strings. Missing values sort last.
+    function _agentCompare(a, b, key) {
+        const NUM = { traffic: x => (x.rx_bytes || 0) + (x.tx_bytes || 0) };
+        if (key === 'last_seen') {
+            const ta = a.last_seen ? Date.parse(a.last_seen) : -Infinity;
+            const tb = b.last_seen ? Date.parse(b.last_seen) : -Infinity;
+            return (ta || -Infinity) - (tb || -Infinity);
+        }
+        if (NUM[key]) return NUM[key](a) - NUM[key](b);
+        const sa = (a[key] == null ? '' : String(a[key])).toLowerCase();
+        const sb = (b[key] == null ? '' : String(b[key])).toLowerCase();
+        if (sa === sb) return 0;
+        if (sa === '') return 1;
+        if (sb === '') return -1;
+        return sa < sb ? -1 : 1;
+    }
 
     function _formatRelative(iso) {
         if (!iso) return 'never';
@@ -136,6 +163,12 @@
             tr.appendChild(td);
             tbody.appendChild(tr);
             return;
+        }
+
+        if (_agentsSort) {
+            const { key, dir } = _agentsSort;
+            const factor = dir === 'asc' ? 1 : -1;
+            agents = agents.slice().sort((a, b) => _agentCompare(a, b, key) * factor);
         }
 
         for (const a of agents) tbody.appendChild(_buildRow(a));
@@ -864,6 +897,7 @@
     // template, so they must live on `window`.
     window.loadAgents             = loadAgents;
     window.renderAgents           = renderAgents;
+    window.setAgentsSort          = setAgentsSort;
     window.openCreateAgentModal   = openCreateAgentModal;
     window.closeCreateAgentModal  = closeCreateAgentModal;
     window.submitCreateAgent      = submitCreateAgent;

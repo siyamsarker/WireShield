@@ -6,7 +6,7 @@ import os
 import subprocess
 import time
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, Query
 from datetime import datetime, timedelta, timezone
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
@@ -203,11 +203,56 @@ async def console_dashboard(request: Request):
     audit_log(client_id, "CONSOLE_ACCESS", "granted", client_host)
     return get_console_html(request, csrf_token=_csrf_token_for_ip(client_host))
 
+# ----------------------------------------------------------------------------
+# Sorting: column names cannot be bound with `?` placeholders, so a sort key
+# from the client MUST NOT reach the SQL string directly. Each list endpoint
+# maps an allowed key to a hardcoded, safe column expression; anything not in
+# the whitelist falls back to the endpoint's default order.
+# ----------------------------------------------------------------------------
+
+USERS_SORT_COLUMNS = {
+    "client_id": "u.client_id",
+    "ipv4": "u.wg_ipv4",
+    "console_access": "u.console_access",
+    "created": "u.created_at",
+}
+AUDIT_SORT_COLUMNS = {
+    "timestamp": "timestamp",
+    "client": "client_id",
+    "action": "action",
+    "status": "status",
+    "ip": "ip_address",
+}
+ACTIVITY_SORT_COLUMNS = {
+    "timestamp": "a.timestamp",
+    "client": "a.client_id",
+    "direction": "a.direction",
+}
+
+
+def _order_by_clause(sort, direction, whitelist, default, tiebreak):
+    """Build a safe ``ORDER BY`` clause.
+
+    ``sort`` is looked up (case-insensitively) in ``whitelist`` (key -> column
+    literal). If it isn't a known key, ``default`` is returned unchanged — the
+    raw value never touches the SQL. ``direction`` is coerced to ASC/DESC.
+    ``tiebreak`` (a hardcoded id column) is appended so equal values keep a
+    stable order across pages.
+    """
+    column = whitelist.get((sort or "").strip().lower())
+    if not column:
+        return default
+    dir_sql = "ASC" if (direction or "").strip().lower() == "asc" else "DESC"
+    return f"ORDER BY {column} {dir_sql}, {tiebreak}"
+
+
 @router.get("/api/console/users")
 async def get_users(
-    page: int = 1, 
-    limit: int = 20, 
-    search: Optional[str] = None, 
+    page: int = 1,
+    limit: int = 20,
+    search: Optional[str] = None,
+    sort: Optional[str] = None,
+    direction: Optional[str] = Query(None, alias="dir"),
     client_id: str = Depends(_check_console_access)
 ):
     try:
@@ -229,7 +274,9 @@ async def get_users(
             query += " WHERE u.client_id LIKE ?"
             params.append(f"%{search}%")
             
-        query += " ORDER BY u.id DESC LIMIT ? OFFSET ?"
+        order = _order_by_clause(sort, direction, USERS_SORT_COLUMNS,
+                                 "ORDER BY u.id DESC", "u.id DESC")
+        query += f" {order} LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         
         c.execute(query, tuple(params))
@@ -285,6 +332,8 @@ async def get_audit_logs(
     end_date: Optional[str] = None,
     client_filter: Optional[str] = None,
     status_filter: Optional[str] = None,
+    sort: Optional[str] = None,
+    direction: Optional[str] = Query(None, alias="dir"),
     client_id: str = Depends(_check_console_access)
 ):
     try:
@@ -322,7 +371,9 @@ async def get_audit_logs(
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
             
-        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        order = _order_by_clause(sort, direction, AUDIT_SORT_COLUMNS,
+                                 "ORDER BY id DESC", "id DESC")
+        query += f" {order} LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         
         c.execute(query, tuple(params))
@@ -359,6 +410,8 @@ async def get_activity_logs(
     client_filter: Optional[str] = None,
     domain_filter: Optional[str] = None,
     direction_filter: Optional[str] = None,
+    sort: Optional[str] = None,
+    direction: Optional[str] = Query(None, alias="dir"),
     client_id: str = Depends(_check_console_access)
 ):
     """Fetch pre-ingested WireGuard/iptables logs from SQLite."""
@@ -413,7 +466,9 @@ async def get_activity_logs(
         total = c.fetchone()[0]
 
         limit = max(1, min(limit, 200))
-        query += " ORDER BY a.timestamp DESC LIMIT ? OFFSET ?"
+        order = _order_by_clause(sort, direction, ACTIVITY_SORT_COLUMNS,
+                                 "ORDER BY a.timestamp DESC", "a.timestamp DESC")
+        query += f" {order} LIMIT ? OFFSET ?"
         offset = (page - 1) * limit
         params_with_paging = params + [limit, offset]
         c.execute(query, tuple(params_with_paging))

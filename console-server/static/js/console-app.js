@@ -73,6 +73,13 @@ let auditPages = 1;
 let activityPage = 1;
 let activityPages = 1;
 
+// Active column sort per server-paginated table: {key, dir} or null (server
+// default order). Read by the load* functions in console-tables.js, which
+// forward them as ?sort=&dir= query params.
+let usersSort = null;
+let auditSort = null;
+let activitySort = null;
+
 // ── Navigation ──────────────────────────────────────────────────────────────
 
 function getSectionFromHash() {
@@ -279,6 +286,67 @@ function renderPagination(containerId, page, pages, onPrev, onNext) {
     `;
 }
 
+// Wire click-to-sort on a table's <thead>. Each <th data-sort-key="x">
+// becomes clickable/keyboard-focusable: first click sorts ascending, clicking
+// the same header flips direction, a different header starts ascending on it.
+// Paints .sort-asc/.sort-desc + aria-sort on the active header and calls
+// onSortChange(key, dir) — the caller decides how to apply it (re-fetch for
+// server-paginated tables, in-memory sort for client-side ones).
+function attachSort(theadEl, onSortChange) {
+    if (!theadEl || theadEl.dataset.sortWired) return;
+    theadEl.dataset.sortWired = '1';
+    const headers = Array.from(theadEl.querySelectorAll('th[data-sort-key]'));
+    let curKey = null;
+    let curDir = 'asc';
+    headers.forEach(th => {
+        th.classList.add('th-sortable');
+        th.setAttribute('role', 'button');
+        th.setAttribute('tabindex', '0');
+        const activate = () => {
+            const key = th.dataset.sortKey;
+            if (curKey === key) {
+                curDir = curDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                curKey = key;
+                curDir = 'asc';
+            }
+            headers.forEach(h => {
+                h.classList.remove('sort-asc', 'sort-desc');
+                h.removeAttribute('aria-sort');
+            });
+            th.classList.add(curDir === 'asc' ? 'sort-asc' : 'sort-desc');
+            th.setAttribute('aria-sort', curDir === 'asc' ? 'ascending' : 'descending');
+            onSortChange(key, curDir);
+        };
+        th.addEventListener('click', activate);
+        th.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+        });
+    });
+}
+
+// Attach sorting to every console table. Server-paginated tables reset to
+// page 1 and re-fetch with the new order; agents sort client-side (its full
+// list is already in memory). Safe to call once at startup — theads exist
+// even while their section is hidden.
+function wireTableSorting() {
+    attachSort(document.getElementById('users-thead'), (key, dir) => {
+        usersSort = { key, dir };
+        loadUsers(1);
+    });
+    attachSort(document.getElementById('audit-thead'), (key, dir) => {
+        auditSort = { key, dir };
+        loadAuditLogs(1);
+    });
+    attachSort(document.getElementById('activity-thead'), (key, dir) => {
+        activitySort = { key, dir };
+        loadActivityLogs(1);
+    });
+    attachSort(document.getElementById('agents-thead'), (key, dir) => {
+        if (typeof window.setAgentsSort === 'function') window.setAgentsSort(key, dir);
+    });
+}
+
 function getActiveSection() {
     const activeSection = document.querySelector('[id$="-section"]:not([style*="none"])');
     if (!activeSection) return getSectionFromHash();
@@ -431,6 +499,7 @@ function renderLoadingSkeleton(tbody, cols) {
 
 document.addEventListener('DOMContentLoaded', function() {
     initBandwidthEvents();
+    wireTableSorting();
     // Restore the operator's persisted auto-refresh choice (default off).
     setAutoRefreshEnabled(wsLoadPrefs().autoRefresh === true, false);
     showSection(getSectionFromHash(), null, true);

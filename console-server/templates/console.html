@@ -264,16 +264,16 @@
                     <h3 class="table-title">User Directory</h3>
                 </div>
                 <table>
-                    <thead>
+                    <thead id="users-thead">
                         <tr>
-                            <th>Client ID</th>
-                            <th>IPv4</th>
+                            <th data-sort-key="client_id">Client ID</th>
+                            <th data-sort-key="ipv4">IPv4</th>
                             <th>IPv6</th>
                             <th>Session Status</th>
                             <th>Active Duration</th>
                             <th>2FA Status</th>
-                            <th>Console Access</th>
-                            <th>Created</th>
+                            <th data-sort-key="console_access">Console Access</th>
+                            <th data-sort-key="created">Created</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -374,16 +374,16 @@
                     <div id="agents-summary" class="table-meta"></div>
                 </div>
                 <table>
-                    <thead>
+                    <thead id="agents-thead">
                         <tr>
-                            <th>Name</th>
-                            <th>Status</th>
-                            <th>WG IPv4</th>
+                            <th data-sort-key="name">Name</th>
+                            <th data-sort-key="status">Status</th>
+                            <th data-sort-key="wg_ipv4">WG IPv4</th>
                             <th>Advertised CIDRs</th>
-                            <th>Hostname</th>
-                            <th>Version</th>
-                            <th>Last seen</th>
-                            <th>RX / TX</th>
+                            <th data-sort-key="hostname">Hostname</th>
+                            <th data-sort-key="version">Version</th>
+                            <th data-sort-key="last_seen">Last seen</th>
+                            <th data-sort-key="traffic">RX / TX</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -604,13 +604,13 @@
                 </div>
                 <div class="table-body">
                     <table>
-                        <thead>
+                        <thead id="audit-thead">
                             <tr>
-                                <th>Timestamp</th>
-                                <th>Client</th>
-                                <th>Action</th>
-                                <th>Status</th>
-                                <th>IP Address</th>
+                                <th data-sort-key="timestamp">Timestamp</th>
+                                <th data-sort-key="client">Client</th>
+                                <th data-sort-key="action">Action</th>
+                                <th data-sort-key="status">Status</th>
+                                <th data-sort-key="ip">IP Address</th>
                             </tr>
                         </thead>
                         <tbody id="audit-logs">
@@ -675,11 +675,11 @@
                 </div>
                 <div class="table-body">
                     <table>
-                        <thead>
+                        <thead id="activity-thead">
                             <tr>
-                                <th>Timestamp</th>
-                                <th>Client</th>
-                                <th>Direction</th>
+                                <th data-sort-key="timestamp">Timestamp</th>
+                                <th data-sort-key="client">Client</th>
+                                <th data-sort-key="direction">Direction</th>
                                 <th>Connection Details</th>
                             </tr>
                         </thead>

@@ -456,3 +456,79 @@ def test_activity_metrics_counts_logs(tmp_db):
 
     result = asyncio.run(console.get_activity_metrics(client_id="admin"))
     assert result["total_logs"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Column sorting — whitelist-based, injection-safe
+# ---------------------------------------------------------------------------
+
+def test_order_by_clause_is_injection_safe():
+    """The sort key must never reach the SQL string unless whitelisted."""
+    wl = {"client_id": "u.client_id", "created": "u.created_at"}
+    default = "ORDER BY u.id DESC"
+    # Whitelisted key + direction.
+    assert console._order_by_clause("client_id", "asc", wl, default, "u.id DESC") == \
+        "ORDER BY u.client_id ASC, u.id DESC"
+    # Case-insensitive key, direction coerced.
+    assert console._order_by_clause("CREATED", "DESC", wl, default, "u.id DESC") == \
+        "ORDER BY u.created_at DESC, u.id DESC"
+    # Bad direction → DESC, never the raw value.
+    assert console._order_by_clause("client_id", "'; DROP", wl, default, "u.id DESC") == \
+        "ORDER BY u.client_id DESC, u.id DESC"
+    # Non-whitelisted / injection attempts fall back to the default clause.
+    for bad in ["u.client_id; DROP TABLE users", "id) --", "", None, "unknown"]:
+        assert console._order_by_clause(bad, "asc", wl, default, "u.id DESC") == default
+
+
+def _insert_sort_user(conn, client_id, created):
+    conn.execute(
+        "INSERT INTO users (client_id, wg_ipv4, console_access, created_at) "
+        "VALUES (?, ?, 1, ?)",
+        (client_id, "10.0.0.1", created),
+    )
+
+
+def test_users_sort_by_client_id_both_directions(tmp_db):
+    conn = database.get_db()
+    _insert_sort_user(conn, "charlie", "2024-01-03 00:00:00")
+    _insert_sort_user(conn, "alpha", "2024-01-01 00:00:00")
+    _insert_sort_user(conn, "bravo", "2024-01-02 00:00:00")
+    conn.commit()
+    conn.close()
+
+    asc = asyncio.run(console.get_users(sort="client_id", direction="asc", client_id="admin"))
+    desc = asyncio.run(console.get_users(sort="client_id", direction="desc", client_id="admin"))
+    assert [u["client_id"] for u in asc["users"]] == ["alpha", "bravo", "charlie"]
+    assert [u["client_id"] for u in desc["users"]] == ["charlie", "bravo", "alpha"]
+
+
+def test_users_sort_bad_key_falls_back_no_error(tmp_db):
+    """A non-whitelisted sort key must not 500 or reorder unpredictably —
+    it falls back to the default id-DESC order."""
+    conn = database.get_db()
+    _insert_sort_user(conn, "charlie", "2024-01-03 00:00:00")  # id 1
+    _insert_sort_user(conn, "alpha", "2024-01-01 00:00:00")    # id 2
+    _insert_sort_user(conn, "bravo", "2024-01-02 00:00:00")    # id 3
+    conn.commit()
+    conn.close()
+
+    result = asyncio.run(
+        console.get_users(sort="client_id); DROP TABLE users;--", direction="asc",
+                          client_id="admin")
+    )
+    # Default order is id DESC → bravo(3), alpha(2), charlie(1).
+    assert [u["client_id"] for u in result["users"]] == ["bravo", "alpha", "charlie"]
+    # Table intact (no injection executed).
+    assert result["total"] == 3
+
+
+def test_audit_logs_sort_by_client(tmp_db):
+    conn = database.get_db()
+    _insert_audit(conn, client_id="zeta")
+    _insert_audit(conn, client_id="alpha")
+    _insert_audit(conn, client_id="mike")
+    conn.commit()
+    conn.close()
+
+    asc = asyncio.run(console.get_audit_logs(sort="client", direction="asc", client_id="admin"))
+    assert [r["client_id"] for r in asc["logs"]] == ["alpha", "mike", "zeta"]
