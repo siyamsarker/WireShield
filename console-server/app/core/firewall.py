@@ -67,6 +67,8 @@ def validate_action(action: str) -> str:
 
 
 def validate_protocol(protocol: Optional[str]) -> str:
+    if protocol is not None and not isinstance(protocol, str):
+        raise ValueError("protocol must be a string")
     protocol = (protocol or "all").lower()
     if protocol not in VALID_PROTOCOLS:
         raise ValueError(f"protocol must be one of {sorted(VALID_PROTOCOLS)}")
