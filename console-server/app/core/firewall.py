@@ -190,18 +190,22 @@ def update_policy(
     if not fields:
         return False
 
-    fields["updated_at"] = "CURRENT_TIMESTAMP"
-    set_clause = ", ".join(
-        f"{k} = CURRENT_TIMESTAMP" if v == "CURRENT_TIMESTAMP" else f"{k} = ?"
-        for k, v in fields.items()
-    )
-    values = [v for v in fields.values() if v != "CURRENT_TIMESTAMP"]
+    # updated_at is a fixed SQL literal, never a bound value — keeping it
+    # out of `fields` means no user-supplied value can ever be mistaken
+    # for it (a value-based sentinel here previously let a field literally
+    # valued "CURRENT_TIMESTAMP" be treated as the raw SQL keyword instead
+    # of a bound parameter).
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values())
     values.append(policy_id)
 
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute(f"UPDATE firewall_policies SET {set_clause} WHERE id = ?", values)
+        c.execute(
+            f"UPDATE firewall_policies SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            values,
+        )
         changed = c.rowcount > 0
         conn.commit()
     finally:
