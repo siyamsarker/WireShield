@@ -41,6 +41,7 @@ WireShield deploys a WireGuard VPN with mandatory TOTP-based two-factor authenti
 - [Usage](#usage)
 - [Architecture](#architecture)
 - [Agents](#agents)
+- [Firewall](#firewall)
 - [Operations and Troubleshooting](#operations-and-troubleshooting)
 - [Uninstall](#uninstall)
 - [Development](#development)
@@ -195,6 +196,11 @@ Traffic from any authenticated VPN client destined for `10.50.0.0/24` is forward
 | Admin Console          | Bandwidth insights                          | Per-client daily upload/download tracking                                                                                            |
 | Admin Console          | Audit trail                                 | All security events (2FA setup, verification, failures)                                                                              |
 | Admin Console          | Settings                                    | Edit server config in the browser (client DNS/AllowedIPs defaults, session, rate limits, logging) with automatic apply/restart; regenerate self-signed certificate |
+| Firewall               | Per-user block (kill switch)                | Instantly cut a user's VPN access, independent of any policy or agent grant                                                          |
+| Firewall               | Reusable policies                           | Named policy (default allow/deny + rule list) assignable to any number of users                                                      |
+| Firewall               | Per-user rule overrides                     | Extra allow/deny rules layered on top of, or instead of, a user's assigned policy                                                    |
+| Firewall               | Rule granularity                            | Direction (inbound/outbound), action (allow/deny), protocol (tcp/udp/icmp/all), port range, remote CIDR, priority                    |
+| Firewall               | Live enforcement                            | Dedicated `WS_USER_BLOCK`/`WS_USER_FW` iptables chains, reconciled every 30s and instantly on every console change                    |
 | Operational Features   | One-command installation                    | Interactive CLI wizard                                                                                                               |
 | Operational Features   | Nine Linux distributions supported          | Ubuntu, Debian, Fedora, CentOS, Alma, Rocky, Oracle, Arch, Alpine                                                                    |
 | Operational Features   | Systemd integration                         | Hardened service configuration                                                                                                       |
@@ -537,7 +543,7 @@ flowchart TB
     end
     subgraph Kernel["Kernel / network layer"]
         WG["WireGuard<br/>wg0 + wg-agent0"]
-        IPT["iptables<br/>FORWARD + WS_2FA_PORTAL + WS_AGENT_ACL"]
+        IPT["iptables<br/>FORWARD + WS_2FA_PORTAL + WS_AGENT_ACL + WS_USER_FW"]
         IPSET["ipset<br/>ws_2fa_allowed_v4 / v6"]
         DB["SQLite<br/>auth.db"]
     end
@@ -562,6 +568,7 @@ flowchart TB
 | Admin Console    | Vanilla JavaScript, Chart.js     | Web UI for users, sessions, agents, bandwidth, activity logs                                  |
 | Database         | SQLite                           | Users, sessions, audit logs, activity, bandwidth, agents, heartbeats, ACL grants              |
 | Firewall         | iptables, ipset                  | Zero-trust access control + per-user agent allowlist enforcement                              |
+| Per-User Firewall| iptables (`WS_USER_BLOCK`/`WS_USER_FW`) + SQLite | Per-user block kill-switch + policy/rule engine, independent of the agent ACL          |
 | VPN              | WireGuard                        | Encrypted tunnel for both VPN clients and agent peers                                         |
 | DNS Sniffer      | scapy                            | IP-to-domain resolution for activity logs                                                     |
 | Monitors         | Background threads               | Handshake tracking, ipset sync, HTTP redirect, agent ACL sync, watchdog                       |
@@ -582,6 +589,7 @@ flowchart TB
 | Agent ACL iptables sync       | 30s          | Rebuilds the `WS_AGENT_ACL` iptables chain to match the current per-user allowlist for all restricted agents; also triggered immediately on every grant/revoke                    |
 | WireGuard peer reconcile      | 60s          | Re-adds enrolled agent peers missing from the running `wg0` and rewrites stale `AllowedIPs`, healing drift from a failed sync or an out-of-band interface restart                 |
 | Unresolved-IP resolver        | 60s          | Reverse-resolves activity-log destination IPs that are missing from the DNS cache, enriching the Traffic Activity view                                                            |
+| Per-user firewall sync        | 30s          | Rebuilds `WS_USER_BLOCK` (blocked-user kill switch, pinned above everything) and `WS_USER_FW` (policy/rule engine, positioned below the ESTABLISHED,RELATED accept and `WS_AGENT_ACL`) from current policies/overrides; also triggered immediately on every console change |
 
 ### File Layout
 
@@ -661,6 +669,23 @@ flowchart TB
 | `GET`    | `/api/console/agents/{id}/access`                     | Read `is_restricted` flag + per-user allowlist                                                               |
 | `POST`   | `/api/console/agents/{id}/access`                     | Grant a user (body: `{client_id}`) — triggers immediate iptables sync                                        |
 | `DELETE` | `/api/console/agents/{id}/access/{client_id}`         | Remove a user from the allowlist                                                                             |
+
+**Firewall:**
+
+| Method   | Path                                                   | Description                                                                                                  |
+| :------- | :------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------ |
+| `GET`    | `/api/console/firewall/policies`                       | List all firewall policies                                                                                    |
+| `POST`   | `/api/console/firewall/policies`                       | Create a policy (`name`, `description?`, `default_action`, `enabled?`)                                        |
+| `GET`    | `/api/console/firewall/policies/{id}`                  | Policy detail                                                                                                  |
+| `PATCH`  | `/api/console/firewall/policies/{id}`                  | Update policy fields                                                                                           |
+| `DELETE` | `/api/console/firewall/policies/{id}`                  | Delete a policy — assigned users fall back to unmanaged, not blocked                                          |
+| `POST`   | `/api/console/firewall/policies/{id}/rules`            | Add a rule to a policy                                                                                        |
+| `PATCH`  | `/api/console/firewall/policies/{id}/rules/{rule_id}`  | Update a policy rule                                                                                           |
+| `DELETE` | `/api/console/firewall/policies/{id}/rules/{rule_id}`  | Delete a policy rule                                                                                           |
+| `GET`    | `/api/console/users/{client}/firewall`                 | Get a user's policy assignment, block state, and override rules                                               |
+| `PUT`    | `/api/console/users/{client}/firewall`                 | Assign/clear a policy (`policy_id`) and set the block kill-switch (`blocked`)                                 |
+| `POST`   | `/api/console/users/{client}/firewall/rules`           | Add a per-user override rule                                                                                  |
+| `DELETE` | `/api/console/users/{client}/firewall/rules/{rule_id}` | Delete a per-user override rule                                                                               |
 
 **Agent Public API** (called by the agent daemon, not by humans):
 
@@ -1190,6 +1215,52 @@ Operator subcommands on the agent host:
 
 ---
 
+## Firewall
+
+Per-user policies and rules that control whether a VPN user can use the tunnel at all, and if so, what they can reach — enforced independently of the [agent access-control list](#agents) and the base 2FA gate. Three layers, in priority order:
+
+1. **Block** — a kill switch on a specific user. Overrides everything, including any agent ACL grant.
+2. **Policy** — a reusable, named rule set (`default_action` of `allow` or `deny`) assignable to any number of users.
+3. **Override rules** — extra allow/deny rules attached directly to one user, evaluated before that user's policy rules.
+
+A user with neither a policy assigned nor any override rules is unmanaged by this feature entirely — normal 2FA-gated access applies, same as before this feature existed.
+
+> [!TIP]
+> Manage everything from the admin console: **Security → Firewall** for policies and their rules, and the **Firewall** button on a row in **User Management** for one user's policy assignment, overrides, and block toggle.
+
+### Rule Fields
+
+| Field                     | Values                       | Notes                                                              |
+| :------------------------ | :---------------------------- | :------------------------------------------------------------------ |
+| `direction`               | `inbound`, `outbound`         | Which leg of the user's traffic the rule matches                    |
+| `action`                  | `allow`, `deny`               |                                                                       |
+| `protocol`                | `tcp`, `udp`, `icmp`, `all`   | Default `all`                                                       |
+| `port_start` / `port_end` | 1–65535                       | Omit for `icmp`/`all`                                               |
+| `remote_cidr`             | e.g. `10.0.0.0/8`             | Restricts the rule to a remote network; omit to match any peer      |
+| `priority`                | integer                        | Lower evaluates first within the same policy or user                |
+
+Rules are evaluated in order, first match wins. A user's **override rules** are always evaluated before their **policy's** rules. If nothing matches: a policy `default_action` of `deny` drops the user's remaining traffic (allow-list only what you add), while `allow` — or no policy assigned at all — lets unmatched traffic fall through to the normal 2FA-gated forwarding rules. Enforcement is IPv4 only, matching the existing agent ACL scope.
+
+### Blocking a User
+
+Toggling **block** on a user is a kill switch, independent of any policy: it immediately terminates their active 2FA session and ipset allowlist entry (forcing re-authentication) and installs a `DROP` for their tunnel IP in both directions. It takes priority over every other rule, including an agent CIDR grant that would otherwise `ACCEPT` their traffic first.
+
+### Enforcement
+
+Two dedicated iptables chains, reconciled every 30 seconds and instantly on every console change:
+
+- **`WS_USER_BLOCK`** — pinned at the very top of `FORWARD` (position 1), above the agent ACL. Holds only blocked users' `DROP` rules.
+- **`WS_USER_FW`** — positioned below both the agent ACL chain and the ESTABLISHED,RELATED accept (so a default-deny user's return traffic is never dropped). Holds override and policy rules for every non-blocked, managed user.
+
+Both chains self-heal on every reconcile pass: if something else re-orders `FORWARD` between passes (e.g. the independently-scheduled agent ACL sync), the next pass detects the mis-positioned jump, removes it, and re-inserts it at the correct spot.
+
+### Using the Console
+
+- **Security → Firewall** lists all policies. **New Policy** creates one (name, default action, enabled). **Manage Rules** opens a policy's rule list with an inline add-rule form.
+- On the **Users** table, the **Firewall** button per row opens a modal with a policy dropdown (assign/clear), a block toggle, and a form for that user's override rules.
+
+---
+
 <a id="troubleshooting"></a>
 
 ## Operations and Troubleshooting
@@ -1577,7 +1648,31 @@ sudo systemctl restart wireshield-agent          # on the agent host
 
 If the agent's `config.json` still doesn't match, the heartbeat loop probably never received a non-empty response — check `journalctl -u wireshield-agent -f` for the `CIDR update from server: ...` log line.
 
-### 9. Database WAL and General Lockups
+### 9. Per-User Firewall Not Taking Effect
+
+**Symptoms:** a user is blocked or policy-restricted in the console, but their traffic still gets through (or the reverse — an allowed user is unexpectedly cut off).
+
+**Diagnose:**
+
+```bash
+# Confirm the chains exist and are positioned above the agent ACL / ESTABLISHED accept
+sudo iptables -L FORWARD -n --line-numbers | grep -E 'WS_USER_BLOCK|WS_USER_FW|WS_AGENT_ACL|ESTABLISHED'
+
+# Inspect the rules actually loaded for a blocked/restricted user
+sudo iptables -L WS_USER_BLOCK -n -v
+sudo iptables -L WS_USER_FW -n -v
+
+# Confirm the client has a known tunnel IP (rules can't target a peer that has never connected)
+sudo wg show wg0 | grep -A 3 <client-public-key>
+```
+
+**Solutions:**
+
+- Enforcement is IPv4 only and requires the client to have connected at least once so its tunnel IP is known — a peer with no recorded IP is skipped.
+- Changes normally apply within one 30s reconcile pass; if `WS_USER_BLOCK`/`WS_USER_FW` are missing or mis-ordered after that, restart the service to force a clean rebuild: `sudo systemctl restart wireshield.service`.
+- Blocking a user only affects `WS_USER_BLOCK`/ipset/session state — it does not touch `WS_AGENT_ACL` grants directly, so a still-listed agent grant is expected and harmless; the block chain's higher priority is what stops the traffic.
+
+### 10. Database WAL and General Lockups
 
 If the service hangs or returns 5xx with no clear cause, capture the live state and restart cleanly:
 
@@ -1754,6 +1849,7 @@ WireShield/
     │   │   ├── security.py       # Auth, rate limiting, ipset
     │   │   ├── settings.py       # Settings page schema + validated config.env/params writes + service restart
     │   │   ├── wireguard.py      # Client lifecycle: create/revoke/download .conf (Python mirror of ws_add_client)
+    │   │   ├── firewall.py       # Per-user firewall: policy/rule CRUD, validation, user assignment
     │   │   ├── tasks.py          # Background monitors + interface watchdog
     │   │   └── sniffer.py        # DNS + TLS SNI packet capture (auto-recovering)
     │   └── routers/
