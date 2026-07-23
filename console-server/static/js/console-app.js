@@ -84,7 +84,7 @@ let activitySort = null;
 
 function getSectionFromHash() {
     const raw = (window.location.hash || '').replace('#', '').trim();
-    const allowed = ['dashboard', 'users', 'agents', 'logs', 'activity', 'bandwidth', 'settings'];
+    const allowed = ['dashboard', 'users', 'agents', 'firewall', 'logs', 'activity', 'bandwidth', 'settings'];
     return allowed.includes(raw) ? raw : 'dashboard';
 }
 
@@ -93,7 +93,7 @@ function showSection(section, event, fromHash = false) {
         event.preventDefault();
     }
 
-    const allowed = ['dashboard', 'users', 'agents', 'logs', 'activity', 'bandwidth', 'settings'];
+    const allowed = ['dashboard', 'users', 'agents', 'firewall', 'logs', 'activity', 'bandwidth', 'settings'];
     if (!allowed.includes(section)) {
         section = 'dashboard';
     }
@@ -131,6 +131,7 @@ function showSection(section, event, fromHash = false) {
         'dashboard': 'Overview',
         'users': 'Users & Access',
         'agents': 'Agents',
+        'firewall': 'Firewall',
         'logs': 'Audit Trail',
         'activity': 'Traffic Activity',
         'bandwidth': 'Bandwidth Insights',
@@ -163,6 +164,8 @@ function showSection(section, event, fromHash = false) {
         loadUsers();
     } else if (section === 'agents') {
         if (typeof loadAgents === 'function') loadAgents();
+    } else if (section === 'firewall') {
+        if (typeof loadFirewallPolicies === 'function') loadFirewallPolicies();
     } else if (section === 'logs') {
         loadUserFilter('audit-user-filter');
         loadAuditLogs();
@@ -345,6 +348,9 @@ function wireTableSorting() {
     attachSort(document.getElementById('agents-thead'), (key, dir) => {
         if (typeof window.setAgentsSort === 'function') window.setAgentsSort(key, dir);
     });
+    attachSort(document.getElementById('firewall-thead'), (key, dir) => {
+        if (typeof window.setFirewallPoliciesSort === 'function') window.setFirewallPoliciesSort(key, dir);
+    });
 }
 
 function getActiveSection() {
@@ -516,6 +522,9 @@ document.addEventListener('DOMContentLoaded', function() {
             ['edit-agent-modal',   () => typeof closeEditAgentModal   === 'function' && closeEditAgentModal()],
             ['agent-detail-modal', () => typeof closeAgentDetailModal === 'function' && closeAgentDetailModal()],
             ['agent-access-modal', () => typeof closeAgentAccessModal === 'function' && closeAgentAccessModal()],
+            ['firewall-policy-modal', () => typeof closeCreatePolicyModal === 'function' && closeCreatePolicyModal()],
+            ['firewall-manage-modal', () => typeof closeManagePolicyModal === 'function' && closeManagePolicyModal()],
+            ['user-firewall-modal', () => typeof closeUserFirewallModal === 'function' && closeUserFirewallModal()],
         ];
         for (const [id, fn] of closers) {
             const el = document.getElementById(id);

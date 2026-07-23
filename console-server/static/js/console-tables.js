@@ -85,6 +85,10 @@ async function loadUsers(page = 1) {
                         onclick="downloadUserConfig('${cidEsc}')">
                         Config
                     </button>
+                    <button class="btn btn-ghost" style="padding:4px 8px;font-size:12px;margin-left:4px;" title="Manage firewall"
+                        onclick="openUserFirewallModal('${cidEsc}')">
+                        Firewall
+                    </button>
                     <button class="btn btn-ghost" style="padding:4px 8px;font-size:12px;color:var(--error);margin-left:4px;" title="Revoke client"
                         onclick="revokeUser('${cidEsc}')">
                         Revoke

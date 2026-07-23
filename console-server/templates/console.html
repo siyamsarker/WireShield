@@ -62,6 +62,13 @@
             Agents
         </a>
 
+        <a href="#firewall" class="nav-item" data-section="firewall" onclick="showSection('firewall', event)">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
+            </svg>
+            Firewall
+        </a>
+
         <a href="#logs" class="nav-item" data-section="logs" onclick="showSection('logs', event)">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
@@ -549,6 +556,271 @@
             </div>
         </div>
 
+        <!-- Firewall Section -->
+        <div id="firewall-section" style="display: none;">
+            <div class="filter-toolbar u-section-pad">
+                <div class="filter-row">
+                    <div class="filter-group u-ml-auto">
+                        <button type="button" class="btn btn-ghost" onclick="loadFirewallPolicies()" title="Refresh">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M3 12a9 9 0 1 0 3.41-7.06L3 8"/>
+                                <path d="M3 4v4h4"/>
+                            </svg>
+                            Refresh
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="openCreatePolicyModal()">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M12 5v14M5 12h14"/>
+                            </svg>
+                            New Policy
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="data-table u-table-pad">
+                <div class="table-header">
+                    <h3 class="table-title">Firewall Policies</h3>
+                    <div id="firewall-summary" class="table-meta"></div>
+                </div>
+                <table>
+                    <thead id="firewall-thead">
+                        <tr>
+                            <th data-sort-key="name">Name</th>
+                            <th>Description</th>
+                            <th data-sort-key="default_action">Default Action</th>
+                            <th data-sort-key="rule_count">Rules</th>
+                            <th data-sort-key="assigned_user_count">Assigned Users</th>
+                            <th data-sort-key="enabled">Enabled</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="firewall-policies-table">
+                        <!-- Policies populated by loadFirewallPolicies() -->
+                    </tbody>
+                </table>
+            </div>
+            <p class="form-hint u-section-pad">
+                Per-agent LAN access (Agents → Manage Access) is evaluated separately and always takes
+                priority over these policies — a user granted access to a restricted agent reaches that
+                agent's network regardless of their firewall policy.
+            </p>
+        </div>
+
+        <!-- Create Firewall Policy Modal -->
+        <div id="firewall-policy-modal" class="ws-modal-overlay" style="display:none;">
+            <div class="ws-modal ws-modal--md" role="dialog" aria-modal="true" aria-labelledby="firewall-policy-modal-title">
+                <div class="ws-modal-header">
+                    <div>
+                        <h3 class="ws-modal-title" id="firewall-policy-modal-title">New Firewall Policy</h3>
+                        <div class="ws-modal-subtitle">A reusable rule set you can assign to any VPN user</div>
+                    </div>
+                    <button type="button" class="ws-modal-close" onclick="closeCreatePolicyModal()" aria-label="Close">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="ws-modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Policy Name</label>
+                        <input type="text" id="new-policy-name" class="filter-input form-input-full"
+                            placeholder="e.g. Contractors" maxlength="64" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Description <span class="form-label-optional">(optional)</span></label>
+                        <input type="text" id="new-policy-description" class="filter-input form-input-full"
+                            placeholder="Free text" maxlength="200" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Default Action</label>
+                        <select id="new-policy-default-action" class="filter-input form-input-full">
+                            <option value="deny" selected>Deny — block anything not explicitly allowed</option>
+                            <option value="allow">Allow — allow anything not explicitly denied</option>
+                        </select>
+                    </div>
+                    <div id="new-policy-error" class="form-alert-error" style="display:none;" role="alert"></div>
+                </div>
+                <div class="ws-modal-footer">
+                    <button type="button" class="btn btn-ghost" onclick="closeCreatePolicyModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="submitCreatePolicy()" id="create-policy-submit-btn">Create Policy</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manage Firewall Policy Modal: default action / enabled toggle / rules -->
+        <div id="firewall-manage-modal" class="ws-modal-overlay" style="display:none;">
+            <div class="ws-modal ws-modal--lg" role="dialog" aria-modal="true" aria-labelledby="firewall-manage-title">
+                <div class="ws-modal-header">
+                    <div>
+                        <h3 class="ws-modal-title" id="firewall-manage-title">Manage Policy</h3>
+                        <div class="ws-modal-subtitle" id="firewall-manage-subtitle">Loading…</div>
+                    </div>
+                    <button type="button" class="ws-modal-close" onclick="closeManagePolicyModal()" aria-label="Close">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="ws-modal-body">
+                    <div class="ws-form-row">
+                        <div class="form-group">
+                            <label class="form-label">Default Action</label>
+                            <select id="fw-manage-default-action" class="filter-input form-input-full" onchange="patchManagedPolicy()">
+                                <option value="deny">Deny — block anything not explicitly allowed</option>
+                                <option value="allow">Allow — allow anything not explicitly denied</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Enabled</label>
+                            <label class="ws-switch">
+                                <input type="checkbox" id="fw-manage-enabled-toggle" aria-label="Policy enabled" onchange="patchManagedPolicy()">
+                                <span class="ws-switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="access-allowlist">
+                        <div class="access-allowlist-title">Rules</div>
+                        <div id="fw-manage-rules-list" class="access-user-list"></div>
+                    </div>
+
+                    <div class="ws-form-row">
+                        <div class="form-group">
+                            <label class="form-label">Direction</label>
+                            <select id="fw-manage-add-direction" class="filter-input form-input-full">
+                                <option value="outbound" selected>Outbound</option>
+                                <option value="inbound">Inbound</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Action</label>
+                            <select id="fw-manage-add-action" class="filter-input form-input-full">
+                                <option value="allow" selected>Allow</option>
+                                <option value="deny">Deny</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="ws-form-row">
+                        <div class="form-group">
+                            <label class="form-label">Protocol</label>
+                            <select id="fw-manage-add-protocol" class="filter-input form-input-full">
+                                <option value="all" selected>All</option>
+                                <option value="tcp">TCP</option>
+                                <option value="udp">UDP</option>
+                                <option value="icmp">ICMP</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Port range <span class="form-label-optional">(optional)</span></label>
+                            <div style="display:flex;gap:8px;">
+                                <input type="number" id="fw-manage-add-port-start" class="filter-input" placeholder="Start" min="1" max="65535" style="width:50%;">
+                                <input type="number" id="fw-manage-add-port-end" class="filter-input" placeholder="End" min="1" max="65535" style="width:50%;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Remote CIDR <span class="form-label-optional">(optional — blank = any)</span></label>
+                        <div class="access-add-row">
+                            <input type="text" id="fw-manage-add-cidr" class="filter-input access-add-input" placeholder="e.g. 10.0.0.0/8" autocomplete="off">
+                            <button type="button" class="btn btn-primary" onclick="submitManagePolicyRule()">Add Rule</button>
+                        </div>
+                    </div>
+                    <div id="fw-manage-error" class="form-alert-error" style="display:none;" role="alert"></div>
+                </div>
+                <div class="ws-modal-footer">
+                    <button type="button" class="btn btn-ghost" onclick="closeManagePolicyModal()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Per-User Firewall Modal -->
+        <div id="user-firewall-modal" class="ws-modal-overlay" style="display:none;">
+            <div class="ws-modal ws-modal--lg" role="dialog" aria-modal="true" aria-labelledby="user-firewall-title">
+                <div class="ws-modal-header">
+                    <div>
+                        <h3 class="ws-modal-title" id="user-firewall-title">Firewall</h3>
+                        <div class="ws-modal-subtitle">Assign a policy, block the user, or add per-user override rules</div>
+                    </div>
+                    <button type="button" class="ws-modal-close" onclick="closeUserFirewallModal()" aria-label="Close">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="ws-modal-body">
+                    <div class="access-toggle-row">
+                        <div>
+                            <div class="access-toggle-title">Block this user</div>
+                            <div class="access-toggle-desc">
+                                When ON: this user is cut off immediately — session revoked, no traffic allowed. Overrides any policy.
+                            </div>
+                        </div>
+                        <label class="ws-switch">
+                            <input type="checkbox" id="uf-blocked-toggle" aria-label="Block this user" onchange="submitUserFirewallAssignment()">
+                            <span class="ws-switch-slider"></span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Assigned Policy</label>
+                        <select id="uf-policy-select" class="filter-input form-input-full" onchange="submitUserFirewallAssignment()">
+                            <option value="">— No policy (default: full internet access) —</option>
+                        </select>
+                    </div>
+
+                    <div class="access-allowlist">
+                        <div class="access-allowlist-title">Override Rules <span class="form-label-optional">(apply on top of the assigned policy)</span></div>
+                        <div id="uf-rules-list" class="access-user-list"></div>
+                    </div>
+
+                    <div class="ws-form-row">
+                        <div class="form-group">
+                            <label class="form-label">Direction</label>
+                            <select id="uf-add-direction" class="filter-input form-input-full">
+                                <option value="outbound" selected>Outbound</option>
+                                <option value="inbound">Inbound</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Action</label>
+                            <select id="uf-add-action" class="filter-input form-input-full">
+                                <option value="allow" selected>Allow</option>
+                                <option value="deny">Deny</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="ws-form-row">
+                        <div class="form-group">
+                            <label class="form-label">Protocol</label>
+                            <select id="uf-add-protocol" class="filter-input form-input-full">
+                                <option value="all" selected>All</option>
+                                <option value="tcp">TCP</option>
+                                <option value="udp">UDP</option>
+                                <option value="icmp">ICMP</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Port range <span class="form-label-optional">(optional)</span></label>
+                            <div style="display:flex;gap:8px;">
+                                <input type="number" id="uf-add-port-start" class="filter-input" placeholder="Start" min="1" max="65535" style="width:50%;">
+                                <input type="number" id="uf-add-port-end" class="filter-input" placeholder="End" min="1" max="65535" style="width:50%;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Remote CIDR <span class="form-label-optional">(optional — blank = any)</span></label>
+                        <div class="access-add-row">
+                            <input type="text" id="uf-add-cidr" class="filter-input access-add-input" placeholder="e.g. 10.0.0.0/8" autocomplete="off">
+                            <button type="button" class="btn btn-primary" onclick="submitUserFirewallRuleAdd()">Add Rule</button>
+                        </div>
+                    </div>
+                    <div id="uf-error" class="form-alert-error" style="display:none;" role="alert"></div>
+                </div>
+                <div class="ws-modal-footer">
+                    <button type="button" class="btn btn-ghost" onclick="closeUserFirewallModal()">Close</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Logs Section -->
         <div id="logs-section" style="display: none;">
             <!-- Modern Filter Toolbar -->
@@ -956,5 +1228,6 @@
 <script src="/static/js/console-tables.js"></script>
 <script src="/static/js/console-bandwidth.js"></script>
 <script src="/static/js/console-agents.js"></script>
+<script src="/static/js/console-firewall.js"></script>
 <script src="/static/js/console-settings.js"></script>
 {% endblock %}
