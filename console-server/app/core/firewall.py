@@ -496,10 +496,14 @@ def resolve_client_ips(client_id: str) -> Tuple[Optional[str], Optional[str]]:
 def all_firewall_rules() -> List[Dict[str, Any]]:
     """Resolve every managed user's effective firewall state in one pass.
 
-    A user is "managed" here only if their user_firewall row has
-    blocked=1 or a policy_id set. Anyone else is intentionally excluded
-    from the result — they emit no WS_USER_FW rules and remain governed
-    purely by the existing 2FA ipset gate (backward compatible default).
+    A user is "managed" here if EITHER their user_firewall row has
+    blocked=1 or a policy_id set, OR they have at least one per-user
+    override rule (firewall_rules.user_client_id) even without a
+    user_firewall row at all — override rules must be enforced on their
+    own, not only when a policy/block is also assigned. Anyone in
+    neither category is intentionally excluded from the result — they
+    emit no WS_USER_FW/WS_USER_BLOCK rules and remain governed purely by
+    the existing 2FA ipset gate (backward compatible default).
 
     Returned rule order per user is override rules first, then the
     assigned policy's rules, then the policy's default_action — this is
@@ -510,12 +514,17 @@ def all_firewall_rules() -> List[Dict[str, Any]]:
         c = conn.cursor()
         c.execute(
             """
-            SELECT uf.client_id, uf.policy_id, uf.blocked,
+            SELECT cids.client_id, uf.policy_id, COALESCE(uf.blocked, 0) AS blocked,
                    p.default_action AS policy_default_action,
                    p.enabled AS policy_enabled
-            FROM user_firewall uf
+            FROM (
+                SELECT client_id FROM user_firewall WHERE blocked = 1 OR policy_id IS NOT NULL
+                UNION
+                SELECT DISTINCT user_client_id AS client_id FROM firewall_rules
+                WHERE user_client_id IS NOT NULL
+            ) cids
+            LEFT JOIN user_firewall uf ON uf.client_id = cids.client_id
             LEFT JOIN firewall_policies p ON p.id = uf.policy_id
-            WHERE uf.blocked = 1 OR uf.policy_id IS NOT NULL
             """
         )
         assignments = [dict(r) for r in c.fetchall()]
