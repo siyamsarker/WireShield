@@ -326,6 +326,64 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_totp_used_codes ON totp_used_codes(client_id, used_at)")
     except Exception:
         pass
+
+    # Firewall policies: named, reusable collections of allow/deny rules an
+    # admin can assign to VPN users (per-user application firewall). This is
+    # additive and independent of agent_user_access/is_restricted above — a
+    # user with no row in user_firewall is entirely unaffected.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS firewall_policies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            default_action TEXT NOT NULL DEFAULT 'deny',
+            enabled BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Firewall rules: belong either to a policy (policy_id) or directly to a
+    # single user as an override on top of their assigned policy
+    # (user_client_id) — exactly one of the two is set.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS firewall_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            policy_id INTEGER,
+            user_client_id TEXT,
+            direction TEXT NOT NULL,
+            action TEXT NOT NULL,
+            protocol TEXT NOT NULL DEFAULT 'all',
+            port_start INTEGER,
+            port_end INTEGER,
+            remote_cidr TEXT,
+            priority INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (policy_id) REFERENCES firewall_policies(id),
+            CHECK ((policy_id IS NULL) != (user_client_id IS NULL))
+        )
+    ''')
+
+    # Per-user firewall assignment: which policy (if any) governs this user,
+    # plus a hard kill-switch (blocked) independent of any policy.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS user_firewall (
+            client_id TEXT UNIQUE NOT NULL,
+            policy_id INTEGER,
+            blocked BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (policy_id) REFERENCES firewall_policies(id)
+        )
+    ''')
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_firewall_rules_policy ON firewall_rules(policy_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_firewall_rules_user ON firewall_rules(user_client_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_user_firewall_client ON user_firewall(client_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_user_firewall_policy ON user_firewall(policy_id)")
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {AUTH_DB_PATH}")
