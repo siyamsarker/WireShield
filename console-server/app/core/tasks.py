@@ -951,24 +951,41 @@ def trigger_agent_acl_sync():
 # subsystems are intentionally independent — this one never reads or writes
 # agent_user_access, and WS_AGENT_ACL is never modified here.
 #
-# Required FORWARD evaluation order (see the module-level comment above
-# _AGENT_ACL_CHAIN): ESTABLISHED,RELATED ACCEPT, then WS_AGENT_ACL, then
-# WS_USER_FW, then the existing ws_2fa_allowed ipset ACCEPT. This means an
-# agent-CIDR grant still reaches its target even if the user's firewall
-# policy would otherwise deny it — a deliberate consequence of keeping the
-# two systems separate rather than unifying them.
+# Two chains, two priority levels:
+#   - WS_USER_BLOCK: the block kill-switch. Always pinned at literal
+#     FORWARD position 1 — above WS_AGENT_ACL, above the ESTABLISHED,RELATED
+#     accept, above everything. A block must win unconditionally, including
+#     over an agent-CIDR grant the user still holds (WS_AGENT_ACL's ACCEPT
+#     is terminal and would otherwise let that traffic through before it
+#     ever reached a lower chain).
+#   - WS_USER_FW: firewall-policy rules. Positioned at
+#     max(WS_AGENT_ACL position, ESTABLISHED,RELATED accept position) + 1 —
+#     below WS_AGENT_ACL (so an agent grant still overrides a policy,
+#     matching the product decision to keep the two systems separate rather
+#     than unifying them) AND below the ESTABLISHED,RELATED accept (so
+#     return traffic for an already-permitted flow isn't caught by a
+#     default-deny policy's tail, which only matches on -s/-d, not the
+#     original --dport rule).
 #
-# Because _ensure_agent_acl_chain() and this module both insert their JUMP
-# with "-I FORWARD 1" the first time they run, relying on plain positional
-# inserts would make the relative order a race between whichever background
-# loop happens to run its first pass first. _ensure_user_fw_chain() avoids
-# that by locating WS_AGENT_ACL's jump (creating it first via
-# _ensure_agent_acl_chain() if necessary) and inserting immediately after
-# it, so WS_USER_FW always lands below WS_AGENT_ACL regardless of thread
-# scheduling.
+# Full evaluation order: WS_USER_BLOCK, then [WS_AGENT_ACL / ESTABLISHED —
+# relative order between these two is whichever was created first, doesn't
+# matter functionally], then WS_USER_FW, then the existing ws_2fa_allowed
+# ipset ACCEPT.
+#
+# Both _ensure_user_block_chain() and _ensure_user_fw_chain() recompute and
+# reassert their required position on EVERY sync pass, not just at first
+# creation. This is what makes the ordering self-correcting rather than a
+# one-time race: _ensure_agent_acl_chain() (pre-existing, untouched, and its
+# own 30s loop independently scheduled from this one) can insert at FORWARD
+# position 1 the first time it runs, which could transiently displace either
+# of these chains — but the next pass of this loop (within 30s) notices and
+# reclaims the correct position, so a bad ordering never persists
+# indefinitely the way a "only fix if the jump is completely missing" check
+# would.
 # ============================================================================
 
 _USER_FW_CHAIN = "WS_USER_FW"
+_USER_BLOCK_CHAIN = "WS_USER_BLOCK"
 _USER_FW_LOCK = threading.Lock()
 _USER_FW_STATE = {
     "last_sync_unix": 0,
@@ -976,6 +993,11 @@ _USER_FW_STATE = {
     "last_error": None,
     "missing_iptables": False,
 }
+
+# The exact rule-spec _ensure_forward_state_accept() installs — reused here
+# so WS_USER_FW can locate it as a positioning anchor without duplicating
+# the literal args in two places.
+_ESTABLISHED_RULE_SPEC = ["-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"]
 
 
 def _forward_rule_position(contains: List[str]) -> Optional[int]:
@@ -994,30 +1016,120 @@ def _forward_rule_position(contains: List[str]) -> Optional[int]:
     return None
 
 
+def _ensure_user_block_chain():
+    """Create WS_USER_BLOCK if missing, and — on EVERY call, not just at
+    first creation — reassert it at literal FORWARD position 1: above
+    WS_AGENT_ACL, above the ESTABLISHED,RELATED accept, above everything.
+    A blocked user must win over every other rule unconditionally
+    (including an agent-CIDR grant they still hold — WS_AGENT_ACL's
+    terminal ACCEPT would otherwise let that traffic through before it
+    ever reached WS_USER_FW), which is why this is a separate top-priority
+    chain rather than rules inside WS_USER_FW.
+
+    Re-checking every pass (rather than only "insert if the jump is
+    entirely missing") makes this self-healing: if the independently
+    scheduled agent-ACL loop inserts something above WS_USER_BLOCK between
+    passes, the next pass (within 30s) reclaims position 1 rather than
+    leaving the inversion in place indefinitely.
+    """
+    r = _iptables_run(["-n", "-L", _USER_BLOCK_CHAIN])
+    if r.returncode != 0:
+        _iptables_run(["-N", _USER_BLOCK_CHAIN])
+
+    pos = _forward_rule_position(["-j", _USER_BLOCK_CHAIN])
+    if pos == 1:
+        return  # already exactly where it needs to be — no-op
+    if pos is not None:
+        _iptables_run(["-D", "FORWARD", "-j", _USER_BLOCK_CHAIN])
+    _iptables_run(["-I", "FORWARD", "1", "-j", _USER_BLOCK_CHAIN])
+
+
 def _ensure_user_fw_chain():
-    """Create WS_USER_FW + its FORWARD JUMP if missing, positioned
-    immediately after WS_AGENT_ACL's jump. Idempotent."""
+    """Create WS_USER_FW if missing, and — on EVERY call, not just at
+    first creation — reassert its position at
+    max(WS_AGENT_ACL position, ESTABLISHED,RELATED accept position) + 1.
+
+    Below WS_AGENT_ACL: so an agent-CIDR grant keeps taking priority over
+    firewall policies (matches the product decision to keep the two
+    subsystems independent). Below the ESTABLISHED,RELATED accept too —
+    not just below WS_AGENT_ACL — because that accept rule can itself end
+    up above or below WS_AGENT_ACL depending on which was created first;
+    positioning WS_USER_FW relative to only one of the two anchors can
+    still leave it above the other, and if it ends up above the
+    ESTABLISHED accept, a default-deny policy's return traffic (the reply
+    packet only matches on -s/-d, never the original --dport rule) would
+    hit the default-deny tail before ever reaching the ESTABLISHED accept,
+    silently breaking that user's connections.
+
+    Re-checking every pass makes this self-healing against a startup race
+    with the independently-scheduled agent-ACL loop: a transient
+    mis-ordering corrects itself within one reconcile interval instead of
+    persisting until a manual chain rebuild.
+    """
     r = _iptables_run(["-n", "-L", _USER_FW_CHAIN])
     if r.returncode != 0:
         _iptables_run(["-N", _USER_FW_CHAIN])
-    r = _iptables_run(["-C", "FORWARD", "-j", _USER_FW_CHAIN])
-    if r.returncode == 0:
-        return  # jump already present — leave its existing position alone
 
-    _ensure_agent_acl_chain()
-    agent_acl_pos = _forward_rule_position(["-j", _AGENT_ACL_CHAIN])
-    if agent_acl_pos is not None:
-        _iptables_run(["-I", "FORWARD", str(agent_acl_pos + 1), "-j", _USER_FW_CHAIN])
-    else:
-        # Could not locate the agent ACL jump (unexpected iptables error) —
-        # inserting at the top still enforces the user firewall, just not
-        # guaranteed below WS_AGENT_ACL until the next successful sync.
-        logger.warning("user firewall: could not locate WS_AGENT_ACL jump; inserting WS_USER_FW at FORWARD position 1")
-        _iptables_run(["-I", "FORWARD", "1", "-j", _USER_FW_CHAIN])
+    _ensure_agent_acl_chain()  # read-only from here — guarantees a position to anchor to, doesn't touch its rules/behavior
+
+    def _desired_pos() -> int:
+        agent_acl_pos = _forward_rule_position(["-j", _AGENT_ACL_CHAIN])
+        established_pos = _forward_rule_position(_ESTABLISHED_RULE_SPEC)
+        if agent_acl_pos is None and established_pos is None:
+            # Couldn't locate either anchor (transient iptables error) —
+            # fall back to right after WS_USER_BLOCK. Never position 1:
+            # a lookup hiccup must not let WS_USER_FW outrank the
+            # kill-switch chain.
+            logger.warning("user firewall: could not locate WS_AGENT_ACL or ESTABLISHED anchor; falling back to FORWARD position 2")
+            return 2
+        return max(agent_acl_pos or 0, established_pos or 0, 1) + 1
+
+    current_pos = _forward_rule_position(["-j", _USER_FW_CHAIN])
+    desired_pos = _desired_pos()
+    if current_pos == desired_pos:
+        return  # already correctly positioned — no-op
+
+    if current_pos is not None:
+        _iptables_run(["-D", "FORWARD", "-j", _USER_FW_CHAIN])
+        # Deleting a mis-positioned WS_USER_FW (e.g. one that ended up
+        # above one of the anchors) shifts indices — recompute before
+        # inserting.
+        desired_pos = _desired_pos()
+    _iptables_run(["-I", "FORWARD", str(desired_pos), "-j", _USER_FW_CHAIN])
 
 
 def _flush_user_fw_chain():
     _iptables_run(["-F", _USER_FW_CHAIN])
+
+
+def _flush_user_block_chain():
+    _iptables_run(["-F", _USER_BLOCK_CHAIN])
+
+
+def _build_user_block_rules() -> List[List[str]]:
+    """Compute the desired iptables -A rules for WS_USER_BLOCK: a plain
+    DROP for a blocked user's tunnel IP in both directions. Pure function
+    — no side effects. (Session/ipset revocation for a newly-blocked user
+    happens once, synchronously, in firewall.set_user_firewall() at the
+    moment of the state transition — not here, since this runs on every
+    30s reconcile pass and would otherwise re-revoke an already-blocked
+    user indefinitely.)
+    """
+    try:
+        from app.core.firewall import all_firewall_rules
+    except Exception as e:
+        logger.error(f"user firewall: import failed: {e}")
+        return []
+
+    rules: List[List[str]] = []
+    for entry in all_firewall_rules():
+        if not entry.get("blocked"):
+            continue
+        ipv4 = entry.get("ipv4")
+        if ipv4:
+            rules.append(["-A", _USER_BLOCK_CHAIN, "-s", ipv4, "-j", "DROP"])
+            rules.append(["-A", _USER_BLOCK_CHAIN, "-d", ipv4, "-j", "DROP"])
+    return rules
 
 
 def _build_user_fw_rules() -> List[List[str]]:
@@ -1025,9 +1137,9 @@ def _build_user_fw_rules() -> List[List[str]]:
     DB state (app.core.firewall.all_firewall_rules()). IPv4 only for now,
     matching the existing WS_AGENT_ACL scope.
 
-    Blocked users get a plain DROP for their tunnel IP in both directions
-    and are also cut immediately via security.remove_client_by_id() so
-    their session/ipset membership doesn't linger. Non-blocked,
+    Blocked users are skipped entirely here — WS_USER_BLOCK (see
+    _build_user_block_rules) owns their enforcement, since it must take
+    priority over WS_AGENT_ACL and this chain sits below it. Non-blocked,
     policy-governed users get one rule per firewall_rules row (override
     rules first, then their policy's rules — all_firewall_rules() already
     returns them in that order) followed by a default-deny tail only when
@@ -1043,20 +1155,10 @@ def _build_user_fw_rules() -> List[List[str]]:
 
     rules: List[List[str]] = []
     for entry in all_firewall_rules():
-        client_id = entry.get("client_id")
-        ipv4 = entry.get("ipv4")
-
         if entry.get("blocked"):
-            try:
-                from app.core.security import remove_client_by_id
-                remove_client_by_id(client_id)
-            except Exception as e:
-                logger.error(f"user firewall: failed to revoke blocked client {client_id!r}: {e}")
-            if ipv4:
-                rules.append(["-A", _USER_FW_CHAIN, "-s", ipv4, "-j", "DROP"])
-                rules.append(["-A", _USER_FW_CHAIN, "-d", ipv4, "-j", "DROP"])
-            continue
+            continue  # handled by WS_USER_BLOCK instead
 
+        ipv4 = entry.get("ipv4")
         if not ipv4:
             continue  # no known tunnel IP yet — nothing to enforce against
 
@@ -1100,15 +1202,26 @@ def _sync_user_fw_once():
 
         try:
             _ensure_forward_state_accept()
+            # Reclaim WS_USER_BLOCK's top-of-FORWARD position first — it
+            # must be pinned before computing where WS_USER_FW goes, since
+            # reclaiming it can shift every other rule's index.
+            _ensure_user_block_chain()
             _ensure_user_fw_chain()
-            _flush_user_fw_chain()
-            rules = _build_user_fw_rules()
-            for r in rules:
+
+            _flush_user_block_chain()
+            block_rules = _build_user_block_rules()
+            for r in block_rules:
                 _iptables_run(r)
-            _USER_FW_STATE["last_rule_count"] = len(rules)
+
+            _flush_user_fw_chain()
+            fw_rules = _build_user_fw_rules()
+            for r in fw_rules:
+                _iptables_run(r)
+
+            _USER_FW_STATE["last_rule_count"] = len(fw_rules) + len(block_rules)
             _USER_FW_STATE["last_error"] = None
             _USER_FW_STATE["last_sync_unix"] = int(time.time())
-            logger.debug(f"user firewall: synced {len(rules)} rules")
+            logger.debug(f"user firewall: synced {len(fw_rules)} rules ({len(block_rules)} block)")
         except Exception as e:
             _USER_FW_STATE["last_error"] = str(e)
             logger.error(f"user firewall sync failed: {e}")

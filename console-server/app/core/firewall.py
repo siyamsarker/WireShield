@@ -422,7 +422,16 @@ def get_user_firewall(client_id: str) -> Dict[str, Any]:
 
 def set_user_firewall(client_id: str, policy_id: Optional[int], blocked: bool) -> Dict[str, Any]:
     """Full-replace upsert (PUT semantics) of a user's firewall
-    assignment. Validates the user and (if given) the policy exist."""
+    assignment. Validates the user and (if given) the policy exist.
+
+    When blocked is being set to True, this also synchronously revokes
+    the client's live session + 2FA ipset membership via
+    security.remove_client_by_id() — this is the one place that
+    revocation happens (not the WS_USER_BLOCK rule-builder in tasks.py,
+    which runs on every 30s reconcile pass and must stay a pure,
+    side-effect-free function; doing it here means a block is cut
+    immediately, exactly once per block action, rather than repeatedly
+    on every future sync)."""
     conn = get_db()
     try:
         c = conn.cursor()
@@ -448,6 +457,14 @@ def set_user_firewall(client_id: str, policy_id: Optional[int], blocked: bool) -
         conn.commit()
     finally:
         conn.close()
+
+    if blocked:
+        try:
+            from app.core.security import remove_client_by_id
+            remove_client_by_id(client_id)
+        except Exception as e:
+            logger.error(f"firewall: failed to revoke blocked client {client_id!r}: {e}")
+
     return get_user_firewall(client_id)
 
 
