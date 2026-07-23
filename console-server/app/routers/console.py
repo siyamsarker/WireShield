@@ -1573,3 +1573,318 @@ async def regenerate_cert(
         logger.error("Certificate regenerated but restart scheduling failed — manual restart required")
 
     return {"success": True, "restart_scheduled": restart_scheduled, "output": result["output"]}
+
+
+# ============================================================================
+# Per-user firewall
+#
+# Independent of the agent allowlist (agent_user_access / is_restricted /
+# WS_AGENT_ACL) managed above — this section manages firewall_policies /
+# firewall_rules / user_firewall (see app.core.firewall) and the
+# WS_USER_FW iptables chain (see app.core.tasks). A user with no
+# user_firewall row is entirely unaffected and keeps today's default
+# full-internet behaviour.
+# ============================================================================
+
+class FirewallPolicyCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    default_action: str = "deny"
+    enabled: bool = True
+
+
+class FirewallPolicyUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    default_action: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+class FirewallRuleRequest(BaseModel):
+    direction: str
+    action: str
+    protocol: str = "all"
+    port_start: Optional[int] = None
+    port_end: Optional[int] = None
+    remote_cidr: Optional[str] = None
+    priority: int = 0
+
+
+class FirewallRuleUpdateRequest(BaseModel):
+    direction: Optional[str] = None
+    action: Optional[str] = None
+    protocol: Optional[str] = None
+    port_start: Optional[int] = None
+    port_end: Optional[int] = None
+    remote_cidr: Optional[str] = None
+    priority: Optional[int] = None
+
+
+class UserFirewallRequest(BaseModel):
+    policy_id: Optional[int] = None
+    blocked: bool = False
+
+
+def _sync_user_fw() -> None:
+    """Best-effort immediate resync; a failure here must never break the
+    API response — the next 30s reconcile pass will still pick it up."""
+    try:
+        from app.core.tasks import trigger_user_fw_sync
+        trigger_user_fw_sync()
+    except Exception:
+        pass
+
+
+@router.get("/api/console/firewall/policies")
+async def list_firewall_policies(client_id: str = Depends(_check_console_access)):
+    from app.core.firewall import list_policies
+    return {"policies": list_policies()}
+
+
+@router.post("/api/console/firewall/policies")
+async def create_firewall_policy(
+    body: FirewallPolicyCreateRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    from app.core.firewall import create_policy
+    try:
+        policy = create_policy(
+            name=body.name, description=body.description,
+            default_action=body.default_action, enabled=body.enabled,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        msg = str(e).lower()
+        if "unique" in msg or "integrityerror" in msg:
+            raise HTTPException(status_code=409, detail=f"Policy name '{body.name}' already exists")
+        logger.exception("create_policy failed")
+        raise HTTPException(status_code=500, detail="Failed to create policy")
+
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(client_id, "FIREWALL_POLICY_CREATE", f"name={body.name} id={policy['id']}", ip_address)
+    return {"success": True, "policy": policy}
+
+
+@router.get("/api/console/firewall/policies/{policy_id}")
+async def get_firewall_policy(
+    policy_id: int,
+    client_id: str = Depends(_check_console_access),
+):
+    from app.core.firewall import get_policy
+    policy = get_policy(policy_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return policy
+
+
+@router.patch("/api/console/firewall/policies/{policy_id}")
+async def patch_firewall_policy(
+    policy_id: int,
+    body: FirewallPolicyUpdateRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    from app.core.firewall import get_policy, update_policy
+    if get_policy(policy_id) is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    kwargs = {k: v for k, v in {
+        "name": body.name, "description": body.description,
+        "default_action": body.default_action, "enabled": body.enabled,
+    }.items() if v is not None}
+
+    try:
+        update_policy(policy_id, **kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        msg = str(e).lower()
+        if "unique" in msg or "integrityerror" in msg:
+            raise HTTPException(status_code=409, detail=f"Policy name '{body.name}' already exists")
+        logger.exception("update_policy failed")
+        raise HTTPException(status_code=500, detail="Failed to update policy")
+
+    _sync_user_fw()
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(client_id, "FIREWALL_POLICY_UPDATE", f"id={policy_id} fields={list(kwargs.keys())}", ip_address)
+    return {"success": True, "policy": get_policy(policy_id)}
+
+
+@router.delete("/api/console/firewall/policies/{policy_id}")
+async def delete_firewall_policy(
+    policy_id: int,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    """Delete a policy. Users assigned to it fall back to unmanaged —
+    their user_firewall.policy_id is cleared, they are not blocked."""
+    from app.core.firewall import get_policy, delete_policy
+    existing = get_policy(policy_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    delete_policy(policy_id)
+    _sync_user_fw()
+
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(client_id, "FIREWALL_POLICY_DELETE", f"id={policy_id} name={existing['name']}", ip_address)
+    return {"success": True}
+
+
+@router.post("/api/console/firewall/policies/{policy_id}/rules")
+async def add_firewall_policy_rule(
+    policy_id: int,
+    body: FirewallRuleRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    from app.core.firewall import add_rule, get_policy
+    if get_policy(policy_id) is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    try:
+        rule = add_rule(
+            policy_id=policy_id, direction=body.direction, action=body.action,
+            protocol=body.protocol, port_start=body.port_start, port_end=body.port_end,
+            remote_cidr=body.remote_cidr, priority=body.priority,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    _sync_user_fw()
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(client_id, "FIREWALL_RULE_CREATE", f"policy_id={policy_id} rule_id={rule['id']}", ip_address)
+    return {"success": True, "rule": rule}
+
+
+@router.patch("/api/console/firewall/policies/{policy_id}/rules/{rule_id}")
+async def update_firewall_policy_rule(
+    policy_id: int,
+    rule_id: int,
+    body: FirewallRuleUpdateRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    from app.core.firewall import update_rule, get_policy
+    if get_policy(policy_id) is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    kwargs = {k: v for k, v in body.model_dump().items() if v is not None}
+    try:
+        changed = update_rule(rule_id, **kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not changed:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    _sync_user_fw()
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(client_id, "FIREWALL_RULE_UPDATE", f"policy_id={policy_id} rule_id={rule_id}", ip_address)
+    return {"success": True}
+
+
+@router.delete("/api/console/firewall/policies/{policy_id}/rules/{rule_id}")
+async def delete_firewall_policy_rule(
+    policy_id: int,
+    rule_id: int,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    from app.core.firewall import delete_rule, get_policy
+    if get_policy(policy_id) is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    removed = delete_rule(rule_id)
+
+    _sync_user_fw()
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(client_id, "FIREWALL_RULE_DELETE", f"policy_id={policy_id} rule_id={rule_id} removed={removed}", ip_address)
+    return {"success": True, "removed": removed}
+
+
+@router.get("/api/console/users/{target_client_id}/firewall")
+async def get_user_firewall_endpoint(
+    target_client_id: str,
+    client_id: str = Depends(_check_console_access),
+):
+    from app.core.firewall import get_user_firewall, list_user_override_rules
+    assignment = get_user_firewall(target_client_id)
+    assignment["override_rules"] = list_user_override_rules(target_client_id)
+    return assignment
+
+
+@router.put("/api/console/users/{target_client_id}/firewall")
+async def set_user_firewall_endpoint(
+    target_client_id: str,
+    body: UserFirewallRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    """Full-replace: assign (or clear, via policy_id=null) a policy and
+    set the block kill-switch in one call."""
+    from app.core.firewall import set_user_firewall
+    try:
+        assignment = set_user_firewall(target_client_id, policy_id=body.policy_id, blocked=body.blocked)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    _sync_user_fw()
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(
+        client_id, "USER_FIREWALL_UPDATE",
+        f"target_client={target_client_id} policy_id={body.policy_id} blocked={body.blocked}",
+        ip_address,
+    )
+    return {"success": True, "firewall": assignment}
+
+
+@router.post("/api/console/users/{target_client_id}/firewall/rules")
+async def add_user_firewall_rule(
+    target_client_id: str,
+    body: FirewallRuleRequest,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    from app.core.firewall import add_rule
+    try:
+        rule = add_rule(
+            user_client_id=target_client_id, direction=body.direction, action=body.action,
+            protocol=body.protocol, port_start=body.port_start, port_end=body.port_end,
+            remote_cidr=body.remote_cidr, priority=body.priority,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    _sync_user_fw()
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(client_id, "USER_FIREWALL_RULE_CREATE", f"target_client={target_client_id} rule_id={rule['id']}", ip_address)
+    return {"success": True, "rule": rule}
+
+
+@router.delete("/api/console/users/{target_client_id}/firewall/rules/{rule_id}")
+async def delete_user_firewall_rule(
+    target_client_id: str,
+    rule_id: int,
+    request: Request,
+    client_id: str = Depends(_check_console_access),
+    _csrf: None = Depends(_check_csrf_token),
+):
+    from app.core.firewall import delete_rule
+    removed = delete_rule(rule_id)
+
+    _sync_user_fw()
+    ip_address = request.client.host if request and request.client else "unknown"
+    audit_log(
+        client_id, "USER_FIREWALL_RULE_DELETE",
+        f"target_client={target_client_id} rule_id={rule_id} removed={removed}",
+        ip_address,
+    )
+    return {"success": True, "removed": removed}
