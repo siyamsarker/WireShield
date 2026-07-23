@@ -466,16 +466,31 @@ def delete_client(name: str) -> bool:
     # Live-apply
     _wg_syncconf(_iface(params))
 
-    # Remove from 2FA users / sessions (cascade their cleanup)
+    # Remove from 2FA users / sessions (cascade their cleanup), plus any
+    # per-user firewall state — neither user_firewall nor firewall_rules
+    # has a foreign key back to users, so without this a deleted client's
+    # block flag / policy assignment / override rules would silently
+    # survive and be inherited by a future client recreated with the same
+    # name.
     try:
         conn = get_db()
         c = conn.cursor()
         c.execute("DELETE FROM sessions WHERE client_id = ?", (name,))
+        c.execute("DELETE FROM firewall_rules WHERE user_client_id = ?", (name,))
+        c.execute("DELETE FROM user_firewall WHERE client_id = ?", (name,))
         c.execute("DELETE FROM users WHERE client_id = ?", (name,))
         conn.commit()
         conn.close()
     except Exception as e:
         logger.warning(f"DB cleanup failed for {name}: {e}")
+
+    # Best-effort immediate resync so a deleted user's tunnel IP doesn't
+    # linger in WS_USER_FW/WS_USER_BLOCK in a stale state for up to 30s.
+    try:
+        from app.core.tasks import trigger_user_fw_sync
+        trigger_user_fw_sync()
+    except Exception:
+        pass
 
     logger.info(f"Deleted WireGuard client '{name}'")
     return True
