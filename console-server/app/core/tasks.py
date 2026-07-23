@@ -942,6 +942,203 @@ def trigger_agent_acl_sync():
     threading.Thread(target=_sync_agent_acl_once, daemon=True).start()
 
 
+# ============================================================================
+# Per-user firewall enforcement (policies + block kill-switch)
+# ----------------------------------------------------------------------------
+# Same reconciliative flush-and-rebuild approach as WS_AGENT_ACL above, but
+# driven by app.core.firewall.all_firewall_rules() (firewall_policies /
+# firewall_rules / user_firewall) instead of agent_user_access. The two
+# subsystems are intentionally independent — this one never reads or writes
+# agent_user_access, and WS_AGENT_ACL is never modified here.
+#
+# Required FORWARD evaluation order (see the module-level comment above
+# _AGENT_ACL_CHAIN): ESTABLISHED,RELATED ACCEPT, then WS_AGENT_ACL, then
+# WS_USER_FW, then the existing ws_2fa_allowed ipset ACCEPT. This means an
+# agent-CIDR grant still reaches its target even if the user's firewall
+# policy would otherwise deny it — a deliberate consequence of keeping the
+# two systems separate rather than unifying them.
+#
+# Because _ensure_agent_acl_chain() and this module both insert their JUMP
+# with "-I FORWARD 1" the first time they run, relying on plain positional
+# inserts would make the relative order a race between whichever background
+# loop happens to run its first pass first. _ensure_user_fw_chain() avoids
+# that by locating WS_AGENT_ACL's jump (creating it first via
+# _ensure_agent_acl_chain() if necessary) and inserting immediately after
+# it, so WS_USER_FW always lands below WS_AGENT_ACL regardless of thread
+# scheduling.
+# ============================================================================
+
+_USER_FW_CHAIN = "WS_USER_FW"
+_USER_FW_LOCK = threading.Lock()
+_USER_FW_STATE = {
+    "last_sync_unix": 0,
+    "last_rule_count": 0,
+    "last_error": None,
+    "missing_iptables": False,
+}
+
+
+def _forward_rule_position(contains: List[str]) -> Optional[int]:
+    """Return the 1-based FORWARD position of the first rule whose full
+    rule-spec contains every token in `contains`, or None if not found."""
+    r = _iptables_run(["-S", "FORWARD"])
+    if r.returncode != 0:
+        return None
+    pos = 0
+    for line in r.stdout.decode(errors="replace").splitlines():
+        if line.startswith("-P "):
+            continue
+        pos += 1
+        if all(tok in line for tok in contains):
+            return pos
+    return None
+
+
+def _ensure_user_fw_chain():
+    """Create WS_USER_FW + its FORWARD JUMP if missing, positioned
+    immediately after WS_AGENT_ACL's jump. Idempotent."""
+    r = _iptables_run(["-n", "-L", _USER_FW_CHAIN])
+    if r.returncode != 0:
+        _iptables_run(["-N", _USER_FW_CHAIN])
+    r = _iptables_run(["-C", "FORWARD", "-j", _USER_FW_CHAIN])
+    if r.returncode == 0:
+        return  # jump already present — leave its existing position alone
+
+    _ensure_agent_acl_chain()
+    agent_acl_pos = _forward_rule_position(["-j", _AGENT_ACL_CHAIN])
+    if agent_acl_pos is not None:
+        _iptables_run(["-I", "FORWARD", str(agent_acl_pos + 1), "-j", _USER_FW_CHAIN])
+    else:
+        # Could not locate the agent ACL jump (unexpected iptables error) —
+        # inserting at the top still enforces the user firewall, just not
+        # guaranteed below WS_AGENT_ACL until the next successful sync.
+        logger.warning("user firewall: could not locate WS_AGENT_ACL jump; inserting WS_USER_FW at FORWARD position 1")
+        _iptables_run(["-I", "FORWARD", "1", "-j", _USER_FW_CHAIN])
+
+
+def _flush_user_fw_chain():
+    _iptables_run(["-F", _USER_FW_CHAIN])
+
+
+def _build_user_fw_rules() -> List[List[str]]:
+    """Compute the desired iptables -A rules for WS_USER_FW from current
+    DB state (app.core.firewall.all_firewall_rules()). IPv4 only for now,
+    matching the existing WS_AGENT_ACL scope.
+
+    Blocked users get a plain DROP for their tunnel IP in both directions
+    and are also cut immediately via security.remove_client_by_id() so
+    their session/ipset membership doesn't linger. Non-blocked,
+    policy-governed users get one rule per firewall_rules row (override
+    rules first, then their policy's rules — all_firewall_rules() already
+    returns them in that order) followed by a default-deny tail only when
+    the assigned policy's default_action is 'deny'; a default_action of
+    'allow' needs no tail rule since falling through WS_USER_FW reaches
+    the existing 2FA ipset ACCEPT for an already-authenticated client.
+    """
+    try:
+        from app.core.firewall import all_firewall_rules
+    except Exception as e:
+        logger.error(f"user firewall: import failed: {e}")
+        return []
+
+    rules: List[List[str]] = []
+    for entry in all_firewall_rules():
+        client_id = entry.get("client_id")
+        ipv4 = entry.get("ipv4")
+
+        if entry.get("blocked"):
+            try:
+                from app.core.security import remove_client_by_id
+                remove_client_by_id(client_id)
+            except Exception as e:
+                logger.error(f"user firewall: failed to revoke blocked client {client_id!r}: {e}")
+            if ipv4:
+                rules.append(["-A", _USER_FW_CHAIN, "-s", ipv4, "-j", "DROP"])
+                rules.append(["-A", _USER_FW_CHAIN, "-d", ipv4, "-j", "DROP"])
+            continue
+
+        if not ipv4:
+            continue  # no known tunnel IP yet — nothing to enforce against
+
+        for rule in entry.get("rules", []):
+            target = "ACCEPT" if rule["action"] == "allow" else "DROP"
+            protocol = rule.get("protocol") or "all"
+            remote_cidr = rule.get("remote_cidr")
+
+            if rule["direction"] == "outbound":
+                args = ["-A", _USER_FW_CHAIN, "-s", ipv4]
+                if remote_cidr:
+                    args += ["-d", remote_cidr]
+            else:
+                args = ["-A", _USER_FW_CHAIN, "-d", ipv4]
+                if remote_cidr:
+                    args += ["-s", remote_cidr]
+
+            if protocol != "all":
+                args += ["-p", protocol]
+                port_start, port_end = rule.get("port_start"), rule.get("port_end")
+                if port_start is not None:
+                    port_arg = str(port_start) if port_start == port_end else f"{port_start}:{port_end}"
+                    args += ["--dport", port_arg]
+
+            args += ["-j", target]
+            rules.append(args)
+
+        if entry.get("policy_id") is not None and entry.get("policy_default_action") == "deny":
+            rules.append(["-A", _USER_FW_CHAIN, "-s", ipv4, "-j", "DROP"])
+            rules.append(["-A", _USER_FW_CHAIN, "-d", ipv4, "-j", "DROP"])
+
+    return rules
+
+
+def _sync_user_fw_once():
+    """Run one iptables sync pass for the per-user firewall."""
+    with _USER_FW_LOCK:
+        if not _has_iptables():
+            _USER_FW_STATE["missing_iptables"] = True
+            return
+
+        try:
+            _ensure_forward_state_accept()
+            _ensure_user_fw_chain()
+            _flush_user_fw_chain()
+            rules = _build_user_fw_rules()
+            for r in rules:
+                _iptables_run(r)
+            _USER_FW_STATE["last_rule_count"] = len(rules)
+            _USER_FW_STATE["last_error"] = None
+            _USER_FW_STATE["last_sync_unix"] = int(time.time())
+            logger.debug(f"user firewall: synced {len(rules)} rules")
+        except Exception as e:
+            _USER_FW_STATE["last_error"] = str(e)
+            logger.error(f"user firewall sync failed: {e}")
+
+
+def _sync_user_fw_loop():
+    """Background reconciliation loop. Same 30s cadence as the agent ACL
+    sync; sleeps before the first pass so a crash-loop can't thrash
+    iptables."""
+    interval = 30
+    while True:
+        time.sleep(interval)
+        try:
+            _sync_user_fw_once()
+        except Exception as e:
+            logger.error(f"user firewall loop unexpected error: {e}")
+
+
+def get_user_fw_state() -> dict:
+    """Snapshot used by /health for observability."""
+    return dict(_USER_FW_STATE)
+
+
+def trigger_user_fw_sync():
+    """Synchronous on-demand sync. Called from admin endpoints so a
+    policy/assignment change is reflected in iptables immediately rather
+    than waiting for the next 30s tick."""
+    threading.Thread(target=_sync_user_fw_once, daemon=True).start()
+
+
 def _agent_housekeeping_loop():
     """Runs once per hour: purges expired/used enrollment tokens and prunes
     agent_heartbeats rows older than the configured retention window.
@@ -1011,4 +1208,5 @@ def start_background_tasks():
     threading.Thread(target=_watchdog_loop, daemon=True).start()
     threading.Thread(target=_agent_housekeeping_loop, daemon=True).start()
     threading.Thread(target=_sync_agent_acl_loop, daemon=True).start()
+    threading.Thread(target=_sync_user_fw_loop, daemon=True).start()
     threading.Thread(target=_wg_peer_reconcile_loop, daemon=True).start()
