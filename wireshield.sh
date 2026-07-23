@@ -2195,6 +2195,7 @@ function uninstallWg() {
 	echo -e "  ${GRAY}•${NC} Pre-built agent binaries (/etc/wireshield/agent-binaries/)"
 	echo -e "  ${GRAY}•${NC} Agent enrollment tokens, heartbeat history, and ACL grants"
 	echo -e "  ${GRAY}•${NC} Agent ACL iptables chain (WS_AGENT_ACL)"
+	echo -e "  ${GRAY}•${NC} Per-user firewall policies, rules, and iptables chain (WS_USER_FW)"
 	echo -e "  ${GRAY}•${NC} Go toolchain at /usr/local/go (only if installed by WireShield; you'll be asked)"
 	echo ""
 	_ws_ui_warn "Back up /etc/wireguard and /etc/wireshield first if needed."
@@ -2337,6 +2338,16 @@ function uninstallWg() {
 		done
 		iptables -F WS_AGENT_ACL 2>/dev/null || true
 		iptables -X WS_AGENT_ACL 2>/dev/null || true
+
+		# Remove per-user firewall chain (WS_USER_FW), created at runtime by
+		# the admin console for firewall-policy/block enforcement. Independent
+		# of WS_AGENT_ACL above — see tasks._ensure_user_fw_chain.
+		_ws_ui_info "Removing per-user firewall chain..."
+		while iptables -C FORWARD -j WS_USER_FW 2>/dev/null; do
+			iptables -D FORWARD -j WS_USER_FW 2>/dev/null || break
+		done
+		iptables -F WS_USER_FW 2>/dev/null || true
+		iptables -X WS_USER_FW 2>/dev/null || true
 
 		# Remove runtime-inserted iptables rules that aren't tied to
 		# wg-quick's PostDown: the global ESTABLISHED,RELATED FORWARD
@@ -2506,7 +2517,7 @@ function uninstallWg() {
 			echo ""
 			_ws_ui_success "WireGuard interface removed (VPN clients + agent peers)"
 			_ws_ui_success "2FA service and admin console stopped and removed"
-			_ws_ui_success "Firewall rules, ipsets, NAT entries, and WS_AGENT_ACL chain cleaned"
+			_ws_ui_success "Firewall rules, ipsets, NAT entries, and WS_AGENT_ACL/WS_USER_FW chains cleaned"
 			_ws_ui_success "Agent binaries, tokens, heartbeats, and ACL grants removed"
 			_ws_ui_success "SSL certificates and renewal timers removed"
 			_ws_ui_success "Client configurations deleted"
