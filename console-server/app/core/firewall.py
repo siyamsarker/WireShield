@@ -287,9 +287,15 @@ def add_rule(
 
 
 def update_rule(
-    rule_id: int, *, direction=_UNSET, action=_UNSET, protocol=_UNSET,
+    rule_id: int, *, expected_policy_id=_UNSET, expected_user_client_id=_UNSET,
+    direction=_UNSET, action=_UNSET, protocol=_UNSET,
     port_start=_UNSET, port_end=_UNSET, remote_cidr=_UNSET, priority=_UNSET,
 ) -> bool:
+    """Update a rule. If `expected_policy_id`/`expected_user_client_id` is
+    given, the rule must belong to that owner or this is treated exactly
+    like "not found" (returns False) — callers scoped to a specific
+    policy/user (the console API) must not be able to mutate a rule
+    belonging to a different policy or a different user's overrides."""
     conn = get_db()
     try:
         c = conn.cursor()
@@ -298,6 +304,10 @@ def update_rule(
         if existing is None:
             return False
         existing = dict(existing)
+        if expected_policy_id is not _UNSET and existing["policy_id"] != expected_policy_id:
+            return False
+        if expected_user_client_id is not _UNSET and existing["user_client_id"] != expected_user_client_id:
+            return False
 
         new_protocol = validate_protocol(protocol) if protocol is not _UNSET else existing["protocol"]
         new_port_start = existing["port_start"] if port_start is _UNSET else port_start
@@ -324,11 +334,28 @@ def update_rule(
         conn.close()
 
 
-def delete_rule(rule_id: int) -> bool:
+def delete_rule(
+    rule_id: int, *, expected_policy_id=_UNSET, expected_user_client_id=_UNSET,
+) -> bool:
+    """Delete a rule. If `expected_policy_id`/`expected_user_client_id` is
+    given, the owner check is folded directly into the DELETE so it's
+    atomic — a rule belonging to a different owner is left untouched and
+    this returns False, same as "not found"."""
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute("DELETE FROM firewall_rules WHERE id = ?", (rule_id,))
+        if expected_policy_id is not _UNSET:
+            c.execute(
+                "DELETE FROM firewall_rules WHERE id = ? AND policy_id = ?",
+                (rule_id, expected_policy_id),
+            )
+        elif expected_user_client_id is not _UNSET:
+            c.execute(
+                "DELETE FROM firewall_rules WHERE id = ? AND user_client_id = ?",
+                (rule_id, expected_user_client_id),
+            )
+        else:
+            c.execute("DELETE FROM firewall_rules WHERE id = ?", (rule_id,))
         changed = c.rowcount > 0
         conn.commit()
     finally:
@@ -427,6 +454,16 @@ def set_user_firewall(client_id: str, policy_id: Optional[int], blocked: bool) -
 # ============================================================================
 # Rule resolution for the WS_USER_FW enforcement sync (tasks.py)
 # ============================================================================
+
+def user_exists(client_id: str) -> bool:
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM users WHERE client_id = ?", (client_id,))
+        return c.fetchone() is not None
+    finally:
+        conn.close()
+
 
 def resolve_client_ips(client_id: str) -> Tuple[Optional[str], Optional[str]]:
     """Return (ipv4, ipv6) for a client. Prefers the users table;

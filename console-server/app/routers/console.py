@@ -1775,9 +1775,16 @@ async def update_firewall_policy_rule(
     if get_policy(policy_id) is None:
         raise HTTPException(status_code=404, detail="Policy not found")
 
-    kwargs = {k: v for k, v in body.model_dump().items() if v is not None}
+    # Build kwargs from the fields actually present in the request body
+    # (not `v is not None`) so an explicit `null` — e.g. clearing
+    # port_start/port_end when switching protocol to icmp/all — reaches
+    # update_rule() as an intentional clear, while an omitted field still
+    # means "don't touch". `v is not None` would strip both identically,
+    # making some valid edits (e.g. tcp+port -> icmp) permanently
+    # unreachable via this endpoint.
+    kwargs = {k: getattr(body, k) for k in body.model_fields_set}
     try:
-        changed = update_rule(rule_id, **kwargs)
+        changed = update_rule(rule_id, expected_policy_id=policy_id, **kwargs)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not changed:
@@ -1800,7 +1807,7 @@ async def delete_firewall_policy_rule(
     from app.core.firewall import delete_rule, get_policy
     if get_policy(policy_id) is None:
         raise HTTPException(status_code=404, detail="Policy not found")
-    removed = delete_rule(rule_id)
+    removed = delete_rule(rule_id, expected_policy_id=policy_id)
 
     _sync_user_fw()
     ip_address = request.client.host if request and request.client else "unknown"
@@ -1877,8 +1884,10 @@ async def delete_user_firewall_rule(
     client_id: str = Depends(_check_console_access),
     _csrf: None = Depends(_check_csrf_token),
 ):
-    from app.core.firewall import delete_rule
-    removed = delete_rule(rule_id)
+    from app.core.firewall import delete_rule, user_exists
+    if not user_exists(target_client_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    removed = delete_rule(rule_id, expected_user_client_id=target_client_id)
 
     _sync_user_fw()
     ip_address = request.client.host if request and request.client else "unknown"
